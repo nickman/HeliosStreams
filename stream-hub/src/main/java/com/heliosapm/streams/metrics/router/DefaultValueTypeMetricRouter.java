@@ -33,18 +33,13 @@ import com.heliosapm.streams.metrics.ValueType;
 public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	/** A map of routes keyed by the value type */
 	protected final Map<ValueType, String> routes = new EnumMap<ValueType, String>(ValueType.class);
-	/** The message sender */
-	protected final KStream<String, String> kstream;
 	
 	/**
 	 * Creates a new DefaultValueTypeMetricRouter
-	 * @param kstream The stream to send on
 	 * @param routingMap The value type routing map
 	 */
-	public DefaultValueTypeMetricRouter(final KStream<String, String> kstream, final Map<String, String> routingMap) {
-		if(kstream==null) throw new IllegalArgumentException("The passed KStream was null");
+	public DefaultValueTypeMetricRouter(final Map<String, String> routingMap) {
 		if(routingMap==null || routingMap.isEmpty()) throw new IllegalArgumentException("The passed routing map was null or empty");
-		this.kstream = kstream;
 		for(Map.Entry<String, String> entry: routingMap.entrySet()) {
 			final String key = entry.getKey().trim().toUpperCase();
 			try {
@@ -62,9 +57,9 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.ValueType, java.lang.String)
 	 */
 	@Override
-	public void route(final ValueType valueType, final String message) {
-		// TODO Auto-generated method stub
-
+	public String route(final ValueType valueType, final String message) {
+		return routes.get(valueType);
 	}
 
+	
 }

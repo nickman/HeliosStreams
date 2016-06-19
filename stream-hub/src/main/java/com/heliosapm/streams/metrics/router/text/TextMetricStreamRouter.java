@@ -13,24 +13,36 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.heliosapm.streams.metrics.router;
+package com.heliosapm.streams.metrics.router.text;
 
-import com.heliosapm.streams.metrics.ValueType;
+import java.util.Properties;
+
+import org.apache.kafka.streams.StreamsConfig;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
- * <p>Title: ValueTypeMetricRouter</p>
+ * <p>Title: TextMetricStreamRouter</p>
  * <p>Description: </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.router.ValueTypeMetricRouter</code></p>
+ * <p><code>com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter</code></p>
  */
 
-public interface ValueTypeMetricRouter {
+public class TextMetricStreamRouter {
+	/** Instance logger */
+	protected Logger logger = LogManager.getLogger(getClass());
+	
+	protected final Properties config;
+	protected final StreamsConfig streamsConfig;
+	 
 	/**
-	 * Routes the passed message according to the value type
-	 * @param valueType The value type of the message
-	 * @param message The message to route
-	 * @return the name of topic to route to
+	 * Creates a new TextMetricStreamRouter
 	 */
-	public String route(ValueType valueType, String message);
+	public TextMetricStreamRouter(final Properties config) {
+		this.config = config;
+		streamsConfig = new StreamsConfig(this.config);
+		
+	}
+
 }

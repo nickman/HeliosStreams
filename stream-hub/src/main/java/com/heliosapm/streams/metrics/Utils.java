@@ -15,6 +15,13 @@
  */
 package com.heliosapm.streams.metrics;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.streams.processor.TimestampExtractor;
+
 /**
  * <p>Title: Utils</p>
  * <p>Description: Statis utility methods</p> 
@@ -24,8 +31,12 @@ package com.heliosapm.streams.metrics;
  */
 
 public class Utils {
+	
+	/** The text line timestamp extractor */
+	public static final TimestampExtractor TEXT_TS_EXTRACTOR = new TextLineTimestampExtractor();
 
 	//  [<value-type>,]<timestamp>, [<value>,] <metric-name>, <host>, <app> [,<tagkey1>=<tagvalue1>,<tagkeyn>=<tagvaluen>]
+	
 	
 	/**
 	 * Determines the {@link ValueType} of the metric text line in the passed string builder.
@@ -40,6 +51,96 @@ public class Utils {
 		}
 		return v;		 
 	}
+	
+	/**
+	 * Converts the passed string to a ms timestamp.
+	 * If the parsed long has less than 13 digits, it is assumed to be in seconds.
+	 * Otherwise assumed to be in milliseconds.
+	 * @param value The string value to parse
+	 * @return a ms timestamp
+	 */
+	public static long toMsTime(final String value) {
+		final long v = Long.parseLong(value.trim());
+		return digits(v) < 13 ? TimeUnit.SECONDS.toMillis(v) : v; 
+	}
+	
+	/**
+	 * Determines the number of digits in the passed long
+	 * @param v The long to test
+	 * @return the number of digits
+	 */
+	public static int digits(final long v) {
+		if(v==0) return 1;
+		return (int)(Math.log10(v)+1);
+	}
+	
+	/**
+	 * Optimized version of {@code String#split} that doesn't use regexps.
+	 * This function works in O(5n) where n is the length of the string to
+	 * split.
+	 * @param s The string to split.
+	 * @param c The separator to use to split the string.
+	 * @param trimBlanks true to not return any whitespace only array items
+	 * @return A non-null, non-empty array.
+	 * <p>Copied from <a href="http://opentsdb.net">OpenTSDB</a>.
+	 */
+	public static String[] splitString(final String s, final char c, final boolean trimBlanks) {
+		final char[] chars = s.toCharArray();
+		int num_substrings = 1;
+		final int last = chars.length-1;
+		for(int i = 0; i <= last; i++) {
+			char x = chars[i];
+			if (x == c) {
+				num_substrings++;
+			}
+		}
+		final String[] result = new String[num_substrings];
+		final int len = chars.length;
+		int start = 0;  // starting index in chars of the current substring.
+		int pos = 0;    // current index in chars.
+		int i = 0;      // number of the current substring.
+		for (; pos < len; pos++) {
+			if (chars[pos] == c) {
+				result[i++] = new String(chars, start, pos - start);
+				start = pos + 1;
+			}
+		}
+		result[i] = new String(chars, start, pos - start);
+		if(trimBlanks) {
+			int blanks = 0;
+			final List<String> strs = new ArrayList<String>(result.length);
+			for(int x = 0; x < result.length; x++) {
+				if(result[x].trim().isEmpty()) {
+					blanks++;
+				} else {
+					strs.add(result[x]);
+				}
+			}
+			if(blanks==0) return result;
+			return strs.toArray(new String[result.length - blanks]);
+		}
+		return result;
+	}
+	
+	private static class TextLineTimestampExtractor implements TimestampExtractor {
+		@Override
+		public long extract(final ConsumerRecord<Object, Object> record) {
+			try {
+				final String s = record.value().toString().trim();
+				final int index = s.indexOf(',')+1;
+				if(index==-1) return System.currentTimeMillis();			
+				if(ValueType.isValueType(s.charAt(0))) {
+					final int nextIndex = s.indexOf(',', index);
+					return toMsTime(s.substring(index, nextIndex));
+				}
+				return toMsTime(s.substring(0, index-1));
+			} catch (Exception ex) {
+				return System.currentTimeMillis();
+			}
+			
+		}
+	}
+	
 	
 //	public static byte[] renderSubmitMetric(final StringBuilder textLine) {
 //		

@@ -75,4 +75,14 @@ public enum ValueType {
 		final ValueType v = decodeByInt.get(c);
 		return v==null ? X : v;
 	}
+	
+	/**
+	 * Determines if the passed character is a ValueType symbol
+	 * @param c The char to test
+	 * @return true if a ValueType symbol, false otherwise
+	 */
+	public static boolean isValueType(final char c) {
+		return decodeByInt.get(c) != null;
+	}
+	
 }
