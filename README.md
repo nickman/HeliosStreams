@@ -7,13 +7,13 @@ Streaming performance data all the way home.
 
 #### Value Types
 
-| Symbol | Name | Type | Description | Parameters |
-|--------|--------|--------|
-| **AC** | Accumulator | Valueless | Tracking an all time total of a specific event type. | None |
-| **M** | Meter | Valueless | Tracking the per seconds/minutes/hours/day rate of a specific event type | None |
-| **D** | Delta | Value | The value of a given metric instance is the delta of the current and the prior value | **TBD** |
-| **AG** | Period Aggregated | Value | Values are aggregated to count, min, max and average per defined period (e.g. 15 sedonds)  | **TBD** |
-| **S** | Straight Through | Value | The metric is not aggregated and forwarded directly to endpoint | None |
+ Symbol | Name | Type | Description | Parameters
+-------- | -------- | -------- | -------- | --------
+ **A** | Accumulator | Valueless | Tracking an all time total of a specific event type. | None
+ **M** | Meter | Valueless | Tracking the per seconds/minutes/hours/day rate of a specific event type | None
+ **D** | Delta | Value | The value of a given metric instance is the delta of the current and the prior value | **TBD**
+ **P** | Period Aggregated | Value | Values are aggregated to count, min, max and average per defined period (e.g. 15 sedonds)  | **TBD**
+ **S** | Straight Through | Value | The metric is not aggregated and forwarded directly to endpoint | None
 
 
 # Plain Text
