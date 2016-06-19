@@ -1,0 +1,5 @@
+Refs:
+=======
+http://www.confluent.io/blog/introducing-kafka-streams-stream-processing-made-simple
+http://docs.confluent.io/2.1.0-alpha1/streams/index.html
+http://docs.confluent.io/2.1.0-alpha1/streams/javadocs/index.html
