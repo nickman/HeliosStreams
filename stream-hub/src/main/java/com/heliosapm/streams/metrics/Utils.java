@@ -123,7 +123,14 @@ public class Utils {
 		return result;
 	}
 	
-	private static class TextLineTimestampExtractor implements TimestampExtractor {
+	/**
+	 * <p>Title: TextLineTimestampExtractor</p>
+	 * <p>Description: The text stream metrics timestamp extractor</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.metrics.Utils.TextLineTimestampExtractor</code></p>
+	 */
+	public static class TextLineTimestampExtractor implements TimestampExtractor {
 		@Override
 		public long extract(final ConsumerRecord<Object, Object> record) {
 			try {
