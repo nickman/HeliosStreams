@@ -17,6 +17,7 @@ package com.heliosapm.streams.metrics;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -139,6 +140,26 @@ public class Utils {
 			}
 			
 		}
+	}
+	
+	/** An empty string array const */
+	public static final String[] EMPTY_STR_ARR = {};
+	
+	/**
+	 * Extracts a string array from the named property in the passed properties
+	 * @param p The properties to read from
+	 * @param key The property key to read
+	 * @param defaultValue The default value to return if the property is not defined or empty
+	 * @return a String array
+	 */
+	public static String[] getArrayProperty(final Properties p, final String key, final String...defaultValue) {
+		if(p==null || p.isEmpty()) throw new IllegalArgumentException("The passed properties was null or empty");
+		if(key==null || key.trim().isEmpty()) throw new IllegalArgumentException("The passed key was null or empty");
+		final String rawValue = p.getProperty(key);
+		if(rawValue==null || rawValue.trim().isEmpty()) return defaultValue;
+		final String[] arr = splitString(rawValue, ',', true);
+		if(arr.length==0) return defaultValue;
+		return arr;
 	}
 	
 	
