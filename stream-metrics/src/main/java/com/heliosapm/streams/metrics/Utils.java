@@ -169,6 +169,29 @@ public class Utils {
 		return arr;
 	}
 	
+	/**
+	 * Indicates if the passed pre-trimmed numeric string is a double
+	 * @param value the string to test
+	 * @return true if a double (or a float), false otherwise
+	 */
+	public static boolean isDouble(final String value) {
+		return value.indexOf('.')!=-1;
+	}
+	
+	/**
+	 * Attempts to parse the passed pre-trimmed string to a numeric
+	 * @param value the string to parse
+	 * @return a number or null if it was not numeric
+	 */
+	public static Number numeric(final String value) {
+		try {
+			return Double.parseDouble(value);			
+		} catch (Exception ex) {
+			return null;
+		}
+	}
+	
+	
 	
 //	public static byte[] renderSubmitMetric(final StringBuilder textLine) {
 //		

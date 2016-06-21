@@ -9,44 +9,37 @@
   	</parent>
     
     <groupId>com.heliosapm.streams</groupId>
-    <artifactId>stream-metrics</artifactId>
+    <artifactId>opentsdb-connector</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Helios Streams :: StreamMetrics</name>
-    <description>Helios Stream Metrics Pojos, Serdes and Serialization</description>
+    <name>Helios Streams :: OpenTSDBConnector</name>
+    <description>Helios Streams OpenTSDB RPC Plugin</description>
     <packaging>jar</packaging>
     <url>https://github.com/nickman</url>
 	
     <dependencies>
       
-		<!-- ==========================================================
-		    Test Dependencies
-		    ========================================================== -->
       
 		<dependency>
 		    <groupId>junit</groupId>
 		    <artifactId>junit</artifactId>
 		</dependency>
 		
-		<!-- ==========================================================
-		    Kafka Dependencies
-		    ========================================================== -->
-
 			<dependency>
 			  <groupId>org.apache.kafka</groupId>
 			  <artifactId>kafka-clients</artifactId>
-			  <scope>provided</scope>
+			</dependency>
+
+
+
+			<dependency>
+			    <groupId>com.heliosapm.streams</groupId>
+			    <artifactId>stream-metrics</artifactId>
+			    <version>${project.version}</version>				
 			</dependency>
 
 			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>kafka-streams</artifactId>
-			  <exclusions>
-			  	<exclusion>
-			  		<groupId>org.slf4j</groupId>
-			  		<artifactId>slf4j-log4j12</artifactId>
-			  	</exclusion>
-			  </exclusions>
-			  <scope>provided</scope>
+			    <groupId>net.opentsdb</groupId>
+			    <artifactId>opentsdb</artifactId>
 			</dependency>
 
 
@@ -54,33 +47,11 @@
 				<groupId>com.heliosapm.utils</groupId>
 				<artifactId>heliosutils</artifactId>
 			</dependency>
-
-		    <!-- 
-			<dependency>
-			  <groupId>net.openhft</groupId>
-			  <artifactId>chronicle-queue</artifactId>
-			</dependency>
-			-->
-
-	      <dependency>
-	        <groupId>net.openhft</groupId>
-	        <artifactId>zero-allocation-hashing</artifactId>
-	      </dependency>
 			
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
                 <artifactId>metrics-core</artifactId>
             </dependency>
-
-				<dependency>
-				  <groupId>net.sf.trove4j</groupId>
-				  <artifactId>trove4j</artifactId>
-				</dependency>            
-
-		       <dependency>
-		            <groupId>org.jctools</groupId>
-		            <artifactId>jctools-core</artifactId>
-		        </dependency>
 
 
 		  <dependency>
@@ -104,10 +75,6 @@
 		    <artifactId>log4j-1.2-api</artifactId>
 		  </dependency>
 		  
-		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-buffer</artifactId>
-		</dependency>
 		  
 	
 

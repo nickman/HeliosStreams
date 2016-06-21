@@ -41,12 +41,25 @@ public enum ValueType {
 	
 	// U for undirected ?
 	
+	private static final ValueType[] values = values();
+	private static final int MAX_INDEX = values.length -1;
+	
 	private ValueType(final String name, final boolean valueless, final String description) {
 		this.name = name;
 		this.valueless = valueless;
 		this.description = description;
 		charcode[0] = name().charAt(0);
 		charcode[1] = name().toLowerCase().charAt(0);
+	}
+	
+	/**
+	 * Returns the ValueType with the passed ordinal
+	 * @param ordinal the ordinal to get a ValueType for
+	 * @return the ValueType
+	 */
+	public static ValueType ordinal(final int ordinal) {
+		if(ordinal<0 || ordinal > MAX_INDEX) throw new IllegalArgumentException("Invalid ordinal for ValueType [" + ordinal + "]");
+		return values[ordinal];
 	}
 	
 	private static final TIntObjectHashMap<ValueType> decodeByInt = new TIntObjectHashMap<ValueType>(values().length*2, 0f, -1);
@@ -77,6 +90,18 @@ public enum ValueType {
 		final ValueType v = decodeByInt.get(c);
 		return v==null ? X : v;
 	}
+	
+	/**
+	 * Decodes the first character in the passed string to the corresponding ValueType
+	 * @param value The string to decode
+	 * @return the decoded ValueType or {@link #X} if the char does not map to a ValueType
+	 */
+	public static ValueType decode(final String value) {
+		if(value==null || value.trim().isEmpty()) throw new IllegalArgumentException("The passed value was null");
+		final ValueType v = decodeByInt.get(value.trim().charAt(0));
+		return v==null ? X : v;
+	}
+	
 	
 	/**
 	 * Determines if the passed character is a ValueType symbol

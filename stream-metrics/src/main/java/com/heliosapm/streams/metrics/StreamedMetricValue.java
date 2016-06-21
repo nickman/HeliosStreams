@@ -23,6 +23,7 @@ import java.util.Map;
 import com.heliosapm.streams.buffers.BufferManager;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 
 /**
  * <p>Title: StreamedMetricValue</p>
@@ -53,7 +54,9 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * @param tags The metric tags
 	 */
 	public StreamedMetricValue(final long timestamp, final long value, final String metricName, final Map<String, String> tags) {
-		super(timestamp, value, metricName, tags);
+		super(timestamp, metricName, tags);
+		isDoubleValue = false;
+		longValue = value;
 		byteSize += VBASE_SIZE; 
 	}
 
@@ -75,7 +78,10 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * @param tags The metric tags
 	 */
 	public StreamedMetricValue(final long timestamp, final double value, final String metricName, final Map<String, String> tags) {
-		super(timestamp, value, metricName, tags);
+		super(timestamp, metricName, tags);
+		isDoubleValue = true;
+		doubleValue = value;
+		
 		byteSize += VBASE_SIZE;
 	}
 
@@ -125,6 +131,18 @@ public class StreamedMetricValue extends StreamedMetric {
 		return true;
 	}
 	
+	/**
+	 * Sets a value type
+	 * @param vt The value type to set
+	 * @return this metric
+	 */
+	public StreamedMetricValue setValueType(final ValueType vt) {
+		if(vt.valueless) throw new IllegalArgumentException("Invalid value type for StreamedMetric. Type is valueless [" + vt.name + "]");
+		this.valueType = vt;
+		return this;
+	}
+	
+	
 
 	/**
 	 * {@inheritDoc}
@@ -163,7 +181,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * @return a byte array 
 	 */
 	public byte[] toByteArray() {
-		final ByteBuf buff = BufferManager.getInstance().heapBuffer(byteSize);
+		final ByteBuf buff = BufferManager.getInstance().buffer(byteSize);
 		try {
 			buff.writeByte(TYPE_CODE);
 			writeByteArray(buff);
@@ -174,7 +192,7 @@ public class StreamedMetricValue extends StreamedMetric {
 				buff.writeByte(1);
 				buff.writeLong(longValue);
 			}
-			return buff.array();
+			return ByteBufUtil.getBytes(buff, 0, buff.readableBytes());
 		} finally {
 			try { buff.release(); } catch (Exception x) {/* No Op */}
 		}
