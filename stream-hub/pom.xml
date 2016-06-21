@@ -91,6 +91,13 @@
   <version>1.3.5.RELEASE</version>
   <type>pom</type>
 </dependency>
+
+
+			<dependency>
+			    <groupId>com.heliosapm.streams</groupId>
+			    <artifactId>stream-metrics</artifactId>
+			    <version>${project.version}</version>			
+			</dependency>
   		
 
 		<!-- ==========================================================
@@ -319,9 +326,12 @@
 		<artifactId>maven-eclipse-plugin</artifactId>
 		<version>${eclipse-plugin.version}</version>
 		<configuration>
-		    <downloadJavadocs>true</downloadJavadocs>
-		    <downloadSources>true</downloadSources>
+		    <downloadJavadocs>false</downloadJavadocs>
+		    <downloadSources>false</downloadSources>
 		    <classpathContainers>
+			<classpathContainer>
+		org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8
+			</classpathContainer>		    	
 		    </classpathContainers>
 		</configuration>
 	    </plugin>

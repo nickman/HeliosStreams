@@ -53,8 +53,8 @@ public class StreamedMetricDeserializer implements Deserializer<StreamedMetric> 
 	 * @see org.apache.kafka.common.serialization.Deserializer#deserialize(java.lang.String, byte[])
 	 */
 	@Override
-	public StreamedMetric deserialize(String topic, byte[] data) {
-		return StreamedMetric.fromByteArray(data);
+	public StreamedMetric deserialize(final String topic, final byte[] data) {
+		return StreamedMetric.read(data);
 	}
 
 	/**

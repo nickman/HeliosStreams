@@ -24,8 +24,6 @@
  */
 package com.heliosapm.streams.metrics;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -40,29 +38,28 @@ import io.netty.buffer.ByteBuf;
 
 /**
  * <p>Title: StreamedMetric</p>
- * <p>Description: </p> 
+ * <p>Description: A metric instance</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.StreamedMetric</code></p>
  */
 
 public class StreamedMetric {
-	/** Indicates if the value is a double (true) or a long (false)  */
-	protected boolean isDoubleValue = true;
-	/** The long typed value */
-	protected long longValue = -1L;
 	/** The metric timestamp in ms. since the epoch */
 	protected long timestamp = -1L;
-	/** The double typed value */
-	protected double doubleValue = -1L;
 	/** The metric name */
 	protected String metricName = null;
+	/** The metric instance key */
+	protected transient String metricKey = null;
 	/** The metric tags */
 	protected final Map<String, String> tags = new HashMap<String, String>(8);
 	/** The estimated byte size */
 	protected int byteSize = BASE_SIZE;
 	
-	private static final int BASE_SIZE = 18;
+	static final int BASE_SIZE = 10;
+	
+	/** The type code for this metric type */
+	public static final byte TYPE_CODE = 0;
 	
 	
 	/** The Streamed Metric Serde */
@@ -100,23 +97,24 @@ public class StreamedMetric {
 	/**
 	 * Creates a new StreamedMetric
 	 * @param timestamp The timestamp in ms. since the epoch
-	 * @param value The value of the metric
 	 * @param metricName The metric name
 	 * @param tags The metric tags
 	 */
-	public StreamedMetric(final long timestamp, final long value, final String metricName, final Map<String, String> tags) {		
+	public StreamedMetric(final long timestamp, final long value, final String metricName, final Map<String, String> tags) {
+		final StringBuilder b = new StringBuilder();
 		this.timestamp = timestamp;
-		this.longValue = value;
-		isDoubleValue = false;
 		this.metricName = metricName.trim();
+		b.append(this.metricName).append(":");
 		byteSize += this.metricName.length();
 		if(tags!=null && !tags.isEmpty()) {
 			for(Map.Entry<String, String> entry: tags.entrySet()) {
 				final String key = entry.getKey().trim();
 				final String val = entry.getValue().trim();
+				b.append(key).append("=").append(val).append(",");
 				byteSize += key.length() + val.length() + 2;
 				this.tags.put(key, val);
 			}
+			metricKey = b.deleteCharAt(b.length()-1).toString();
 		}		
 	}
 	
@@ -138,20 +136,22 @@ public class StreamedMetric {
 	 * @param metricName The metric name
 	 * @param tags The metric tags
 	 */
-	public StreamedMetric(final long timestamp, final double value, final String metricName, final Map<String, String> tags) {		
+	public StreamedMetric(final long timestamp, final double value, final String metricName, final Map<String, String> tags) {
+		final StringBuilder b = new StringBuilder();
 		this.timestamp = timestamp;
-		this.doubleValue = value;
-		isDoubleValue = true;
 		this.metricName = metricName.trim();
+		b.append(this.metricName).append(":");
 		byteSize += this.metricName.length();
 		if(tags!=null && !tags.isEmpty()) {
 			for(Map.Entry<String, String> entry: tags.entrySet()) {
 				final String key = entry.getKey().trim();
 				final String val = entry.getValue().trim();
+				b.append(key).append("=").append(val).append(",");
 				byteSize += key.length() + val.length() + 2;
 				this.tags.put(key, val);
 			}
-		}
+			metricKey = b.deleteCharAt(b.length()-1).toString();
+		}		
 	}
 	
 	/**
@@ -164,7 +164,7 @@ public class StreamedMetric {
 		this(System.currentTimeMillis(), value, metricName, tags);
 	}
 	
-	private StreamedMetric() {
+	StreamedMetric() {
 		
 	}
 	
@@ -175,19 +175,8 @@ public class StreamedMetric {
 	public byte[] toByteArray() {
 		final ByteBuf buff = BufferManager.getInstance().heapBuffer(byteSize);
 		try {
-			buff.writeBoolean(isDoubleValue);
-			buff.writeLong(timestamp);
-			if(isDoubleValue) {
-				buff.writeDouble(doubleValue);
-			} else {
-				buff.writeLong(longValue);
-			}
-			BufferManager.writeUTF(metricName, buff);			
-			buff.writeByte(tags.size());
-			for(Map.Entry<String, String> entry: tags.entrySet()) {
-				BufferManager.writeUTF(entry.getKey(), buff);
-				BufferManager.writeUTF(entry.getValue(), buff);
-			}
+			buff.writeByte(TYPE_CODE);
+			writeByteArray(buff);
 			return buff.array();
 		} finally {
 			try { buff.release(); } catch (Exception x) {/* No Op */}
@@ -195,50 +184,71 @@ public class StreamedMetric {
 	}
 	
 	/**
-	 * Creates a StreamedMetric from the passed byte array
-	 * @param bytes The bytes to read the StreamedMetric from
-	 * @return the created StreamedMetric
+	 * Returns a byte array containing the serialized streammetric
+	 * @param buff The buffer to write into
+	 * @return a byte array 
 	 */
-	public static StreamedMetric fromByteArray(final byte[] bytes) {
-		final StreamedMetric sm = new StreamedMetric();
-		sm.byteSize = bytes.length;
+	void writeByteArray(final ByteBuf buff) {
+		buff.writeLong(timestamp);
+		BufferManager.writeUTF(metricName, buff);			
+		buff.writeByte(tags.size());
+		for(Map.Entry<String, String> entry: tags.entrySet()) {
+			BufferManager.writeUTF(entry.getKey(), buff);
+			BufferManager.writeUTF(entry.getValue(), buff);
+		}
+	}	
+	
+	/**
+	 * Reads a streamed metric from the passed byte array
+	 * @param bytes the byte array to read the streamed metric from
+	 * @return the appropriate type of StreamedMetric
+	 */
+	public static StreamedMetric read(final byte[] bytes) {
 		final ByteBuf buff = BufferManager.getInstance().heapBuffer(bytes.length).writeBytes(bytes);
 		try {
-			sm.isDoubleValue = buff.readBoolean();
-			sm.timestamp = buff.readLong();
-			if(sm.isDoubleValue) {
-				sm.doubleValue = buff.readDouble();
-			} else {
-				sm.longValue = buff.readLong();
+			final byte type = buff.readByte();
+			switch(type) {
+				case 0:
+					return StreamedMetric.fromBuff(buff);
+				case 1:
+					return StreamedMetricValue.fromBuff(buff);
+				default:
+					throw new RuntimeException("Unrecognized metric type code [" + type + "]");
 			}
-			sm.metricName = BufferManager.readUTF(buff);
-			final int tsize = buff.readByte();
-			for(int i = 0; i < tsize; i++) {
-				final String key = BufferManager.readUTF(buff);
-				sm.tags.put(key, BufferManager.readUTF(buff));
-			}
-			return sm;
 		} finally {
 			try { buff.release(); } catch (Exception x) {/* No Op */}
 		}
+			
+	}
+	
+	/**
+	 * Creates a StreamedMetric from the passed buffer
+	 * @param bytes The bytes to read the StreamedMetric from
+	 * @return the created StreamedMetric
+	 */
+	static StreamedMetric fromBuff(final ByteBuf buff) {
+		final StreamedMetric sm = new StreamedMetric();
+		sm.byteSize = buff.readableBytes() + 1;
+		sm.readFromBuff(buff);
+		return sm;
+	}
+	
+	void readFromBuff(final ByteBuf buff) {
+		timestamp = buff.readLong();
+		final StringBuilder b = new StringBuilder();
+		metricName = BufferManager.readUTF(buff);
+		b.append(metricName).append(":");
+		final int tsize = buff.readByte();			
+		for(int i = 0; i < tsize; i++) {
+			final String key = BufferManager.readUTF(buff);
+			final String val = BufferManager.readUTF(buff);
+			b.append(key).append("=").append(val).append(",");
+			tags.put(key, val);
+		}
+		metricKey = b.deleteCharAt(b.length()-1).toString();		
 	}
 	
 
-	/**
-	 * Indicates if this metric is typed as a double 
-	 * @return true if this metric is typed as a double, false if this metric is typed as a long
-	 */
-	public boolean isDoubleValue() {
-		return isDoubleValue;
-	}
-
-	/**
-	 * Returns the long value
-	 * @return the longValue
-	 */
-	public long getLongValue() {
-		return longValue;
-	}
 
 	/**
 	 * Returns the metric timestamp
@@ -248,13 +258,6 @@ public class StreamedMetric {
 		return timestamp;
 	}
 
-	/**
-	 * Returns the double value
-	 * @return the doubleValue
-	 */
-	public double getDoubleValue() {
-		return doubleValue;
-	}
 
 	/**
 	 * Returns the metric name
@@ -273,6 +276,22 @@ public class StreamedMetric {
 	}
 	
 	/**
+	 * Returns the metric instance key which is basically the metric name plus the tags
+	 * @return the metric instance key
+	 */
+	public String metricKey() {
+		return metricKey;
+	}
+	
+	/**
+	 * Indicates if this StreamedMetric has a value
+	 * @return false since this type does not have a value
+	 */
+	public boolean isValued() {
+		return false;
+	}
+	
+	/**
 	 * {@inheritDoc}
 	 * @see java.lang.Object#toString()
 	 */
@@ -280,7 +299,6 @@ public class StreamedMetric {
 	public String toString() {
 		return new StringBuilder(96)
 			.append("[").append(timestamp).append("] ")
-			.append(isDoubleValue ? doubleValue : longValue).append(" ")
 			.append(metricName).append(" ")
 			.append(tags)
 			.toString();
@@ -295,9 +313,7 @@ public class StreamedMetric {
 	public String toOpenTSDBString() {
 		final StringBuilder b = new StringBuilder(96).append("put ")
 		.append(metricName).append(" ")
-		.append(timestamp).append(" ")
-		.append(isDoubleValue ? doubleValue : longValue).append(" ");
-		
+		.append(timestamp).append(" ");
 		for(Map.Entry<String, String> entry: tags.entrySet()) {
 			b.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
 		}
@@ -349,7 +365,39 @@ public class StreamedMetric {
 	}
 	
 	
-
+	/** An empty str/str map const */
+	public static final Map<String, String> EMPTY_STR_MAP = Collections.unmodifiableMap(new HashMap<String, String>(0));
+	
+	/**
+	 * Converts the passed array of strings to a tags map.<ul>
+	 * <li>Keys and values can be expressed seperately: &lt;<b><code>"key1", "value1", "key2", "value2"....</code></b>&gt;</li>  
+	 * <li>or as a pair: &lt;<b><code>"key1=value1", "key2=value2"....</code></b>&gt;</li>
+	 * <li>or both: &lt;<b><code>"key1", "value1", "key2=value2"....</code></b>&gt;</li>
+	 * </ul>
+	 * @param values The string array to convert
+	 * @return a map of key value pairs
+	 */
+	public static Map<String, String> fromArray(final String...values) {
+		if(values==null || values.length==0) return EMPTY_STR_MAP;
+		final Map<String, String> map = new HashMap<String, String>(8);
+		for(int i = 0; i < values.length; i++) {
+			if(values[i]==null || values[i].trim().isEmpty()) continue;
+			final String s = values[i].trim();
+			final int index = s.indexOf('=');
+			if(index==-1) {				
+				try {
+					i++;
+					map.put(s, values[i].trim());
+				} catch (Exception ex) {
+					throw new RuntimeException("Expected KVP value after key [" + s + "]");
+				}
+			} else {
+				final String[] pair =  Utils.splitString(s, '=', true);
+				map.put(pair[0], pair[1]);
+			}
+		}
+		return map;
+	}
 	
 
 	

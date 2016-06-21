@@ -39,6 +39,8 @@ public enum ValueType {
 	/** The value type indicating the metric is directed (has no value type) */
 	X("Directed", true, "The value type indicating the metric is directed (has no value type)");
 	
+	// U for undirected ?
+	
 	private ValueType(final String name, final boolean valueless, final String description) {
 		this.name = name;
 		this.valueless = valueless;

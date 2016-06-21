@@ -37,17 +37,24 @@
 			  <scope>provided</scope>
 			</dependency>
 
+			<dependency>
+			  <groupId>org.apache.kafka</groupId>
+			  <artifactId>kafka-streams</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
 
 			<dependency>				
 				<groupId>com.heliosapm.utils</groupId>
 				<artifactId>heliosutils</artifactId>
 			</dependency>
 
-		      
+		    <!-- 
 			<dependency>
 			  <groupId>net.openhft</groupId>
 			  <artifactId>chronicle-queue</artifactId>
 			</dependency>
+			-->
 
 	      <dependency>
 	        <groupId>net.openhft</groupId>
@@ -159,8 +166,8 @@
 		<artifactId>maven-eclipse-plugin</artifactId>
 		<version>${eclipse-plugin.version}</version>
 		<configuration>
-		    <downloadJavadocs>true</downloadJavadocs>
-		    <downloadSources>true</downloadSources>
+		    <downloadJavadocs>false</downloadJavadocs>
+		    <downloadSources>false</downloadSources>
 		    <classpathContainers>
 		    </classpathContainers>
 		</configuration>

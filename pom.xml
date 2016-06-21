@@ -536,11 +536,11 @@
 		<artifactId>maven-eclipse-plugin</artifactId>
 		<version>${eclipse-plugin.version}</version>
 		<configuration>
-		    <downloadJavadocs>true</downloadJavadocs>
-		    <downloadSources>true</downloadSources>
+		    <downloadJavadocs>false</downloadJavadocs>
+		    <downloadSources>false</downloadSources>
 		    <classpathContainers>
 			<classpathContainer>
-		org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.7
+		org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8
 			</classpathContainer>
 		    </classpathContainers>
 		</configuration>
