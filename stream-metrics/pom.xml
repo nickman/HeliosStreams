@@ -187,6 +187,53 @@
 	  <groupId>org.apache.maven.plugins</groupId>
 	  <artifactId>maven-shade-plugin</artifactId>
 	  <version>${shade.version}</version>
+        <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+              <configuration>
+              
+                <artifactSet>
+                  <excludes>
+                  <!-- 
+                  	<exclude>log4j:log4j:jar:</exclude>
+                  	<exclude>org.slf4j:*:jar:</exclude>
+                  	<exclude>org.codehaus.groovy:*:jar:</exclude>
+                  -->
+					  <exclude>META-INF/*.SF</exclude>
+	                  <exclude>META-INF/*.DSA</exclude>
+	                  <exclude>META-INF/*.RSA</exclude>                      	
+                  </excludes>
+                  <includes>
+                    
+                  </includes>
+                </artifactSet>
+              
+          		<addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+          		<addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+          		<includePluginDependencies>false</includePluginDependencies>
+          		
+        		<transformers>
+					<transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+	                  <resource>META-INF/spring.handlers</resource>
+	                </transformer>
+	                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+	                  <resource>META-INF/spring.schemas</resource>
+	                </transformer>        			
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ComponentsXmlResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.DontIncludeResourceTransformer">
+                		<resource>.SF</resource>
+                		<resource>.DSA</resource>
+                		<resource>.RSA</resource>
+            		</transformer>
+                </transformers>
+              </configuration>
+            </execution>
+          </executions>	  
 	</plugin>
 	    
         </plugins>

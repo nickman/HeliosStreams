@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.heliosapm.tsdbex.rpc.kafka;
+package com.heliosapm.streams.opentsdb;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,7 +45,7 @@ import net.opentsdb.tsd.RpcPlugin;
  * <p>Description: Kafka based metric ingestion RPC service</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.tsdbex.rpc.kafka.KafkaRPC</code></p>
+ * <p><code>com.heliosapm.streams.opentsdb.KafkaRPC</code></p>
  */
 
 public class KafkaRPC extends RpcPlugin implements Runnable {
@@ -145,7 +145,6 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	/**
 	 * Handles the kafka consumer
 	 */
-	@SuppressWarnings("null")
 	public void run() {
 		try {
             consumer.subscribe(Arrays.asList(topics));
@@ -228,8 +227,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	 */
 	@Override
 	public String version() {
-		// TODO Auto-generated method stub
-		return null;
+		return "2.1";
 	}
 
 	/**
@@ -237,8 +235,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	 * @see net.opentsdb.tsd.RpcPlugin#collectStats(net.opentsdb.stats.StatsCollector)
 	 */
 	@Override
-	public void collectStats(StatsCollector collector) {
-		// TODO Auto-generated method stub
+	public void collectStats(final StatsCollector collector) {
 
 	}
 

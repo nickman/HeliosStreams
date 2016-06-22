@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.heliosapm.tsdbex.rpc.kafka;
+package com.heliosapm.streams.opentsdb;
 
 /**
  * <p>Title: ValueType</p>
  * <p>Description: Enumerates the possible value types of incoming metrics</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.tsdbex.rpc.kafka.ValueType</code></p>
+ * <p><code>com.heliosapm.streams.opentsdb.ValueType</code></p>
  */
 
 public enum ValueType {

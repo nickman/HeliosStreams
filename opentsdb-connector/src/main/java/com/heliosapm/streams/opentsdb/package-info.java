@@ -27,7 +27,7 @@
  * <p>Description: OpenTSDB RPC plugin to read metrics off a Kafka topic and write into the TSD.</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.tsdbex.rpc.kafka.package-info</code></p>
+ * <p><code>com.heliosapm.streams.opentsdb.package-info</code></p>
  */
 
-package com.heliosapm.tsdbex.rpc.kafka;
+package com.heliosapm.streams.opentsdb;

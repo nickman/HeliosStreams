@@ -13,14 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.heliosapm.tsdbex.rpc.kafka;
+package com.heliosapm.streams.opentsdb;
 
 /**
  * <p>Title: EncodingType</p>
  * <p>Description: </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.tsdbex.rpc.kafka.EncodingType</code></p>
+ * <p><code>com.heliosapm.streams.opentsdb.EncodingType</code></p>
  */
 
 public enum EncodingType {
