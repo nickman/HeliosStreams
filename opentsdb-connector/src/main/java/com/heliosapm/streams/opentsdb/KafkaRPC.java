@@ -52,7 +52,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	/** The TSDB instance */
 	static TSDB tsdb = null;
 	/** The prefix on TSDB config items marking them as applicable to this service */
-	public static final String CONFIG_PREFIX = "tsdbex.kafka.rpc.";
+	public static final String CONFIG_PREFIX = "tsd.rpc.kafka.";
 	/** The prefix length */
 	public static final int CONFIG_PREFIX_LEN = CONFIG_PREFIX.length();
 	/** The TSDB config key for the names of topics to subscribe to */
@@ -61,12 +61,12 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	public static final String DEFAULT_TOPIC = "tsdb-metrics";
 	/** The TSDB config key for sync processing of add data points */
 	public static final String CONFIG_SYNC_ADD = CONFIG_PREFIX + "syncadd";
-	/** The default topic name to listen on */
+	/** The default sync add */
 	public static final boolean DEFAULT_SYNC_ADD = true;
 	
-	/** The TSDB config key for the number of records to poll for */
+	/** The TSDB config key for the polling timeout in ms. */
 	public static final String CONFIG_POLLTIMEOUT = CONFIG_PREFIX + "polltime";
-	/** The default topic name to listen on */
+	/** The default polling timeout in ms. */
 	public static final long DEFAULT_POLLTIMEOUT = 10000;
 	
 	/** Instance logger */
@@ -152,9 +152,9 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
                 final ConsumerRecords<String, StreamedMetricValue> records = consumer.poll(pollTimeout);
                 final int recordCount = records.count();
                 if(recordCount==0) continue;
-                log.info("Processing {} records", recordCount);
+                final long startTime = System.currentTimeMillis();
                 
-                final List<Deferred<Object>> addPointDeferreds = syncAdd ? new ArrayList<Deferred<Object>>(recordCount) : null;
+                final List<Deferred<Object>> addPointDeferreds = !syncAdd ? new ArrayList<Deferred<Object>>(recordCount) : null;
                 for(final Iterator<ConsumerRecord<String, StreamedMetricValue>> iter = records.iterator(); iter.hasNext();) {
                 	final ConsumerRecord<String, StreamedMetricValue> record = iter.next();
                 	final StreamedMetricValue im = record.value();
@@ -176,8 +176,9 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 						}                		 
                 	 });                	 
                 } else {
-                	consumer.commitSync();
+                	consumer.commitSync();                	
                 }
+                log.info("sync:{} :Processed {} records in {} ms.", syncAdd, recordCount, System.currentTimeMillis() - startTime );
             }
         } catch (WakeupException e) {
             // Ignore exception if closing

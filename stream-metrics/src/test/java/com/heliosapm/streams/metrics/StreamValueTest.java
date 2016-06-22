@@ -117,6 +117,8 @@ public class StreamValueTest extends BaseTest {
 		final String dvl = directedValueless("A", now,  metricName, host, app, tags);
 		final String uvl = undirectedValueless(now,  metricName, host, app, tags);
 		final String dv = directedValue("P", now,  value, metricName, host, app, tags);
+		log(dv);
+		
 		final String uv = undirectedValue(now,  value, metricName, host, app, tags);
 		
 		assertEquals(new StreamedMetric(now, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.A), StreamedMetric.fromString(dvl));
