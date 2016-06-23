@@ -29,6 +29,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.hbase.async.jsr166e.LongAdder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -98,6 +99,8 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	/** The blacklisted metric key manager */
 	protected final Blacklist blacklist = Blacklist.getInstance();
 	
+	/** A counter tracking the number of pending data point adds */
+	protected final LongAdder pendingDataPointAdds = new LongAdder();
 	
 	/** A meter to track the rate of points added */
 	protected final Meter pointsAddedMeter = SharedMetricsRegistry.getInstance().meter("KafkaRPC.pointsAddedMeter");
@@ -183,12 +186,13 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
             	try {
 	                final ConsumerRecords<String, StreamedMetricValue> records = consumer.poll(pollTimeout);
 	                final int recordCount = records.count();
+	                pendingDataPointAdds.add(recordCount);
 	                if(recordCount==0) continue;
 	                final long startTimeNanos = System.nanoTime();
 	                
-	                final List<Deferred<Object>> addPointDeferreds = syncAdd ? 
-	                		new ArrayList<Deferred<Object>>(recordCount)  	// We're going to wait for all the Deferreds to complete and then commit.
-	                		: null;											// We're just going to commit as soon as all the async add points are dispatched
+	                final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>(recordCount)  	
+	                		// We're going to wait for all the Deferreds to complete and then commit.
+	                		// We're just going to commit as soon as all the async add points are dispatched
 	                for(final Iterator<ConsumerRecord<String, StreamedMetricValue>> iter = records.iterator(); iter.hasNext();) {
 	                	StreamedMetricValue im = null;
 	                	try {
@@ -201,7 +205,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 		                	} else {
 		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getLongValue(), im.getTags());
 		                	}
-		                	if(syncAdd) addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
+		                	addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
 	                	} catch (Exception adpe) {
 	                		if(im!=null) {
 	                			log.error("Failed to add data point for invalid metric name: {}, cause: {}", im.metricKey(), adpe.getMessage());
@@ -211,10 +215,9 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	                		}
 	                	}
 	                }
-	                if(syncAdd) {
-	                	try {
-	                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
-	                	 d.addBoth(new Callback<Void, ArrayList<Object>>() {
+	                
+                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
+                	 d.addCallback(new Callback<Void, ArrayList<Object>>() {
 							@Override
 							public Void call(final ArrayList<Object> arg) throws Exception {
 								consumer.commitSync();
@@ -224,17 +227,16 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 								log.info("Sync Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
 								return null;
 							}                		 
-	                	 }).joinUninterruptibly(30000);
-	                	} catch (TimeoutException ex) {
-	                		log.error("Request timed out waiting for {} data points to save", recordCount);
-	                	}
-	                } else {
-	                	consumer.commitSync();
+	                	 });
+                	 if(syncAdd) {
+                		 d.joinUninterruptibly(30000);
+                	 } else {
+ 	                	consumer.commitSync();
 						final long elapsed = System.nanoTime() - startTimeNanos; 
 						perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
 						pointsAddedMeter.mark(recordCount);
 						log.info("Async Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
-	                }       
+                	 }
             	} catch (Exception exx) {
             		log.error("Unexpected exception in processing loop", exx);
             	}
