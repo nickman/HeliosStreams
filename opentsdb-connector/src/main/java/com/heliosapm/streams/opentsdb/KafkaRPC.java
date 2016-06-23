@@ -43,6 +43,7 @@ import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
+import com.stumbleupon.async.TimeoutException;
 
 import net.opentsdb.core.TSDB;
 import net.opentsdb.stats.StatsCollector;
@@ -203,7 +204,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 		                	if(syncAdd) addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
 	                	} catch (Exception adpe) {
 	                		if(im!=null) {
-	                			log.error("Failed to add data point for metric: {}", im.metricKey(), adpe);
+	                			log.error("Failed to add data point for invalid metric name: {}, cause: {}", im.metricKey(), adpe.getMessage());
 	                			blacklist.blackList(im.metricKey());
 	                		} else {
 	                			log.error("Failed to add data point", adpe);
@@ -211,6 +212,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	                	}
 	                }
 	                if(syncAdd) {
+	                	try {
 	                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
 	                	 d.addBoth(new Callback<Void, ArrayList<Object>>() {
 							@Override
@@ -222,7 +224,10 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 								log.info("Sync Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
 								return null;
 							}                		 
-	                	 });                	 
+	                	 }).joinUninterruptibly(30000);
+	                	} catch (TimeoutException ex) {
+	                		log.error("Request timed out waiting for {} data points to save", recordCount);
+	                	}
 	                } else {
 	                	consumer.commitSync();
 						final long elapsed = System.nanoTime() - startTimeNanos; 
