@@ -29,10 +29,10 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
@@ -43,8 +43,6 @@ import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
-import jsr166e.AccumulatingLongAdder;
-import jsr166e.LongAdder;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.stats.StatsCollector;
 import net.opentsdb.tsd.RpcPlugin;
@@ -57,7 +55,7 @@ import net.opentsdb.tsd.RpcPlugin;
  * <p><code>com.heliosapm.streams.opentsdb.KafkaRPC</code></p>
  */
 
-public class KafkaRPC extends RpcPlugin implements Runnable {
+public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	/** The TSDB instance */
 	static TSDB tsdb = null;
 	/** The prefix on TSDB config items marking them as applicable to this service */
@@ -103,6 +101,14 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	protected final Meter pointsAddedMeter = SharedMetricsRegistry.getInstance().meter("KafkaRPC.pointsAddedMeter");
 	/** A timer to track the elapsed time per message ingested */
 	protected final Timer perMessageTimer = SharedMetricsRegistry.getInstance().timer("KafkaRPC.perMessageTimer");
+	
+	/** The per message timer snapshot */
+	protected final CachedGauge<Snapshot> perMessageTimerSnap = new CachedGauge<Snapshot>(5, TimeUnit.SECONDS) {
+		@Override
+		protected Snapshot loadValue() {
+			return perMessageTimer.getSnapshot();
+		}
+	};
 	
 	
 	
@@ -178,7 +184,9 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	                if(recordCount==0) continue;
 	                final long startTimeNanos = System.nanoTime();
 	                
-	                final List<Deferred<Object>> addPointDeferreds = !syncAdd ? new ArrayList<Deferred<Object>>(recordCount) : null;
+	                final List<Deferred<Object>> addPointDeferreds = syncAdd ? 
+	                		new ArrayList<Deferred<Object>>(recordCount)  	// We're going to wait for all the Deferreds to complete and then commit.
+	                		: null;											// We're just going to commit as soon as all the async add points are dispatched
 	                for(final Iterator<ConsumerRecord<String, StreamedMetricValue>> iter = records.iterator(); iter.hasNext();) {
 	                	StreamedMetricValue im = null;
 	                	try {
@@ -191,7 +199,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 		                	} else {
 		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getLongValue(), im.getTags());
 		                	}
-		                	if(!syncAdd) addPointDeferreds.add(thisDeferred);
+		                	if(syncAdd) addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
 	                	} catch (Exception adpe) {
 	                		if(im!=null) {
 	                			log.error("Failed to add data point for metric: {}", im.metricKey(), adpe);
@@ -201,7 +209,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	                		}
 	                	}
 	                }
-	                if(!syncAdd) {
+	                if(syncAdd) {
 	                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
 	                	 d.addBoth(new Callback<Void, ArrayList<Object>>() {
 							@Override
@@ -210,7 +218,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 								final long elapsed = System.nanoTime() - startTimeNanos; 
 								perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
 								pointsAddedMeter.mark(recordCount);
-								log.info("Async Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
+								log.info("Sync Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
 								return null;
 							}                		 
 	                	 });                	 
@@ -219,7 +227,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 						final long elapsed = System.nanoTime() - startTimeNanos; 
 						perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
 						pointsAddedMeter.mark(recordCount);
-						log.info("Sync Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
+						log.info("Async Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
 	                }       
             	} catch (Exception exx) {
             		log.error("Unexpected exception in processing loop", exx);
@@ -236,9 +244,15 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
         }		
 	}
 	
-	protected static long nanosPerMessage(final double msElapsed, final double messageCount) {
-		if(msElapsed==0 || messageCount==0) return 0;
-		return (long)(msElapsed/messageCount);
+	/**
+	 * Computes the nano time per message
+	 * @param nanosElapsed The nanos elapsed for the whole batch
+	 * @param messageCount The number of messages in the batch
+	 * @return the nanos per message
+	 */
+	protected static long nanosPerMessage(final double nanosElapsed, final double messageCount) {
+		if(nanosElapsed==0 || messageCount==0) return 0;
+		return (long)(nanosElapsed/messageCount);
 	}
 
 	/**
@@ -284,6 +298,127 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	public String version() {
 		return "2.1";
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#isSyncAdd()
+	 */
+	public boolean isSyncAdd() {
+		return syncAdd;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getTotalDataPoints()
+	 */
+	public long getTotalDataPoints() {
+		return perMessageTimer.getCount();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPointsMeanRate()
+	 */
+	public double getDataPointsMeanRate() {
+		return perMessageTimer.getMeanRate();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPoints15mRate()
+	 */
+	public double getDataPoints15mRate() {
+		return perMessageTimer.getFifteenMinuteRate();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPoints5mRate()
+	 */
+	public double getDataPoints5mRate() {
+		return perMessageTimer.getFiveMinuteRate();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPoints1mRate()
+	 */
+	public double getDataPoints1mRate() {
+		return perMessageTimer.getOneMinuteRate();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPointMeanTimeMs()
+	 */
+	public double getPerDataPointMeanTimeMs() {
+		return perMessageTimerSnap.getValue().getMean();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPointMedianTimeMs()
+	 */
+	public double getPerDataPointMedianTimeMs() {
+		return perMessageTimerSnap.getValue().getMedian();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPoint999pctTimeMs()
+	 */
+	public double getPerDataPoint999pctTimeMs() {
+		return perMessageTimerSnap.getValue().get999thPercentile();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPoint99pctTimeMs()
+	 */
+	public double getPerDataPoint99pctTimeMs() {
+		return perMessageTimerSnap.getValue().get99thPercentile();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPoint75pctTimeMs()
+	 */
+	public double getPerDataPoint75pctTimeMs() {
+		return perMessageTimerSnap.getValue().get75thPercentile();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatchMeanRate()
+	 */
+	public double getBatchMeanRate() {
+		return pointsAddedMeter.getMeanRate();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatch15mRate()
+	 */
+	public double getBatch15mRate() {
+		return pointsAddedMeter.getFifteenMinuteRate();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatch5mRate()
+	 */
+	public double getBatch5mRate() {
+		return pointsAddedMeter.getFiveMinuteRate();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatch1mRate()
+	 */
+	public double getBatch1mRate() {
+		return pointsAddedMeter.getOneMinuteRate();
+	}
+	
 
 	/**
 	 * {@inheritDoc}
