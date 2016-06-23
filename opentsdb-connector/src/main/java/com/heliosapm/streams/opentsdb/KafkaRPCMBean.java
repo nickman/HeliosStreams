@@ -24,6 +24,10 @@
  */
 package com.heliosapm.streams.opentsdb;
 
+import javax.management.ObjectName;
+
+import com.heliosapm.utils.jmx.JMXHelper;
+
 /**
  * <p>Title: KafkaRPCMBean</p>
  * <p>Description: JMX MBean interface for the {@link KafkaRPC} plugin</p> 
@@ -33,6 +37,10 @@ package com.heliosapm.streams.opentsdb;
  */
 
 public interface KafkaRPCMBean {
+	
+	/** The JMX ObjectName for this MBean */
+	public static final ObjectName OBJECT_NAME = JMXHelper.objectName("com.heliosapm.streams:service=KafkaRPC");
+	
 	
 	/**
 	 * Indicates if kafka commits are issued synchronously or not

@@ -40,7 +40,8 @@ pflush = {
 }
 
 clean = { s ->
-    return s.toString().replace(":", ";");
+    //return s.toString().replace(":", ";");
+    return s;
 }
 
 
