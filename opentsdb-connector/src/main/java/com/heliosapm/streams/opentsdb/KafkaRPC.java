@@ -95,7 +95,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	protected Thread subThread = null;
 	
 	/** A set of blacklisted metric keys */
-	protected final Map<String, LongAdder> blackListed = new NonBlockingHashMap<String, LongAdder>(256);
+	protected final NonBlockingHashMap<String, LongAdder> blackListed = new NonBlockingHashMap<String, LongAdder>(256);
 	/** The total number of blacklisted metrics seen */
 	protected final LongAdder blackListCount = new LongAdder();
 	
