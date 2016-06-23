@@ -39,8 +39,8 @@ pflush = {
     buff.setLength(0);
 }
 
-clean { s ->
-    return s.replace(":", ";");
+clean = { s ->
+    return s.toString().replace(":", ";");
 }
 
 
@@ -51,7 +51,7 @@ trace = { metric, value, tags ->
 
     buff.append("$now,$value,$metric,$HOST,perfagent,dc=$DC");
     tags.each() { k, v ->
-        buff.append(",").append(clean(k).append("=").append(clean(v);
+        buff.append(",").append(clean(k)).append("=").append(clean(v));
     }
     sm = StreamedMetric.fromString(buff.toString());
     pendingBuffer.add(sm);
@@ -79,6 +79,7 @@ flush = {
         long sentElapsed = System.currentTimeMillis() - start;
         println "Sent $mod messages. Total Size: $totalSize, Per Message: ${totalSize/mod} Partitions: $parts";
         futures.clear();
+        pendingBuffer.clear();
     }
 }
 
