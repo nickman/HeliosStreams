@@ -36,6 +36,7 @@ import org.slf4j.LoggerFactory;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
+import com.heliosapm.streams.metrics.Blacklist;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.StreamedMetricValueDeserializer;
 import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
@@ -94,17 +95,16 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	/** The subscriber thread */
 	protected Thread subThread = null;
 	
-	/** A set of blacklisted metric keys */
-	protected final NonBlockingHashMap<String, LongAdder> blackListed = new NonBlockingHashMap<String, LongAdder>(256);
-	/** The total number of blacklisted metrics seen */
-	protected final LongAdder blackListCount = new LongAdder();
+	/** The blacklisted metric key manager */
+	protected final Blacklist blacklist = Blacklist.getInstance();
+	
 	
 	/** A meter to track the rate of points added */
 	protected final Meter pointsAddedMeter = SharedMetricsRegistry.getInstance().meter("KafkaRPC.pointsAddedMeter");
 	/** A timer to track the elapsed time per message ingested */
 	protected final Timer perMessageTimer = SharedMetricsRegistry.getInstance().timer("KafkaRPC.perMessageTimer");
 	
-	private static final LongAdder PLACEHOLDER = new LongAdder();
+	
 	
 	/**
 	 * Creates a new KafkaRPC
@@ -112,23 +112,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	public KafkaRPC() {
 	}
 	
-	protected boolean isBlackListed(final StreamedMetricValue sm) {
-		//  new AccumulatingLongAdder(parent)
-		final LongAdder la = blackListed.get(sm.metricKey());
-		if(la==null) return false;
-		la.increment();
-		return true;		
-	}
 	
-	protected void blackList(final StreamedMetricValue sm) {
-		final String key = sm.metricKey();
-		LongAdder la = blackListed.putIfAbsent(key, PLACEHOLDER);
-		if(la==null || la==PLACEHOLDER) {
-			la = new AccumulatingLongAdder(blackListCount);
-			blackListed.replace(key, la);
-			la.increment();
-		}
-	}
 
 	/**
 	 * {@inheritDoc}
@@ -200,7 +184,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	                	try {
 		                	final ConsumerRecord<String, StreamedMetricValue> record = iter.next();
 		                	im = record.value();
-		                	if(isBlackListed(im)) continue;
+		                	if(blacklist.isBlackListed(im.metricKey())) continue;
 		                	Deferred<Object> thisDeferred = null;
 		                	if(im.isDoubleValue()) {
 		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getDoubleValue(), im.getTags());
@@ -211,7 +195,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	                	} catch (Exception adpe) {
 	                		if(im!=null) {
 	                			log.error("Failed to add data point for metric: {}", im.metricKey(), adpe);
-	                			blackList(im);
+	                			blacklist.blackList(im.metricKey());
 	                		} else {
 	                			log.error("Failed to add data point", adpe);
 	                		}
