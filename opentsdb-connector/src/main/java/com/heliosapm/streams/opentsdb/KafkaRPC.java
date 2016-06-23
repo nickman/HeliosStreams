@@ -21,6 +21,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -28,14 +29,21 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.WakeupException;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.Snapshot;
+import com.codahale.metrics.Timer;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.StreamedMetricValueDeserializer;
+import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
+import jsr166e.AccumulatingLongAdder;
+import jsr166e.LongAdder;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.stats.StatsCollector;
 import net.opentsdb.tsd.RpcPlugin;
@@ -86,10 +94,40 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	/** The subscriber thread */
 	protected Thread subThread = null;
 	
+	/** A set of blacklisted metric keys */
+	protected final Map<String, LongAdder> blackListed = new NonBlockingHashMap<String, LongAdder>(256);
+	/** The total number of blacklisted metrics seen */
+	protected final LongAdder blackListCount = new LongAdder();
+	
+	/** A meter to track the rate of points added */
+	protected final Meter pointsAddedMeter = SharedMetricsRegistry.getInstance().meter("KafkaRPC.pointsAddedMeter");
+	/** A timer to track the elapsed time per message ingested */
+	protected final Timer perMessageTimer = SharedMetricsRegistry.getInstance().timer("KafkaRPC.perMessageTimer");
+	
+	private static final LongAdder PLACEHOLDER = new LongAdder();
+	
 	/**
 	 * Creates a new KafkaRPC
 	 */
 	public KafkaRPC() {
+	}
+	
+	protected boolean isBlackListed(final StreamedMetricValue sm) {
+		//  new AccumulatingLongAdder(parent)
+		final LongAdder la = blackListed.get(sm.metricKey());
+		if(la==null) return false;
+		la.increment();
+		return true;		
+	}
+	
+	protected void blackList(final StreamedMetricValue sm) {
+		final String key = sm.metricKey();
+		LongAdder la = blackListed.putIfAbsent(key, PLACEHOLDER);
+		if(la==null || la==PLACEHOLDER) {
+			la = new AccumulatingLongAdder(blackListCount);
+			blackListed.replace(key, la);
+			la.increment();
+		}
 	}
 
 	/**
@@ -97,7 +135,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	 * @see net.opentsdb.tsd.RpcPlugin#initialize(net.opentsdb.core.TSDB)
 	 */
 	@Override
-	public void initialize(final TSDB tsdb) {
+	public void initialize(final TSDB tsdb) {	
 		KafkaRPC.tsdb = tsdb;
 		final Map<String, String> config = tsdb.getConfig().getMap();
 		final StringBuilder b = new StringBuilder("\n\tKafkaRPC Configuration\n\t======================");
@@ -138,7 +176,7 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 		consumer = new KafkaConsumer<String, StreamedMetricValue>(consumerConfig, new StringDeserializer(), new StreamedMetricValueDeserializer());
 		subThread = new Thread(this, "KafkaSubscriptionThread");
 		subThread.start();
-		log.info("Kafka Subscription Thread Started");
+		
 	}
 	
 	
@@ -146,40 +184,63 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	 * Handles the kafka consumer
 	 */
 	public void run() {
+		log.info("Kafka Subscription Thread Started");
 		try {
             consumer.subscribe(Arrays.asList(topics));
             while (!closed.get()) {
-                final ConsumerRecords<String, StreamedMetricValue> records = consumer.poll(pollTimeout);
-                final int recordCount = records.count();
-                if(recordCount==0) continue;
-                final long startTime = System.currentTimeMillis();
-                
-                final List<Deferred<Object>> addPointDeferreds = !syncAdd ? new ArrayList<Deferred<Object>>(recordCount) : null;
-                for(final Iterator<ConsumerRecord<String, StreamedMetricValue>> iter = records.iterator(); iter.hasNext();) {
-                	final ConsumerRecord<String, StreamedMetricValue> record = iter.next();
-                	final StreamedMetricValue im = record.value();
-                	Deferred<Object> thisDeferred = null;
-                	if(im.isDoubleValue()) {
-                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getDoubleValue(), im.getTags());
-                	} else {
-                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getLongValue(), im.getTags());
-                	}
-                	if(syncAdd) addPointDeferreds.add(thisDeferred);              	
-                }
-                if(!syncAdd) {
-                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
-                	 d.addBoth(new Callback<Void, ArrayList<Object>>() {
-						@Override
-						public Void call(final ArrayList<Object> arg) throws Exception {
-							consumer.commitSync();
-							return null;
-						}                		 
-                	 });                	 
-                } else {
-                	consumer.commitSync();                	
-                }
-                log.info("sync:{} :Processed {} records in {} ms.", syncAdd, recordCount, System.currentTimeMillis() - startTime );
-            }
+            	try {
+	                final ConsumerRecords<String, StreamedMetricValue> records = consumer.poll(pollTimeout);
+	                final int recordCount = records.count();
+	                if(recordCount==0) continue;
+	                final long startTimeNanos = System.nanoTime();
+	                
+	                final List<Deferred<Object>> addPointDeferreds = !syncAdd ? new ArrayList<Deferred<Object>>(recordCount) : null;
+	                for(final Iterator<ConsumerRecord<String, StreamedMetricValue>> iter = records.iterator(); iter.hasNext();) {
+	                	StreamedMetricValue im = null;
+	                	try {
+		                	final ConsumerRecord<String, StreamedMetricValue> record = iter.next();
+		                	im = record.value();
+		                	if(isBlackListed(im)) continue;
+		                	Deferred<Object> thisDeferred = null;
+		                	if(im.isDoubleValue()) {
+		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getDoubleValue(), im.getTags());
+		                	} else {
+		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getLongValue(), im.getTags());
+		                	}
+		                	if(!syncAdd) addPointDeferreds.add(thisDeferred);
+	                	} catch (Exception adpe) {
+	                		if(im!=null) {
+	                			log.error("Failed to add data point for metric: {}", im.metricKey(), adpe);
+	                			blackList(im);
+	                		} else {
+	                			log.error("Failed to add data point", adpe);
+	                		}
+	                	}
+	                }
+	                if(!syncAdd) {
+	                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
+	                	 d.addBoth(new Callback<Void, ArrayList<Object>>() {
+							@Override
+							public Void call(final ArrayList<Object> arg) throws Exception {
+								consumer.commitSync();
+								final long elapsed = System.nanoTime() - startTimeNanos; 
+								perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
+								pointsAddedMeter.mark(recordCount);
+								log.info("Async Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
+								return null;
+							}                		 
+	                	 });                	 
+	                } else {
+	                	consumer.commitSync();
+						final long elapsed = System.nanoTime() - startTimeNanos; 
+						perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
+						pointsAddedMeter.mark(recordCount);
+						log.info("Sync Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
+	                }       
+            	} catch (Exception exx) {
+            		log.error("Unexpected exception in processing loop", exx);
+            	}
+            }  // end of while loop
         } catch (WakeupException e) {
             // Ignore exception if closing
             if (!closed.get()) throw e;
@@ -189,6 +250,11 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
             try { consumer.close(); } catch (Exception x) {/* No Op */}
             subThread = null;
         }		
+	}
+	
+	protected static long nanosPerMessage(final double msElapsed, final double messageCount) {
+		if(msElapsed==0 || messageCount==0) return 0;
+		return (long)(msElapsed/messageCount);
 	}
 
 	/**
@@ -203,6 +269,10 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 				public void run() {
 					try {
 						subThread.join();
+						try { 
+							consumer.close();
+							log.info("Kafka Consumer Closed");
+						} catch (Exception x) {/* No Op */}
 						log.info("KafkaRPC Shutdown Cleanly");
 					} catch (Exception ex) {
 						log.error("KafkaRPC Dirty Shutdown:" + ex);
@@ -237,7 +307,29 @@ public class KafkaRPC extends RpcPlugin implements Runnable {
 	 */
 	@Override
 	public void collectStats(final StatsCollector collector) {
-
+		try {			
+			collector.addExtraTag("mode", syncAdd ? "sync" : "async");
+			collector.record("tsd.rpc.kafka.messages.rate.mean", perMessageTimer.getMeanRate());
+			collector.record("tsd.rpc.kafka.messages.count", perMessageTimer.getCount());
+			collector.record("tsd.rpc.kafka.messages.rate.15m", perMessageTimer.getFifteenMinuteRate());
+			collector.record("tsd.rpc.kafka.messages.rate.5m", perMessageTimer.getFiveMinuteRate());
+			collector.record("tsd.rpc.kafka.messages.rate.1m", perMessageTimer.getOneMinuteRate());
+			
+			final Snapshot snap = perMessageTimer.getSnapshot();
+			
+			collector.record("tsd.rpc.kafka.messages.time.mean", snap.getMean());
+			collector.record("tsd.rpc.kafka.messages.time.median", snap.getMedian());
+			collector.record("tsd.rpc.kafka.messages.time.p999", snap.get999thPercentile());
+			collector.record("tsd.rpc.kafka.messages.time.p99", snap.get99thPercentile());
+			collector.record("tsd.rpc.kafka.messages.time.p75", snap.get75thPercentile());
+			
+			collector.record("tsd.rpc.kafka.batches.rate.mean", pointsAddedMeter.getMeanRate());
+			collector.record("tsd.rpc.kafka.batches.rate.15m", pointsAddedMeter.getFifteenMinuteRate());
+			collector.record("tsd.rpc.kafka.batches.rate.5m", pointsAddedMeter.getFiveMinuteRate());
+			collector.record("tsd.rpc.kafka.batches.rate.1m", pointsAddedMeter.getOneMinuteRate());
+		} finally {
+			collector.clearExtraTag("mode");
+		}
 	}
 
 }
