@@ -134,12 +134,54 @@ public class StreamedMetric {
 		
 	}
 	
+	
+	/**
+	 * Creates a new StreamedMetricValue from this StreamedMetric, the passed value and the passed timestamp
+	 * @param timestamp the timestamp to associate with the new StreamedMetricValue 
+	 * @param value the value 
+	 * @return a new StreamedMetricValue
+	 */
+	public StreamedMetricValue forValue(final long timestamp, final long value) {
+		return new StreamedMetricValue(this, timestamp, value);
+	}
+	
+	/**
+	 * Creates a new StreamedMetricValue from this StreamedMetric and the passed value
+	 * @param value the value
+	 * @return a new StreamedMetricValue
+	 */
+	public StreamedMetricValue forValue(final long value) {
+		return new StreamedMetricValue(this, value);
+	}
+	
+	/**
+	 * Creates a new StreamedMetricValue from this StreamedMetric, the passed value and the passed timestamp
+	 * @param timestamp the timestamp to associate with the new StreamedMetricValue 
+	 * @param value the value 
+	 * @return a new StreamedMetricValue
+	 */
+	public StreamedMetricValue forValue(final long timestamp, final double value) {
+		return new StreamedMetricValue(this, timestamp, value);
+	}
+	
+	
+	
+	/**
+	 * Creates a new StreamedMetricValue from this StreamedMetric and the passed value
+	 * @param value the value
+	 * @return a new StreamedMetricValue
+	 */
+	public StreamedMetricValue forValue(final double value) {
+		return new StreamedMetricValue(this, value);
+	}
+	
+	
 	/**
 	 * Returns a byte array containing the serialized streammetric
 	 * @return a byte array 
 	 */
 	public byte[] toByteArray() {
-		final ByteBuf buff = BufferManager.getInstance().buffer(byteSize);
+		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
 		try {
 			buff.writeByte(TYPE_CODE);
 			writeByteArray(buff);
@@ -171,7 +213,7 @@ public class StreamedMetric {
 	 * @return the appropriate type of StreamedMetric
 	 */
 	public static StreamedMetric read(final byte[] bytes) {
-		final ByteBuf buff = BufferManager.getInstance().heapBuffer(bytes.length).writeBytes(bytes);
+		final ByteBuf buff = BufferManager.getInstance().directBuffer(bytes.length).writeBytes(bytes);
 		try {
 			final byte type = buff.readByte();
 			switch(type) {

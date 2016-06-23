@@ -41,9 +41,14 @@ import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 
+import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.streams.metrics.router.ValueTypeMetricRouter;
+
 /**
  * <p>Title: TextMetricStreamRouter</p>
- * <p>Description: </p> 
+ * <p>Description: Subscribes to topics that supply {@link StreamedMetric}s in string format,
+ * transforms them to {@link StreamedMetric}s in binary format and publishes them to binary metric endpooints.</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter</code></p>
@@ -69,6 +74,9 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	/** The names of the state stores used by the processor */
 	protected final String[] stateStoreNames;
 	
+	/** The value type metric router */
+	protected ValueTypeMetricRouter router = null;
+	
 	/** The processor context */
 	protected ProcessorContext context = null;
 	/** A string serializer */
@@ -76,7 +84,10 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	/** A string deserializer */
 	protected final Deserializer<String> stringDeserializer = new StringDeserializer();
 	/** The incoming text line stream */
-	protected final KStream<String, String> textLinesStream;	
+	protected final KStream<String, String> textMetricsIn;
+	/** The outgoinf binary metrics stream */
+	protected final KStream<String, StreamedMetricValue> binaryMetricsOut;
+	
 	/** The string serializer/deserializer */
 	protected final Serde<String> stringSerde = Serdes.String();
 	
@@ -97,9 +108,11 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 		}
 		log.info("Starting TextMetricStreamRouter for topics {}", listenTopics);
 		streamsConfig = new StreamsConfig(this.config);
+		
 		final KStreamBuilder builder = new KStreamBuilder(); 
-		textLinesStream = builder.stream(stringSerde, stringSerde, listenTopics);
-		textLinesStream.process(this, stateStoreNames);
+		textMetricsIn = builder.stream(stringSerde, stringSerde, listenTopics);
+		binaryMetricsOut
+//		textLinesStream.process(this, stateStoreNames);
 		
 		kafkaStreams = new KafkaStreams(builder, config);
 	}

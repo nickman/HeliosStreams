@@ -190,7 +190,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	                if(recordCount==0) continue;
 	                final long startTimeNanos = System.nanoTime();
 	                
-	                final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>(recordCount)  	
+	                final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>(recordCount);
 	                		// We're going to wait for all the Deferreds to complete and then commit.
 	                		// We're just going to commit as soon as all the async add points are dispatched
 	                for(final Iterator<ConsumerRecord<String, StreamedMetricValue>> iter = records.iterator(); iter.hasNext();) {
@@ -220,11 +220,12 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
                 	 d.addCallback(new Callback<Void, ArrayList<Object>>() {
 							@Override
 							public Void call(final ArrayList<Object> arg) throws Exception {
-								consumer.commitSync();
+								if(syncAdd) consumer.commitSync();
+								pendingDataPointAdds.add(-1 * recordCount);
 								final long elapsed = System.nanoTime() - startTimeNanos; 
 								perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
 								pointsAddedMeter.mark(recordCount);
-								log.info("Sync Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
+								log.info("Sync Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
 								return null;
 							}                		 
 	                	 });
@@ -235,7 +236,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 						final long elapsed = System.nanoTime() - startTimeNanos; 
 						perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
 						pointsAddedMeter.mark(recordCount);
-						log.info("Async Processed {} records in {} ms.", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed));							
+						log.info("Async Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
                 	 }
             	} catch (Exception exx) {
             		log.error("Unexpected exception in processing loop", exx);
@@ -311,6 +312,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#isSyncAdd()
 	 */
+	@Override
 	public boolean isSyncAdd() {
 		return syncAdd;
 	}
@@ -319,6 +321,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getTotalDataPoints()
 	 */
+	@Override
 	public long getTotalDataPoints() {
 		return perMessageTimer.getCount();
 	}
@@ -327,6 +330,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPointsMeanRate()
 	 */
+	@Override
 	public double getDataPointsMeanRate() {
 		return perMessageTimer.getMeanRate();
 	}
@@ -335,6 +339,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPoints15mRate()
 	 */
+	@Override
 	public double getDataPoints15mRate() {
 		return perMessageTimer.getFifteenMinuteRate();
 	}
@@ -343,6 +348,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPoints5mRate()
 	 */
+	@Override
 	public double getDataPoints5mRate() {
 		return perMessageTimer.getFiveMinuteRate();
 	}
@@ -351,6 +357,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPoints1mRate()
 	 */
+	@Override
 	public double getDataPoints1mRate() {
 		return perMessageTimer.getOneMinuteRate();
 	}
@@ -359,6 +366,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPointMeanTimeMs()
 	 */
+	@Override
 	public double getPerDataPointMeanTimeMs() {
 		return perMessageTimerSnap.getValue().getMean();
 	}
@@ -367,6 +375,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPointMedianTimeMs()
 	 */
+	@Override
 	public double getPerDataPointMedianTimeMs() {
 		return perMessageTimerSnap.getValue().getMedian();
 	}
@@ -375,6 +384,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPoint999pctTimeMs()
 	 */
+	@Override
 	public double getPerDataPoint999pctTimeMs() {
 		return perMessageTimerSnap.getValue().get999thPercentile();
 	}
@@ -383,6 +393,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPoint99pctTimeMs()
 	 */
+	@Override
 	public double getPerDataPoint99pctTimeMs() {
 		return perMessageTimerSnap.getValue().get99thPercentile();
 	}
@@ -391,6 +402,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPerDataPoint75pctTimeMs()
 	 */
+	@Override
 	public double getPerDataPoint75pctTimeMs() {
 		return perMessageTimerSnap.getValue().get75thPercentile();
 	}
@@ -399,6 +411,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatchMeanRate()
 	 */
+	@Override
 	public double getBatchMeanRate() {
 		return pointsAddedMeter.getMeanRate();
 	}
@@ -407,6 +420,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatch15mRate()
 	 */
+	@Override
 	public double getBatch15mRate() {
 		return pointsAddedMeter.getFifteenMinuteRate();
 	}
@@ -415,6 +429,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatch5mRate()
 	 */
+	@Override
 	public double getBatch5mRate() {
 		return pointsAddedMeter.getFiveMinuteRate();
 	}
@@ -423,8 +438,19 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getBatch1mRate()
 	 */
+	@Override
 	public double getBatch1mRate() {
 		return pointsAddedMeter.getOneMinuteRate();
+	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getPendingDataPointAdds()
+	 */
+	@Override
+	public long getPendingDataPointAdds() {
+		return pendingDataPointAdds.longValue();
 	}
 	
 

@@ -61,7 +61,7 @@ public class Utils {
 	 * @return a ms timestamp
 	 */
 	public static long toMsTime(final String value) {
-		final long v = Long.parseLong(value.trim());
+		final long v = (long)Double.parseDouble(value.trim());
 		return digits(v) < 13 ? TimeUnit.SECONDS.toMillis(v) : v; 
 	}
 	

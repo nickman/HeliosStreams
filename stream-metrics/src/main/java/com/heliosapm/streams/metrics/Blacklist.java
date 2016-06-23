@@ -24,6 +24,10 @@
  */
 package com.heliosapm.streams.metrics;
 
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.management.MBeanNotificationInfo;
@@ -128,6 +132,28 @@ public class Blacklist extends NotificationBroadcasterSupport implements Blackli
 	@Override
 	public long getBlacklistInstances() {
 		return blackListInstanceCount.longValue();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.BlacklistMBean#blacklisted()
+	 */
+	@Override
+	public Set<String> blacklisted() {
+		return new HashSet<String>(blackListed.keySet());
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.BlacklistMBean#blacklistedCounts()
+	 */
+	@Override
+	public Map<String, Long> blacklistedCounts() {
+		final HashMap<String, Long> map = new HashMap<String, Long>(blackListed.size());
+		for(Map.Entry<String, LongAdder> entry: blackListed.entrySet()) {
+			map.put(entry.getKey(), entry.getValue().longValue());
+		}
+		return map;
 	}
 	
 	/**

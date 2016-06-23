@@ -131,5 +131,11 @@ public interface KafkaRPCMBean {
 	 * @return the last 1 minute rate of incoming data point batches
 	 */
 	public double getBatch1mRate();
+	
+	/**
+	 * Returns the number of data points pending write confirmation 
+	 * @return the number of data points pending write confirmation
+	 */
+	public long getPendingDataPointAdds();
 
 }

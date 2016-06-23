@@ -24,6 +24,9 @@
  */
 package com.heliosapm.streams.metrics;
 
+import java.util.Map;
+import java.util.Set;
+
 import javax.management.ObjectName;
 
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -69,6 +72,19 @@ public interface BlacklistMBean {
 	 * @return the total number of observed blacklisted metric instances
 	 */
 	public long getBlacklistInstances();
+	
+	/**
+	 * Returns a set of the blacklisted metric names
+	 * @return a set of the blacklisted metric names
+	 */
+	public Set<String> blacklisted();
+	
+	/**
+	 * Returns a map of the incident counts keyed by the blacklisted metric name
+	 * @return a map of the incident counts keyed by the blacklisted metric name
+	 */
+	public Map<String, Long> blacklistedCounts();
+	
 	
 	/**
 	 * Resets the blacklist state and counters

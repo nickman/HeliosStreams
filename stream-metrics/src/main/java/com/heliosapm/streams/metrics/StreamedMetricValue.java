@@ -99,6 +99,23 @@ public class StreamedMetricValue extends StreamedMetric {
 		super();
 	}
 	
+	StreamedMetricValue(final StreamedMetric sm, final long value) {
+		this(sm.timestamp, value, sm.metricName, sm.tags);
+	}
+	
+	StreamedMetricValue(final StreamedMetric sm, final long timestamp, final long value) {
+		this(timestamp, value, sm.metricName, sm.tags);
+	}
+	
+	
+	StreamedMetricValue(final StreamedMetric sm, final double value) {
+		this(sm.timestamp, value, sm.metricName, sm.tags);
+	}
+	
+	StreamedMetricValue(final StreamedMetric sm, final long timestamp, final double value) {
+		this(timestamp, value, sm.metricName, sm.tags);
+	}
+	
 	/**
 	 * Returns the double value
 	 * @return the doubleValue
@@ -181,7 +198,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * @return a byte array 
 	 */
 	public byte[] toByteArray() {
-		final ByteBuf buff = BufferManager.getInstance().buffer(byteSize);
+		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
 		try {
 			buff.writeByte(TYPE_CODE);
 			writeByteArray(buff);
