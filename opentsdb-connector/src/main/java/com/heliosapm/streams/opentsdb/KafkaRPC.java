@@ -40,6 +40,7 @@ import com.heliosapm.streams.metrics.Blacklist;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.StreamedMetricValueDeserializer;
 import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
@@ -166,7 +167,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 		consumer = new KafkaConsumer<String, StreamedMetricValue>(consumerConfig, new StringDeserializer(), new StreamedMetricValueDeserializer());
 		subThread = new Thread(this, "KafkaSubscriptionThread");
 		subThread.start();
-		
+		JMXHelper.registerMBean(this, OBJECT_NAME);
 	}
 	
 	

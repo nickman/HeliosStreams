@@ -364,7 +364,7 @@ try {
         long elapsed = System.currentTimeMillis() - start;
         if(loop%10==0) println "Scan complete in $elapsed ms.";
         //break;
-        Thread.sleep(5000);
+        Thread.sleep(1000);
     }
     
     
