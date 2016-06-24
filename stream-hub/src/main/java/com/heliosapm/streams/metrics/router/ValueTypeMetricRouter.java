@@ -15,6 +15,7 @@
  */
 package com.heliosapm.streams.metrics.router;
 
+import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.ValueType;
 
 /**
@@ -33,4 +34,11 @@ public interface ValueTypeMetricRouter {
 	 * @return the name of topic to route to
 	 */
 	public String route(ValueType valueType, String message);
+	
+	/**
+	 * Determines the name of the topic to route the passed metric to
+	 * @param metric The metric to route
+	 * @return the name of the topic to route to
+	 */
+	public String route(StreamedMetricValue metric);
 }
