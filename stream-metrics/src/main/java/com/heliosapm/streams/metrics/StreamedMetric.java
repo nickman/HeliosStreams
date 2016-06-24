@@ -120,6 +120,32 @@ public class StreamedMetric {
 	}
 	
 	/**
+	 * Creates a new StreamedMetric from a metric key
+	 * @param timestamp The timestamp in ms. since the epoch
+	 * @param metricKey The metric key
+	 * @param value the long value
+	 * @return the StreamedMetricValue
+	 */
+	public static StreamedMetricValue fromKey(final long timestamp, final String metricKey, final long value) {
+		final String[] nameKeysPair = Utils.splitString(metricKey, ':', true);
+		final Map<String, String> tags = tagsFromArray(0, Utils.splitString(nameKeysPair[1], ',', true));
+		return new StreamedMetricValue(timestamp, value, nameKeysPair[0], tags);		
+	}
+	
+	/**
+	 * Creates a new StreamedMetric from a metric key
+	 * @param timestamp The timestamp in ms. since the epoch
+	 * @param metricKey The metric key
+	 * @param value the doube value
+	 * @return the StreamedMetricValue
+	 */
+	public static StreamedMetricValue fromKey(final long timestamp, final String metricKey, final double value) {
+		final String[] nameKeysPair = Utils.splitString(metricKey, ':', true);
+		final Map<String, String> tags = tagsFromArray(0, Utils.splitString(nameKeysPair[1], ',', true));
+		return new StreamedMetricValue(timestamp, value, nameKeysPair[0], tags);		
+	}
+	
+	/**
 	 * Creates a new StreamedMetric with an auto assigned timestamp
 	 * @param metricName The metric name
 	 * @param tags The metric tags

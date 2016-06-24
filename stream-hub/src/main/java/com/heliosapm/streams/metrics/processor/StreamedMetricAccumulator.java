@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.metrics.processor;
 
+import java.util.concurrent.TimeUnit;
+
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.state.KeyValueStore;
 
@@ -34,11 +36,16 @@ import com.heliosapm.streams.metrics.ValueType;
 public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	/** The metric accumulator store name */
 	public static final String ACC_STORE = "metricAccumulator";
+	/** The baseline timestamp per metric store name */
+	public static final String TS_STORE = "metricTimestamps";
+	
 	/** An array of the store names */
-	private static final String[] DATA_STORES = {ACC_STORE};
+	private static final String[] DATA_STORES = {ACC_STORE, TS_STORE};
 	
 	/** The metric accumulator store */
 	protected KeyValueStore<String, Long> accumulatorStore;
+	/** The first timestamp for each unique metric key in the current period */
+	protected KeyValueStore<String, TimestampedMetricKey> metricTimestampStore;
  
 	
 	
@@ -57,10 +64,12 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#init(org.apache.kafka.streams.processor.ProcessorContext)
 	 */
+	@SuppressWarnings("unchecked")
 	@Override
 	public void init(final ProcessorContext context) {
-		super.init(context);
+		//super.init(context);
 		accumulatorStore = (KeyValueStore<String, Long>)context.getStateStore(ACC_STORE);
+		metricTimestampStore = (KeyValueStore<String, TimestampedMetricKey>)context.getStateStore(TS_STORE);
 	}
 
 	/**
@@ -68,8 +77,28 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#doProcess(java.lang.String, com.heliosapm.streams.metrics.StreamedMetric)
 	 */
 	@Override
-	protected void doProcess(final String key, final StreamedMetric value) {
-		
+	protected void doProcess(final String key, final StreamedMetric sm) {		
+		TimestampedMetricKey tmk = metricTimestampStore.get(key);
+		if(tmk==null) {
+			tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
+			metricTimestampStore.put(key, tmk);
+		} else {
+			if(!tmk.isSameSecondAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong(), period)) {
+				context.forward(sm.metricKey(), StreamedMetric.fromKey(System.currentTimeMillis(), tmk.getMetricKey(), tmk.getCount()));
+				context.commit();
+				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
+				metricTimestampStore.put(key, tmk);				
+			}
+		}		
 	}	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#punctuate(long)
+	 */
+	@Override
+	public void punctuate(final long timestamp) {
+
+	}
 
 }

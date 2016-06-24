@@ -15,6 +15,7 @@
  */
 package com.heliosapm.streams.metrics;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -25,7 +26,7 @@ import org.apache.kafka.streams.processor.TimestampExtractor;
 
 /**
  * <p>Title: Utils</p>
- * <p>Description: Statis utility methods</p> 
+ * <p>Description: Static utility methods</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.Utils</code></p>
@@ -190,6 +191,63 @@ public class Utils {
 			return null;
 		}
 	}
+	
+	/**
+	 * Creates a long from the passed byte array stored in big-endian
+	 * @param bytes The byte array to read from
+	 * @param offset The offset in the array to start at
+	 * @return the long
+	 */
+	public static long makeLongBigEndian(final byte[] bytes, int offset) {
+		return ((((long)bytes[7 + offset]       ) << 56) |
+				(((long)bytes[6 + offset] & 0xff) << 48) |
+				(((long)bytes[5 + offset] & 0xff) << 40) |
+				(((long)bytes[4 + offset] & 0xff) << 32) |
+				(((long)bytes[3 + offset] & 0xff) << 24) |
+				(((long)bytes[2 + offset] & 0xff) << 16) |
+				(((long)bytes[1 + offset] & 0xff) <<  8) |
+				(((long)bytes[0 + offset] & 0xff)      ));
+	}
+	
+	/**
+	 * Creates a long from the passed byte array stored in little-endian
+	 * @param bytes The byte array to read from
+	 * @param offset The offset in the array to start at
+	 * @return the long
+	 */
+	public static long makeLongLittleEndian(final byte[] bytes, int offset) {
+		return ((((long)bytes[0 + offset]       ) << 56) |
+				(((long)bytes[1 + offset] & 0xff) << 48) |
+				(((long)bytes[2 + offset] & 0xff) << 40) |
+				(((long)bytes[3 + offset] & 0xff) << 32) |
+				(((long)bytes[4 + offset] & 0xff) << 24) |
+				(((long)bytes[5 + offset] & 0xff) << 16) |
+				(((long)bytes[6 + offset] & 0xff) <<  8) |
+				(((long)bytes[7 + offset] & 0xff)      ));
+	}	
+	
+	
+//    static void putLongB(ByteBuffer bb, int bi, long x) {
+//        bb._put(bi    , long7(x));
+//        bb._put(bi + 1, long6(x));
+//        bb._put(bi + 2, long5(x));
+//        bb._put(bi + 3, long4(x));
+//        bb._put(bi + 4, long3(x));
+//        bb._put(bi + 5, long2(x));
+//        bb._put(bi + 6, long1(x));
+//        bb._put(bi + 7, long0(x));
+//    }
+	
+//    static void putLongL(ByteBuffer bb, int bi, long x) {
+//        bb._put(bi + 7, long7(x));
+//        bb._put(bi + 6, long6(x));
+//        bb._put(bi + 5, long5(x));
+//        bb._put(bi + 4, long4(x));
+//        bb._put(bi + 3, long3(x));
+//        bb._put(bi + 2, long2(x));
+//        bb._put(bi + 1, long1(x));
+//        bb._put(bi    , long0(x));
+//    }
 	
 	
 	

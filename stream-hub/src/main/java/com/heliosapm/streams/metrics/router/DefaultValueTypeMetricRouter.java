@@ -20,6 +20,7 @@ import java.util.Map;
 
 import org.apache.kafka.streams.kstream.KStream;
 
+import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.ValueType;
 
 /**
@@ -59,6 +60,16 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	@Override
 	public String route(final ValueType valueType, final String message) {
 		return routes.get(valueType);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.StreamedMetricValue)
+	 */
+	@Override
+	public String route(StreamedMetricValue metric) {
+		// TODO Auto-generated method stub
+		return null;
 	}
 
 	
