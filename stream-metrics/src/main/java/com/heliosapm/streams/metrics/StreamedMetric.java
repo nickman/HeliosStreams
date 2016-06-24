@@ -142,6 +142,7 @@ public class StreamedMetric {
 	 * @return a new StreamedMetricValue
 	 */
 	public StreamedMetricValue forValue(final long timestamp, final long value) {
+		if(isValued()) return (StreamedMetricValue)this;
 		return new StreamedMetricValue(this, timestamp, value);
 	}
 	
@@ -151,6 +152,7 @@ public class StreamedMetric {
 	 * @return a new StreamedMetricValue
 	 */
 	public StreamedMetricValue forValue(final long value) {
+		if(isValued()) return (StreamedMetricValue)this;
 		return new StreamedMetricValue(this, value);
 	}
 	
@@ -161,6 +163,7 @@ public class StreamedMetric {
 	 * @return a new StreamedMetricValue
 	 */
 	public StreamedMetricValue forValue(final long timestamp, final double value) {
+		if(isValued()) return (StreamedMetricValue)this;
 		return new StreamedMetricValue(this, timestamp, value);
 	}
 	
@@ -172,6 +175,7 @@ public class StreamedMetric {
 	 * @return a new StreamedMetricValue
 	 */
 	public StreamedMetricValue forValue(final double value) {
+		if(isValued()) return (StreamedMetricValue)this;
 		return new StreamedMetricValue(this, value);
 	}
 	
@@ -452,6 +456,29 @@ public class StreamedMetric {
 		if(value==null || value.trim().isEmpty()) throw new IllegalArgumentException("The passed value was null");
 		return fromArray(Utils.splitString(value, ',', true));
 	}
+	
+	/**
+	 * Returns a StreamedMetricValue based on this StreamedMetric using the passed value,
+	 * unless this is already one, in which case this is returned 
+	 * @param value The string to parse to create some form of a StreamedMetric
+	 * @param nvalue The value to introduce if this is not a valued metric
+	 * @return a StreamedMetricValue
+	 */
+	public static StreamedMetricValue streamedMetricValue(final String value, final long nvalue) {
+		return StreamedMetric.fromString(value).forValue(nvalue);
+	}
+	
+	/**
+	 * Returns a StreamedMetricValue based on this StreamedMetric using the passed value,
+	 * unless this is already one, in which case this is returned 
+	 * @param value The string to parse to create some form of a StreamedMetric
+	 * @param nvalue The value to introduce if this is not a valued metric
+	 * @return a StreamedMetricValue
+	 */
+	public static StreamedMetricValue streamedMetricValue(final String value, final double nvalue) {
+		return StreamedMetric.fromString(value).forValue(nvalue);
+	}
+	
 	
 	/**
 	 * Converts all strings in the passed array to a map of tags, starting at the given offset
