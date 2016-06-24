@@ -43,7 +43,6 @@ import org.springframework.beans.factory.InitializingBean;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
-import com.heliosapm.streams.metrics.router.ValueTypeMetricRouter;
 
 /**
  * <p>Title: TextMetricStreamRouter</p>
@@ -75,7 +74,7 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	protected final String[] stateStoreNames;
 	
 	/** The value type metric router */
-	protected ValueTypeMetricRouter router = null;
+//	protected ValueTypeMetricRouter router = null;
 	
 	/** The processor context */
 	protected ProcessorContext context = null;
@@ -111,7 +110,8 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 		
 		final KStreamBuilder builder = new KStreamBuilder(); 
 		textMetricsIn = builder.stream(stringSerde, stringSerde, listenTopics);
-		binaryMetricsOut
+		binaryMetricsOut = null;
+//		binaryMetricsOut = textMetricsIn.map((key, value) -> )
 //		textLinesStream.process(this, stateStoreNames);
 		
 		kafkaStreams = new KafkaStreams(builder, config);

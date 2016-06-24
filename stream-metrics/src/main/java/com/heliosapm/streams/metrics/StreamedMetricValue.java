@@ -117,6 +117,23 @@ public class StreamedMetricValue extends StreamedMetric {
 	}
 	
 	/**
+	 * Returns the value as a long regardless of type
+	 * @return the value as a long
+	 */
+	public long getValueAsLong() {
+		return isDoubleValue ? (long)doubleValue : longValue;
+	}
+	
+	/**
+	 * Returns the value as a double regardless of type
+	 * @return the value as a double
+	 */
+	public double getValueAsDouble() {
+		return isDoubleValue ? doubleValue : longValue;
+	}
+	
+	
+	/**
 	 * Returns the double value
 	 * @return the doubleValue
 	 */
