@@ -20,6 +20,7 @@ import static com.heliosapm.streams.metrics.Utils.getArrayProperty;
 
 import java.util.Arrays;
 import java.util.Date;
+import java.util.Map;
 import java.util.Properties;
 
 import org.apache.kafka.common.serialization.Deserializer;
@@ -31,15 +32,14 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
+import org.apache.kafka.streams.kstream.ForeachAction;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
-import org.apache.kafka.streams.kstream.Transformer;
-import org.apache.kafka.streams.kstream.TransformerSupplier;
 import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.ProcessorSupplier;
-import org.apache.kafka.streams.processor.TopologyBuilder;
+import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
@@ -47,7 +47,14 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
-import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.streams.metrics.StreamedMetricDeserializer;
+import com.heliosapm.streams.metrics.StreamedMetricSerializer;
+import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
+import com.heliosapm.streams.metrics.router.DefaultValueTypeMetricRouter;
+import com.heliosapm.streams.metrics.router.ValueTypeMetricRouter;
+import com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder;
+import com.heliosapm.utils.io.StdInCommandHandler;
 
 /**
  * <p>Title: TextMetricStreamRouter</p>
@@ -62,8 +69,6 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	
 	/** The configuration key for the names of the topics to listen on */
 	public static final String CONFIG_TOPICS = "processor.topics";
-	/** The configuration key for the names of the state stores the processor will use */
-	public static final String CONFIG_STORES = "processor.stores";
 	
 	/** Instance logger */
 	protected Logger log = LogManager.getLogger(getClass());
@@ -75,11 +80,9 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	protected final StreamsConfig streamsConfig;
 	/** The names of the topics to listen on */
 	protected final String[] listenTopics;
-	/** The names of the state stores used by the processor */
-	protected final String[] stateStoreNames;
 	
 	/** The value type metric router */
-//	protected ValueTypeMetricRouter router = null;
+	protected ValueTypeMetricRouter router = new DefaultValueTypeMetricRouter();
 	
 	/** The processor context */
 	protected ProcessorContext context = null;
@@ -88,15 +91,63 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	/** A string deserializer */
 	protected final Deserializer<String> stringDeserializer = new StringDeserializer();
 	/** The incoming text line stream */
-	protected final KStream<String, String> textMetricsIn;
-	/** The outgoinf binary metrics stream */
-	protected final KStream<String, StreamedMetricValue> binaryMetricsOut;
+	final KStream<String, StreamedMetric> metricStream;
 	
 	/** The string serializer/deserializer */
 	protected final Serde<String> stringSerde = Serdes.String();
+	/** The StreamedMetric serializer/deserializer */
+	protected final Serde<StreamedMetric> metricSerde = new Serde<StreamedMetric>() {
+		final StreamedMetricSerializer ser = new StreamedMetricSerializer();
+		final StreamedMetricDeserializer de = new StreamedMetricDeserializer();
+		@Override
+		public Deserializer<StreamedMetric> deserializer() {
+			return de;
+		}
+		@Override
+		public Serializer<StreamedMetric> serializer() {			
+			return ser;
+		}
+		@Override
+		public void close() {
+			/* No Op */			
+		}
+		@Override
+		public void configure(final Map<String, ?> configs, final boolean isKey) {
+			/* No Op */			
+		}
+	};
+	
 	
 	/** The streams instance handling the continuous input */
 	protected final KafkaStreams kafkaStreams;
+	
+	public static void main(String[] args) {
+		final StreamsConfigBuilder conf = new StreamsConfigBuilder();
+		conf.setBootstrapServers("localhost:9093", "localhost:9094");
+		final Properties p = conf.buildProperties();
+		p.put("processor.topics", "tsdb.metrics.accumulator,tsdb.metrics.st");
+		final TextMetricStreamRouter router = new TextMetricStreamRouter(p);
+		router.setBeanName("Hallo");
+		try {
+			router.afterPropertiesSet();
+			StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
+				public void run() {
+					try {
+						router.destroy();
+					} catch (Exception ex) {
+						ex.printStackTrace(System.err);
+					} finally {
+						Runtime.getRuntime().halt(1);
+					}
+				}
+			});
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+			Runtime.getRuntime().halt(-1);
+		}
+		
+		
+	}
 	 
 	/**
 	 * Creates a new TextMetricStreamRouter
@@ -106,48 +157,72 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 		this.config = config;
 		listenTopics = getArrayProperty(config, CONFIG_TOPICS, EMPTY_STR_ARR);
 		if(listenTopics.length==0) throw new IllegalArgumentException("No topic names found in the passed config properties");
-		stateStoreNames = getArrayProperty(config, CONFIG_STORES, EMPTY_STR_ARR);
+		
 		for(int i = 0; i < listenTopics.length; i++) {
 			if(listenTopics[i]==null || listenTopics[i].trim().isEmpty()) throw new IllegalArgumentException("The passed topic array " + Arrays.toString(listenTopics) + " had null or empty entries");
 		}
-		log.info("Starting TextMetricStreamRouter for topics {}", listenTopics);
+		log.info("Starting TextMetricStreamRouter for topics [{}]", listenTopics);
 		streamsConfig = new StreamsConfig(this.config);
-		
 		final KStreamBuilder builder = new KStreamBuilder();
-		final StreamedMetric SM = null;
-		final StreamedMetricValue SMV = null;
-		textMetricsIn = null; 
-		KStream<String, StreamedMetricValue> metricStream = 
-				builder.stream(stringSerde, stringSerde, listenTopics)
-			.map(new KeyValueMapper<String, String, KeyValue<String, StreamedMetricValue>>() {
-				/**
-				 * {@inheritDoc}
-				 * @see org.apache.kafka.streams.kstream.KeyValueMapper#apply(java.lang.Object, java.lang.Object)
-				 */
+		metricStream = null;
+		for(ValueType v: ValueType.values()) {
+			final StreamedMetricProcessor p = router.route(v);
+			if(p!=null) {
+				for(StateStoreSupplier ss: p.getStateStores()) {
+					builder.addStateStore(ss);
+				}
+				k.to(stringSerde, metricSerde, p.getSink());
+			}
+		}
+		
+		builder.stream(stringSerde, stringSerde, listenTopics)
+			.foreach(new ForeachAction<String, String>() {
 				@Override
-				public KeyValue<String, StreamedMetricValue> apply(String key, String value) {
-					final StreamedMetricValue smv = StreamedMetric.fromString(value).forValue(1L);
-					return new KeyValue<String, StreamedMetricValue>(smv.metricKey(), smv);
+				public void apply(final String key, final String value) {
+					StreamedMetric sm = StreamedMetric.fromString(value);
+					final StreamedMetricProcessor p = router.route(sm.getValueType());
+					p.process(key, sm);					
 				}
 			});
-		
-		
-		
-		
 			
-		binaryMetricsOut = null;
-//		binaryMetricsOut = textMetricsIn.map((key, value) -> )
-//		textLinesStream.process(this, stateStoreNames);
+//			.map(new KeyValueMapper<String, String, KeyValue<String, StreamedMetric>>() {
+//				/**
+//				 * {@inheritDoc}
+//				 * @see org.apache.kafka.streams.kstream.KeyValueMapper#apply(java.lang.Object, java.lang.Object)
+//				 */
+//				@Override
+//				public KeyValue<String, StreamedMetric> apply(String key, String value) {
+//					final StreamedMetric smv = StreamedMetric.fromString(value);
+//					return new KeyValue<String, StreamedMetric>(smv.metricKey(), smv);
+//				}
+//		});
 		
+//		final KStreamBuilder builder = new KStreamBuilder();
+//		metricStream = 
+//			builder.stream(stringSerde, stringSerde, listenTopics)
+//			.map(new KeyValueMapper<String, String, KeyValue<String, StreamedMetric>>() {
+//				/**
+//				 * {@inheritDoc}
+//				 * @see org.apache.kafka.streams.kstream.KeyValueMapper#apply(java.lang.Object, java.lang.Object)
+//				 */
+//				@Override
+//				public KeyValue<String, StreamedMetric> apply(String key, String value) {
+//					final StreamedMetric smv = StreamedMetric.fromString(value);
+//					return new KeyValue<String, StreamedMetric>(smv.metricKey(), smv);
+//				}
+//		});
+//		for(ValueType v: ValueType.values()) {
+//			final StreamedMetricProcessor p = router.route(v);
+//			if(p!=null) {
+//				for(StateStoreSupplier ss: p.getStateStores()) {
+//					builder.addStateStore(ss);
+//				}
+//				KStream<String, StreamedMetric> k = metricStream.filter(p);				
+//				k.process(p, p.getDataStoreNames());
+//				k.to(stringSerde, metricSerde, p.getSink());
+//			}
+//		}
 		kafkaStreams = new KafkaStreams(builder, config);
-		
-		
-		final TopologyBuilder topBuilder = new TopologyBuilder();
-		topBuilder
-			.addSource("TextMetricStreamRouter", listenTopics);
-			
-		
-		
 	}
 	
 	/**

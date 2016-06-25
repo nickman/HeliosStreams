@@ -15,10 +15,8 @@
  */
 package com.heliosapm.streams.metrics.router;
 
-import org.apache.kafka.streams.processor.Processor;
-
-import com.heliosapm.streams.metrics.StreamedMetric;
-import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
 
 /**
  * <p>Title: ValueTypeMetricRouter</p>
@@ -39,8 +37,10 @@ public interface ValueTypeMetricRouter {
 	
 	/**
 	 * Determines the name of the topic to route the passed metric to
-	 * @param metric The metric to route
+	 * @param valueType The value type to route
 	 * @return the name of the topic to route to
 	 */
-	public Processor<String, StreamedMetric> route(StreamedMetric metric);
+	public StreamedMetricProcessor route(ValueType valueType);
+	
+	
 }

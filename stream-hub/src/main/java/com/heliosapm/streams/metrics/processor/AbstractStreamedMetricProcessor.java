@@ -20,6 +20,7 @@ package com.heliosapm.streams.metrics.processor;
 
 import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -33,7 +34,7 @@ import com.heliosapm.streams.metrics.ValueType;
  * <p><code>com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor</code></p>
  */
 
-public abstract class AbstractStreamedMetricProcessor implements StreamedMetricProcessor<ValueType> {
+public abstract class AbstractStreamedMetricProcessor implements StreamedMetricProcessor {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The value type processed by this processor */
@@ -128,9 +129,22 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 	 * Returns the names of the data stores used by this processor
 	 * @return the names of the data stores used by this processor
 	 */
+	@Override
 	public String[] getDataStoreNames() {
 		return dataStores.clone();
 	}
+	
+	private static final StateStoreSupplier[] EMPTY_SS_ARR = {};
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.processor.StreamedMetricProcessor#getStateStores()
+	 */
+	@Override
+	public StateStoreSupplier[] getStateStores() {
+		return EMPTY_SS_ARR;
+	}
+
 	
 	
 	/**

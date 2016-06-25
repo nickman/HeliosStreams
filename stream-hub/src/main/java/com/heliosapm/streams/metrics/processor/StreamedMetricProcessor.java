@@ -21,6 +21,7 @@ package com.heliosapm.streams.metrics.processor;
 import org.apache.kafka.streams.kstream.Predicate;
 import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorSupplier;
+import org.apache.kafka.streams.processor.StateStoreSupplier;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 
@@ -31,6 +32,19 @@ import com.heliosapm.streams.metrics.StreamedMetric;
  * <p><code>com.heliosapm.streams.metrics.processor.StreamedMetricProcessor</code></p>
  */
 
-public interface StreamedMetricProcessor<ValueType> extends Predicate<String, StreamedMetric>, ProcessorSupplier<String, StreamedMetric>, Processor<String, StreamedMetric> {
+public interface StreamedMetricProcessor extends Predicate<String, StreamedMetric>, ProcessorSupplier<String, StreamedMetric>, Processor<String, StreamedMetric> {
+	/**
+	 * Returns the names of the data stores used by this processor
+	 * @return the names of the data stores used by this processor
+	 */
+	public String[] getDataStoreNames();
+	
+	public StateStoreSupplier[] getStateStores();
+	
+	/**
+	 * Returns the name of the topic this processor publishes to
+	 * @return the name of the topic this processor publishes to
+	 */
+	public String getSink();
 
 }

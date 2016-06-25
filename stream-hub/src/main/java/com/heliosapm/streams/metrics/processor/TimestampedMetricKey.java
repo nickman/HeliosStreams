@@ -181,6 +181,7 @@ public class TimestampedMetricKey {
 		}
 		@Override
 		public TimestampedMetricKey deserialize(final String topic, final byte[] data) {
+			if(data==null || data.length==0) return null;
 			return new TimestampedMetricKey(data);
 		}
 	}

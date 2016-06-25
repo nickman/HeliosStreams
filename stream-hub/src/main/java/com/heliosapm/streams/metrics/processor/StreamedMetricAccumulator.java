@@ -20,13 +20,18 @@ package com.heliosapm.streams.metrics.processor;
 
 import java.util.concurrent.TimeUnit;
 
+import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
+import org.apache.kafka.streams.state.Stores;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedMetricKeyDeserializer;
+import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedMetricKeySerializer;
 
 /**
  * <p>Title: StreamedMetricAccumulator</p>
@@ -36,18 +41,29 @@ import com.heliosapm.streams.metrics.ValueType;
  */
 
 public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
-	/** The metric accumulator store name */
-	public static final String ACC_STORE = "metricAccumulator";
 	/** The baseline timestamp per metric store name */
 	public static final String TS_STORE = "metricTimestamps";
 	
 	/** An array of the store names */
-	private static final String[] DATA_STORES = {ACC_STORE, TS_STORE};
+	private static final String[] DATA_STORES = {TS_STORE};
 	
-	/** The metric accumulator store */
-	protected KeyValueStore<String, Long> accumulatorStore;
 	/** The first timestamp for each unique metric key in the current period */
 	protected KeyValueStore<String, TimestampedMetricKey> metricTimestampStore;
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.processor.StreamedMetricProcessor#getStateStores()
+	 */
+	@Override
+	public StateStoreSupplier[] getStateStores() {
+		final StateStoreSupplier[] ss = new StateStoreSupplier[] {			
+			Stores.create(TS_STORE).withStringKeys().withValues(Serdes.serdeFrom(
+					new TimestampedMetricKeySerializer(),
+					new TimestampedMetricKeyDeserializer()
+			)).inMemory().build()
+		};		
+		return ss;
+	}
  
 	/** The window size in seconds */
 	protected final long windowSecs;
@@ -58,7 +74,6 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	 * Creates a new AbstractStreamedMetricProcessor
 	 * @param period The punctuation period in ms.
 	 * @param sink The name of the sink topic name this processor published to
-	 * @param sources The names of source topics name this processor consumes from 
 	 */
 	public StreamedMetricAccumulator(final long period, final String sink) {
 		super(ValueType.A, period, sink, DATA_STORES);
@@ -72,8 +87,7 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	@SuppressWarnings("unchecked")
 	@Override
 	public void init(final ProcessorContext context) {
-		//super.init(context);
-		accumulatorStore = (KeyValueStore<String, Long>)context.getStateStore(ACC_STORE);
+		super.init(context);		
 		metricTimestampStore = (KeyValueStore<String, TimestampedMetricKey>)context.getStateStore(TS_STORE);
 	}
 
@@ -87,10 +101,29 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 		if(tmk==null) {
 			tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
 			metricTimestampStore.put(key, tmk);
+			log.info("Wrote MTS: [{}]", tmk);
 		} else {
-			if(!tmk.isSameSecondAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong(), period)) {
-				context.forward(sm.metricKey(), StreamedMetric.fromKey(System.currentTimeMillis(), tmk.getMetricKey(), tmk.getCount()));
-				context.commit();
+			log.info("MTS from Store: [{}]", tmk);
+			if(!tmk.isSameSecondAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong(), windowSecs)) {
+				log.info("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
+				final StreamedMetric f = StreamedMetric.fromKey(System.currentTimeMillis(), tmk.getMetricKey(), tmk.getCount());
+				boolean ok = true;
+				if(context==null) {
+					log.warn("Context was null");
+					ok = false;
+				}
+				if(f==null) {
+					log.warn("Metric was null");
+					ok = false;
+				}
+				if(ok && f.metricKey()==null) {
+					log.warn("Metric key was null");
+					ok = false;
+				}
+				if(ok) {
+					context.forward(f.metricKey(), f);
+					context.commit();
+				}
 				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
 				metricTimestampStore.put(key, tmk);				
 			}
@@ -115,5 +148,16 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 			iter.close();
 		}
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#close()
+	 */
+	@Override
+	public void close() {
+		try { metricTimestampStore.close(); } catch (Exception x) {/* No Op */}
+		super.close();
+	}
 
 }
+ 

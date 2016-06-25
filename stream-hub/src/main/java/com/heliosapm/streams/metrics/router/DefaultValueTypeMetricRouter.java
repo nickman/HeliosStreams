@@ -18,12 +18,10 @@ package com.heliosapm.streams.metrics.router;
 import java.util.EnumMap;
 import java.util.Map;
 
-import org.apache.kafka.streams.processor.Processor;
-
-import com.heliosapm.streams.metrics.StreamedMetric;
-import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.processor.StraightThroughMetricProcessor;
 import com.heliosapm.streams.metrics.processor.StreamedMetricAccumulator;
+import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
 
 /**
  * <p>Title: DefaultValueTypeMetricRouter</p>
@@ -35,24 +33,26 @@ import com.heliosapm.streams.metrics.processor.StreamedMetricAccumulator;
 
 public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	/** A map of routes keyed by the value type */
-	protected final Map<ValueType, Processor<String, StreamedMetric>> routes = new EnumMap<ValueType, Processor<String, StreamedMetric>>(ValueType.class);
+	protected final Map<ValueType, StreamedMetricProcessor> routes = new EnumMap<ValueType, StreamedMetricProcessor>(ValueType.class);
 	
 	/**
 	 * Creates a new DefaultValueTypeMetricRouter
 	 */
 	public DefaultValueTypeMetricRouter() {
-		routes.put(ValueType.A, new StreamedMetricAccumulator(5000, ""));
+		routes.put(ValueType.A, new StreamedMetricAccumulator(5000, "tsdb.metrics.binary"));
+		routes.put(ValueType.S, new StraightThroughMetricProcessor(1000, "tsdb.metrics.binary"));
 	}
 	
+	
+
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.StreamedMetricValue)
+	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.ValueType)
 	 */
 	@Override
-	public Processor<String, StreamedMetric> route(final StreamedMetric metric) {		
-		return routes.get(metric.getValueType());
+	public StreamedMetricProcessor route(ValueType valueType) {		
+		return routes.get(valueType);
 	}
-
-
+	
 	
 }

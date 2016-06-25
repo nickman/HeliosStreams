@@ -51,7 +51,7 @@ import com.heliosapm.streams.metrics.Utils;
 public class StreamsConfigBuilder {
 	
 	/** The default client id which is the runtime name */
-	public static final String DEFAULT_CLIENT_ID = ManagementFactory.getRuntimeMXBean().getName();
+	public static final String DEFAULT_CLIENT_ID = ManagementFactory.getRuntimeMXBean().getName().replace('@', '-');
 	/** The default state store directory */
 	public static final File DEFAULT_STATE_STORE = new File(new File(System.getProperty("java.io.tmpdir")), "kafka-streams");	
 	
@@ -61,7 +61,7 @@ public class StreamsConfigBuilder {
 	/** A list of host/port pairs to use for establishing the initial connection to the Kafka cluster: <b><code>bootstrap.servers</code></b> */
 	protected String bootstrapServers = "localhost:9092";
 	/** An identifier for the stream processing application. Must be unique within the Kafka cluster: <b><code>application.id</code></b> */
-	protected String applicationId = "StreamApp" + DEFAULT_CLIENT_ID;
+	protected String applicationId = "StreamApp";
  	/** Zookeeper connect string for Kafka topic management: <b><code>zookeeper.connect</code></b>  */
  	protected String zookeeperConnect = "localhost:2181";
 
@@ -85,7 +85,7 @@ public class StreamsConfigBuilder {
 	/** The number of threads to execute stream processing: <b><code>num.stream.threads</code></b> */
 	protected int streamThreads = 1;
 	/** Partition grouper class that implements the PartitionGrouper interface : <b><code>partition.grouper</code></b> */
-	protected PartitionGrouper partitionGrouper = new DefaultPartitionGrouper();
+	protected String partitionGrouper = DefaultPartitionGrouper.class.getName();
 	/** The amount of time in milliseconds to block waiting for input : <b><code>poll.ms</code></b> */
 	protected long pollWaitMs = 100;
 	/** The replication factor for changelog topics and repartition topics created by the application : <b><code>replication.factor</code></b> */
@@ -95,7 +95,7 @@ public class StreamsConfigBuilder {
 	/** Directory location for state stores	/tmp/kafka-streams : <b><code>state.dir</code></b> */
 	protected File stateStoreDir = DEFAULT_STATE_STORE;	
 	/** Timestamp extractor class that implements the TimestampExtractor interface : <b><code>timestamp.extractor</code></b> */
-	protected TimestampExtractor timeExtractor = Utils.TEXT_TS_EXTRACTOR;
+	protected String timeExtractor = Utils.TEXT_TS_EXTRACTOR.getClass().getName();
 	
 	/** The number of samples maintained to compute metrics : <b><code>metrics.num.samples</code></b> */
 	protected int metricSampleCount = 2;
@@ -126,12 +126,12 @@ public class StreamsConfigBuilder {
 		metricReportingClasses = new HashSet<String>();
 		standbyReplicas = 0;
 		streamThreads = 1;
-		partitionGrouper = new DefaultPartitionGrouper();
+		partitionGrouper = DefaultPartitionGrouper.class.getName();
 		pollWaitMs = 100;
 		replicationFactor = 1;
 		stateCleanupDelayMs = 60000;
 		stateStoreDir = DEFAULT_STATE_STORE;	
-		timeExtractor = Utils.TEXT_TS_EXTRACTOR;
+		timeExtractor = Utils.TEXT_TS_EXTRACTOR.getClass().getName();
 		metricSampleCount = 2;
 		metricSampleWindow = 30000;
 		return this;
@@ -317,12 +317,12 @@ public class StreamsConfigBuilder {
 
 	/**
 	 * Sets the partition grouper that implements the {@link PartitionGrouper} interface
-	 * @param partitionGrouper the partitionGrouper to set
+	 * @param partitionGrouperClassName the partitionGrouper class name to set
 	 * @return this builder
 	 */
-	public StreamsConfigBuilder setPartitionGrouper(final PartitionGrouper partitionGrouper) {
-		if(partitionGrouper==null) throw new IllegalArgumentException("The passed partition grouper was null");
-		this.partitionGrouper = partitionGrouper;
+	public StreamsConfigBuilder setPartitionGrouper(final String partitionGrouperClassName) {
+		if(partitionGrouperClassName==null) throw new IllegalArgumentException("The passed partition grouper was null");
+		this.partitionGrouper = partitionGrouperClassName;
 		return this;
 	}
 
@@ -369,11 +369,11 @@ public class StreamsConfigBuilder {
 
 	/**
 	 * Sets the Timestamp extractor class that implements the {@link TimestampExtractor} interface
-	 * @param timeExtractor the timeExtractor to set
+	 * @param timeExtractorClassName the timeExtractor class name to set
 	 * @return this builder
 	 */
-	public StreamsConfigBuilder setTimeExtractor(final TimestampExtractor timeExtractor) {
-		this.timeExtractor = timeExtractor;
+	public StreamsConfigBuilder setTimeExtractor(final String timeExtractorClassName) {
+		this.timeExtractor = timeExtractorClassName;
 		return this;
 	}
 

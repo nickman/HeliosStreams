@@ -38,13 +38,13 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import com.heliosapm.streams.metrics.Blacklist;
+import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricDeserializer;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
-import com.heliosapm.streams.metrics.StreamedMetricValueDeserializer;
 import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
-import com.stumbleupon.async.TimeoutException;
 
 import net.opentsdb.core.TSDB;
 import net.opentsdb.stats.StatsCollector;
@@ -84,7 +84,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	/** The kafka consumer client configuration */
 	protected final Properties consumerConfig = new Properties();
 	/** The kafka consumer */
-	protected KafkaConsumer<String, StreamedMetricValue> consumer = null;
+	protected KafkaConsumer<String, StreamedMetric> consumer = null;
 	/** The topics to subscribe to */
 	protected String[] topics = null;
 	/** Indicates if the consumer is closed */
@@ -168,7 +168,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 		
 		log.info("Kafka TSDB Metric Topics: {}", Arrays.toString(topics));
 		log.info("Kafka TSDB Poll Size: {}", pollTimeout);
-		consumer = new KafkaConsumer<String, StreamedMetricValue>(consumerConfig, new StringDeserializer(), new StreamedMetricValueDeserializer());
+		consumer = new KafkaConsumer<String, StreamedMetric>(consumerConfig, new StringDeserializer(), new StreamedMetricDeserializer());
 		subThread = new Thread(this, "KafkaSubscriptionThread");
 		subThread.start();
 		JMXHelper.registerMBean(this, OBJECT_NAME);
@@ -184,7 +184,12 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
             consumer.subscribe(Arrays.asList(topics));
             while (!closed.get()) {
             	try {
-	                final ConsumerRecords<String, StreamedMetricValue> records = consumer.poll(pollTimeout);
+	                final ConsumerRecords<String, StreamedMetric> records;
+	                try {
+	                	records = consumer.poll(pollTimeout);
+	                } catch (Exception ex) {
+	                	continue;  // FIXME: increment deser errors
+	                }
 	                final int recordCount = records.count();
 	                pendingDataPointAdds.add(recordCount);
 	                if(recordCount==0) continue;
@@ -193,17 +198,21 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	                final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>(recordCount);
 	                		// We're going to wait for all the Deferreds to complete and then commit.
 	                		// We're just going to commit as soon as all the async add points are dispatched
-	                for(final Iterator<ConsumerRecord<String, StreamedMetricValue>> iter = records.iterator(); iter.hasNext();) {
-	                	StreamedMetricValue im = null;
+	                for(final Iterator<ConsumerRecord<String, StreamedMetric>> iter = records.iterator(); iter.hasNext();) {
+	                	StreamedMetric im = null;
+	                	StreamedMetricValue imv = null;
 	                	try {
-		                	final ConsumerRecord<String, StreamedMetricValue> record = iter.next();
+		                	final ConsumerRecord<String, StreamedMetric> record = iter.next();
+		                	
 		                	im = record.value();
+		                	if(!im.isValued()) continue; // increment non-value
+		                	imv = (StreamedMetricValue)im;
 		                	if(blacklist.isBlackListed(im.metricKey())) continue;
 		                	Deferred<Object> thisDeferred = null;
-		                	if(im.isDoubleValue()) {
-		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getDoubleValue(), im.getTags());
+		                	if(imv.isDoubleValue()) {
+		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), imv.getDoubleValue(), im.getTags());
 		                	} else {
-		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), im.getLongValue(), im.getTags());
+		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), imv.getLongValue(), im.getTags());
 		                	}
 		                	addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
 	                	} catch (Exception adpe) {
@@ -225,12 +234,16 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 								final long elapsed = System.nanoTime() - startTimeNanos; 
 								perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
 								pointsAddedMeter.mark(recordCount);
-								log.info("Sync Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
+								if(syncAdd) log.info("Sync Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
 								return null;
 							}                		 
 	                	 });
                 	 if(syncAdd) {
-                		 d.joinUninterruptibly(30000);
+                		 try {
+                			 d.joinUninterruptibly(30000);  // FIXME:  make configurable
+                		 } catch (Exception ex) {
+                			 log.warn("Datapoints Write Timed Out");  // FIXME: increment timeout err
+                		 }
                 	 } else {
  	                	consumer.commitSync();
 						final long elapsed = System.nanoTime() - startTimeNanos; 

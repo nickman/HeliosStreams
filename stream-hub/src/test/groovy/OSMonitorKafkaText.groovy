@@ -15,10 +15,13 @@ props.put("batch.size", 16384);
 props.put("linger.ms", 10);
 props.put("buffer.memory", 33554432);
 props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-props.put("value.serializer", "com.heliosapm.streams.metrics.StreamedMetricValueSerializer");
+props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+
+props.put("compression.codec", "1");
+props.put("compressed.topics", "tsdb.metrics.accumulator");
 
 Producer<String, StreamedMetricValue> producer = new KafkaProducer<String, StreamedMetricValue>(props);
-pendingBuffer = [];
+pendingBuffer = [:];
 
 
 sigar = HeliosSigar.getInstance();
@@ -50,12 +53,12 @@ trace = { metric, value, tags ->
     now = System.currentTimeMillis();
     // 1466684806814,0.6563913125582113,sys.cpu.total,webserver05,login-sso,host=webserver05,app=login-sso,colo=false,dc=us-west1
 
-    buff.append("$now,$value,$metric,$HOST,perfagent,dc=$DC");
+    buff.append("S,$now,$value,$metric,$HOST,perfagent,dc=$DC");
     tags.each() { k, v ->
         buff.append(",").append(clean(k)).append("=").append(clean(v));
     }
-    sm = StreamedMetric.fromString(buff.toString());
-    pendingBuffer.add(sm);
+    //sm = StreamedMetric.fromString(buff.toString());
+    pendingBuffer.put(metric, buff.toString());
     buff.setLength(0);  
 }
 
@@ -63,8 +66,9 @@ flush = {
     if(!pendingBuffer.isEmpty()) {
         futures = [];
         int mod = 0;
-        pendingBuffer.each() { sm ->
-            pr = new ProducerRecord<String, StreamedMetricValue>("tsdb.metrics.binary", sm.getMetricName(), sm);
+        pendingBuffer.each() { k, v ->
+            if(k==null || k.trim().isEmpty()) throw new Exception("Null Key");
+            pr = new ProducerRecord<String, String>("tsdb.metrics.accumulator", k, v);            
             futures.add(producer.send(pr));
             mod++;
         }
@@ -374,7 +378,7 @@ try {
     //}
 
 } finally {
-    
+    try { tsdbSocket.close(); } catch (e) {}
     println "Closed";
 }
 
