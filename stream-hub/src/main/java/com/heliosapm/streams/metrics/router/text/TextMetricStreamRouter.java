@@ -29,12 +29,17 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.streams.KafkaStreams;
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
+import org.apache.kafka.streams.kstream.KeyValueMapper;
+import org.apache.kafka.streams.kstream.Transformer;
+import org.apache.kafka.streams.kstream.TransformerSupplier;
 import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.ProcessorSupplier;
+import org.apache.kafka.streams.processor.TopologyBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
@@ -108,13 +113,41 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 		log.info("Starting TextMetricStreamRouter for topics {}", listenTopics);
 		streamsConfig = new StreamsConfig(this.config);
 		
-		final KStreamBuilder builder = new KStreamBuilder(); 
-		textMetricsIn = builder.stream(stringSerde, stringSerde, listenTopics);
+		final KStreamBuilder builder = new KStreamBuilder();
+		final StreamedMetric SM = null;
+		final StreamedMetricValue SMV = null;
+		textMetricsIn = null; 
+		KStream<String, StreamedMetricValue> metricStream = 
+				builder.stream(stringSerde, stringSerde, listenTopics)
+			.map(new KeyValueMapper<String, String, KeyValue<String, StreamedMetricValue>>() {
+				/**
+				 * {@inheritDoc}
+				 * @see org.apache.kafka.streams.kstream.KeyValueMapper#apply(java.lang.Object, java.lang.Object)
+				 */
+				@Override
+				public KeyValue<String, StreamedMetricValue> apply(String key, String value) {
+					final StreamedMetricValue smv = StreamedMetric.fromString(value).forValue(1L);
+					return new KeyValue<String, StreamedMetricValue>(smv.metricKey(), smv);
+				}
+			});
+		
+		
+		
+		
+			
 		binaryMetricsOut = null;
 //		binaryMetricsOut = textMetricsIn.map((key, value) -> )
 //		textLinesStream.process(this, stateStoreNames);
 		
 		kafkaStreams = new KafkaStreams(builder, config);
+		
+		
+		final TopologyBuilder topBuilder = new TopologyBuilder();
+		topBuilder
+			.addSource("TextMetricStreamRouter", listenTopics);
+			
+		
+		
 	}
 	
 	/**

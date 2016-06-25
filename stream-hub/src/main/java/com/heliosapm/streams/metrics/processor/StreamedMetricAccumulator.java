@@ -20,7 +20,9 @@ package com.heliosapm.streams.metrics.processor;
 
 import java.util.concurrent.TimeUnit;
 
+import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.ProcessorContext;
+import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
@@ -47,6 +49,8 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	/** The first timestamp for each unique metric key in the current period */
 	protected KeyValueStore<String, TimestampedMetricKey> metricTimestampStore;
  
+	/** The window size in seconds */
+	protected final long windowSecs;
 	
 	
 	
@@ -56,8 +60,9 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	 * @param sink The name of the sink topic name this processor published to
 	 * @param sources The names of source topics name this processor consumes from 
 	 */
-	public StreamedMetricAccumulator(final long period, final String sink, final String[] sources) {
-		super(ValueType.A, period, sink, DATA_STORES, sources);
+	public StreamedMetricAccumulator(final long period, final String sink) {
+		super(ValueType.A, period, sink, DATA_STORES);
+		windowSecs = TimeUnit.MILLISECONDS.toSeconds(period);
 	}
 	
 	/**
@@ -98,7 +103,17 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	 */
 	@Override
 	public void punctuate(final long timestamp) {
-
+		final KeyValueIterator<String, TimestampedMetricKey> iter = metricTimestampStore.all();
+		try {
+			final KeyValue<String, TimestampedMetricKey> kv = iter.next();
+			if(kv.value.isExpired(timestamp, windowSecs)) {
+				iter.remove();
+				context.forward(kv.key, StreamedMetric.fromKey(timestamp, kv.value.getMetricKey(), kv.value.getCount()));
+				context.commit();
+			}
+		} finally {
+			iter.close();
+		}
 	}
 
 }

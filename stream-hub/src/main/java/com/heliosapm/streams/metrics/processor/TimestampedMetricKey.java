@@ -133,7 +133,7 @@ public class TimestampedMetricKey {
 	 * Indicates if the passed timestamp is in the same seco
 	 * @param mstime The ms timestamp
 	 * @param count The number to increment by
-	 * @param windowSize The window period
+	 * @param windowSize The window period in seconds
 	 * @return true if in the range, false otherwise
 	 */
 	public boolean isSameSecondAs(final long mstime, final long count, final long windowSize) {
@@ -141,6 +141,17 @@ public class TimestampedMetricKey {
 		final boolean in = sec >= unixTime && sec <= (unixTime + windowSize);
 		if(in) this.count += count;
 		return in;
+	}
+	
+	/**
+	 * Indicates if this TimestampedMetricKey is expired
+	 * @param mstime The ms timestamp
+	 * @param windowSize The window period in seconds
+	 * @return true if this TimestampedMetricKey is expired, false otherwise
+	 */
+	public boolean isExpired(final long mstime, final long windowSize) {
+		final long sec = TimeUnit.MILLISECONDS.toSeconds(mstime);
+		return sec >= unixTime && sec <= (unixTime + windowSize);		
 	}
 	
 	

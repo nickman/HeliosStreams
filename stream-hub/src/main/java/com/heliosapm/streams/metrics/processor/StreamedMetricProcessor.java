@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.metrics.processor;
 
+import org.apache.kafka.streams.kstream.Predicate;
 import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorSupplier;
 
@@ -30,6 +31,6 @@ import com.heliosapm.streams.metrics.StreamedMetric;
  * <p><code>com.heliosapm.streams.metrics.processor.StreamedMetricProcessor</code></p>
  */
 
-public interface StreamedMetricProcessor<ValueType> extends ProcessorSupplier<String, StreamedMetric>, Processor<String, StreamedMetric> {
+public interface StreamedMetricProcessor<ValueType> extends Predicate<String, StreamedMetric>, ProcessorSupplier<String, StreamedMetric>, Processor<String, StreamedMetric> {
 
 }

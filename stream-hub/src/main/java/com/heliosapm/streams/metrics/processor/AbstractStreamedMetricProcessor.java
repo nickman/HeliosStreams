@@ -38,8 +38,6 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The value type processed by this processor */
 	protected final ValueType valueType;
-	/** The names of source topics name this processor consumes from */
-	protected final String[] sources;
 	/** The names of data stores used by this processor */
 	protected final String[] dataStores;
 	
@@ -58,16 +56,23 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 	 * @param period The period to schedule in ms. Ignored if less than 1
 	 * @param sink The name of the sink topic name this processor published to
 	 * @param dataStores The names of data stores used by this processor
-	 * @param sources The names of source topics name this processor consumes from 
 	 */
-	public AbstractStreamedMetricProcessor(final ValueType valueType, final long period, final String sink, final String[] dataStores, final String...sources) {
+	public AbstractStreamedMetricProcessor(final ValueType valueType, final long period, final String sink, final String...dataStores) {
 		this.valueType = valueType;
 		this.sink = sink;
-		this.sources = sources;
 		this.dataStores = dataStores;
 		this.period = period;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.kafka.streams.kstream.Predicate#test(java.lang.Object, java.lang.Object)
+	 */
+	@Override
+	public boolean test(final String key, final StreamedMetric sm) {
+		return sm.getValueType()==valueType;
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see org.apache.kafka.streams.processor.ProcessorSupplier#get()
@@ -127,13 +132,6 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 		return dataStores.clone();
 	}
 	
-	/**
-	 * Returns the names of the topics consumed by this processor
-	 * @return the names of the topics consumed by this processor
-	 */
-	public String[] getSources() {
-		return sources.clone();
-	}
 	
 	/**
 	 * Returns the name of the topic this processor publishes to

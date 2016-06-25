@@ -18,10 +18,12 @@ package com.heliosapm.streams.metrics.router;
 import java.util.EnumMap;
 import java.util.Map;
 
-import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.processor.Processor;
 
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.processor.StreamedMetricAccumulator;
 
 /**
  * <p>Title: DefaultValueTypeMetricRouter</p>
@@ -33,44 +35,24 @@ import com.heliosapm.streams.metrics.ValueType;
 
 public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	/** A map of routes keyed by the value type */
-	protected final Map<ValueType, String> routes = new EnumMap<ValueType, String>(ValueType.class);
+	protected final Map<ValueType, Processor<String, StreamedMetric>> routes = new EnumMap<ValueType, Processor<String, StreamedMetric>>(ValueType.class);
 	
 	/**
 	 * Creates a new DefaultValueTypeMetricRouter
-	 * @param routingMap The value type routing map
 	 */
-	public DefaultValueTypeMetricRouter(final Map<String, String> routingMap) {
-		if(routingMap==null || routingMap.isEmpty()) throw new IllegalArgumentException("The passed routing map was null or empty");
-		for(Map.Entry<String, String> entry: routingMap.entrySet()) {
-			final String key = entry.getKey().trim().toUpperCase();
-			try {
-				final ValueType v = ValueType.valueOf(key);
-				final String dup = routes.put(v, entry.getValue().trim());
-				if(dup!=null) throw new IllegalArgumentException("The routing map had a duplicate route for [" + key + "]. First [" + dup + "], then [" + entry.getValue() + "]");
-			} catch (Exception ex) {
-				throw new IllegalArgumentException("The routing map had an invalid value type key [" + key + "]");
-			}
-		}
+	public DefaultValueTypeMetricRouter() {
+		routes.put(ValueType.A, new StreamedMetricAccumulator(5000, ""));
 	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.ValueType, java.lang.String)
-	 */
-	@Override
-	public String route(final ValueType valueType, final String message) {
-		return routes.get(valueType);
-	}
-
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.StreamedMetricValue)
 	 */
 	@Override
-	public String route(StreamedMetricValue metric) {
-		// TODO Auto-generated method stub
-		return null;
+	public Processor<String, StreamedMetric> route(final StreamedMetric metric) {		
+		return routes.get(metric.getValueType());
 	}
+
 
 	
 }
