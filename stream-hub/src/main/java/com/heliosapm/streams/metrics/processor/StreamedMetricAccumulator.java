@@ -78,6 +78,7 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	public StreamedMetricAccumulator(final long period, final String sink) {
 		super(ValueType.A, period, sink, DATA_STORES);
 		windowSecs = TimeUnit.MILLISECONDS.toSeconds(period);
+		log.info("Created Instance [" + System.identityHashCode(this) + "]");
 	}
 	
 	/**
@@ -89,6 +90,7 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	public void init(final ProcessorContext context) {
 		super.init(context);		
 		metricTimestampStore = (KeyValueStore<String, TimestampedMetricKey>)context.getStateStore(TS_STORE);
+		log.info("Set context on Instance [" + System.identityHashCode(this) + "]: {}", context);
 	}
 
 	/**
