@@ -7,6 +7,8 @@ import org.apache.kafka.clients.producer.*;
 import com.heliosapm.streams.metrics.*;
 import java.lang.management.*;
 
+TO_TOPIC = "tsdb.metrics.accumulator"
+
 Properties props = new Properties();
 props.put("bootstrap.servers", "localhost:9093,localhost:9094");
 props.put("acks", "all");
@@ -18,7 +20,9 @@ props.put("key.serializer", "org.apache.kafka.common.serialization.StringSeriali
 props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
 
 props.put("compression.codec", "1");
-props.put("compressed.topics", "tsdb.metrics.accumulator");
+props.put("compressed.topics", TO_TOPIC);
+
+
 
 Producer<String, StreamedMetricValue> producer = new KafkaProducer<String, StreamedMetricValue>(props);
 pendingBuffer = [:];
@@ -53,7 +57,7 @@ trace = { metric, value, tags ->
     now = System.currentTimeMillis();
     // 1466684806814,0.6563913125582113,sys.cpu.total,webserver05,login-sso,host=webserver05,app=login-sso,colo=false,dc=us-west1
 
-    buff.append("S,$now,$value,$metric,$HOST,perfagent,dc=$DC");
+    buff.append("A,$now,$value,$metric,$HOST,perfagent,dc=$DC");
     tags.each() { k, v ->
         buff.append(",").append(clean(k)).append("=").append(clean(v));
     }
@@ -68,7 +72,7 @@ flush = {
         int mod = 0;
         pendingBuffer.each() { k, v ->
             if(k==null || k.trim().isEmpty()) throw new Exception("Null Key");
-            pr = new ProducerRecord<String, String>("tsdb.metrics.accumulator", k, v);            
+            pr = new ProducerRecord<String, String>(TO_TOPIC, k, v);            
             futures.add(producer.send(pr));
             mod++;
         }

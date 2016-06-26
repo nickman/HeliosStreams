@@ -30,16 +30,11 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.apache.kafka.streams.KafkaStreams;
-import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.kstream.ForeachAction;
-import org.apache.kafka.streams.kstream.KStream;
-import org.apache.kafka.streams.kstream.KStreamBuilder;
-import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.ProcessorSupplier;
-import org.apache.kafka.streams.processor.StateStoreSupplier;
+import org.apache.kafka.streams.processor.TopologyBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
@@ -50,7 +45,6 @@ import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricDeserializer;
 import com.heliosapm.streams.metrics.StreamedMetricSerializer;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
 import com.heliosapm.streams.metrics.router.DefaultValueTypeMetricRouter;
 import com.heliosapm.streams.metrics.router.ValueTypeMetricRouter;
 import com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder;
@@ -91,7 +85,7 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	/** A string deserializer */
 	protected final Deserializer<String> stringDeserializer = new StringDeserializer();
 	/** The incoming text line stream */
-	final KStream<String, StreamedMetric> metricStream;
+//	final KStream<String, StreamedMetric> metricStream;
 	
 	/** The string serializer/deserializer */
 	protected final Serde<String> stringSerde = Serdes.String();
@@ -145,9 +139,22 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 			ex.printStackTrace(System.err);
 			Runtime.getRuntime().halt(-1);
 		}
-		
-		
 	}
+	
+	protected Deserializer<StreamedMetric> stringToMetricDeser = new Deserializer<StreamedMetric>() {
+		
+		@Override
+		public StreamedMetric deserialize(String topic, byte[] data) {			
+			return StreamedMetric.fromString(stringSerde.deserializer().deserialize(topic, data));
+		}
+		
+		@Override
+		public void close() { /* No Op */}
+		@Override
+		public void configure(Map<String, ?> configs, boolean isKey) { /* No Op */}
+		
+	};
+	
 	 
 	/**
 	 * Creates a new TextMetricStreamRouter
@@ -163,41 +170,69 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 		}
 		log.info("Starting TextMetricStreamRouter for topics [{}]", listenTopics);
 		streamsConfig = new StreamsConfig(this.config);
-		final KStreamBuilder builder = new KStreamBuilder();
-		metricStream = null;
-		for(ValueType v: ValueType.values()) {
-			final StreamedMetricProcessor p = router.route(v);
-			if(p!=null) {
-				for(StateStoreSupplier ss: p.getStateStores()) {
-					builder.addStateStore(ss);
-				}
-				k.to(stringSerde, metricSerde, p.getSink());
-			}
-		}
 		
-		builder.stream(stringSerde, stringSerde, listenTopics)
-			.foreach(new ForeachAction<String, String>() {
-				@Override
-				public void apply(final String key, final String value) {
-					StreamedMetric sm = StreamedMetric.fromString(value);
-					final StreamedMetricProcessor p = router.route(sm.getValueType());
-					p.process(key, sm);					
-				}
-			});
-			
-//			.map(new KeyValueMapper<String, String, KeyValue<String, StreamedMetric>>() {
-//				/**
-//				 * {@inheritDoc}
-//				 * @see org.apache.kafka.streams.kstream.KeyValueMapper#apply(java.lang.Object, java.lang.Object)
-//				 */
+		final TopologyBuilder builder = new TopologyBuilder();
+		// .map((ignoredKey, username) -> new KeyValue<>(username, username))
+//		final KStream<String, StreamedMetric> straightThroughStream = builder.stream(stringSerde, stringSerde, "tsdb.metrics.st")				
+//				.map(new KeyValueMapper<String, String, KeyValue<String, StreamedMetric>>() {
 //				@Override
 //				public KeyValue<String, StreamedMetric> apply(String key, String value) {
 //					final StreamedMetric smv = StreamedMetric.fromString(value);
 //					return new KeyValue<String, StreamedMetric>(smv.metricKey(), smv);
 //				}
 //		});
+//		final KStream<String, StreamedMetric> straightThroughStream = builder.stream(stringSerde, stringSerde, "tsdb.metrics.st")				
+//			.map((key, value) -> {
+//				final StreamedMetric smv = StreamedMetric.fromString(value);
+//				return new KeyValue<String, StreamedMetric>(smv.metricKey(), smv);
+//			}
+//		);
+//		straightThroughStream.to(stringSerde, metricSerde, "tsdb.metrics.binary");
 		
-//		final KStreamBuilder builder = new KStreamBuilder();
+//		TopologyBuilder topologyBuilder = new TopologyBuilder();
+//		 topologyBuilder.addSource("SOURCE", stringDeserializer, purchaseJsonDeserializer, "src-topic")
+//
+//		    .addProcessor("PROCESS", CreditCardAnonymizer::new, "SOURCE")
+//		    .addProcessor("PROCESS2", PurchasePatterns::new, "PROCESS")
+//		    .addProcessor("PROCESS3", CustomerRewards::new, "PROCESS")
+//
+//		    .addSink("SINK", "patterns", stringSerializer, purchasePatternJsonSerializer, "PROCESS2")
+//		    .addSink("SINK2", "rewards",stringSerializer, rewardAccumulatorJsonSerializer, "PROCESS3")
+//		    .addSink("SINK3", "purchases", stringSerializer, purchaseJsonSerializer, "PROCESS");
+		
+		String ACC_TOPIC_NAME = "tsdb.metrics.accumulator";
+		String ACC_SOURCE_NAME = "accumulator";
+		String ACC_PROCESSOR_NAME = "accumulationProcessor";
+		String ACC_SINK_NAME = "accumulationSink";
+		String ACC_TOPIC_OUT_NAME = "tsdb.metrics.binary";
+		
+		builder.addSource(ACC_SOURCE_NAME, stringDeserializer, stringToMetricDeser, ACC_TOPIC_NAME)			
+			.addProcessor(ACC_PROCESSOR_NAME, router.route(ValueType.A), ACC_SOURCE_NAME)
+			.addStateStore(router.route(ValueType.A).getStateStores()[0], ACC_PROCESSOR_NAME)
+			.addSink(ACC_SINK_NAME, ACC_TOPIC_OUT_NAME, stringSerializer, metricSerde.serializer(), ACC_PROCESSOR_NAME);
+			
+			
+//		.addProcessor("accumulatorMetricMapper", new ProcessorSupplier<String, StreamedMetric>() {
+//			@Override
+//			public Processor<String, StreamedMetric> get() {
+//				p
+//			}			
+//		}, "accumulator")
+
+		
+		
+//		final KStream<String, StreamedMetric> accumulatorStream = builder.stream(stringSerde, stringSerde, "tsdb.metrics.st")
+//				.map((key, value) -> {
+//					final StreamedMetric smv = StreamedMetric.fromString(value);
+//					return new KeyValue<String, StreamedMetric>(smv.metricKey(), smv);
+//				}
+//			)
+//		
+//			.process(router.route(ValueType.A), router.route(ValueType.A).getDataStoreNames());
+//			
+		
+		
+		
 //		metricStream = 
 //			builder.stream(stringSerde, stringSerde, listenTopics)
 //			.map(new KeyValueMapper<String, String, KeyValue<String, StreamedMetric>>() {
