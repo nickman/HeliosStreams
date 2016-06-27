@@ -61,7 +61,7 @@ public class StreamValueTest extends BaseTest {
 	 */
 	@Test
 	public void testStreamedMetricWithVTSerDe() {
-		final StreamedMetric sm = new StreamedMetric("sys.cpu.total", StreamedMetric.tagsFromArray("foo=bar", "sna=foo")).setValueType(ValueType.A);
+		final StreamedMetric sm = new StreamedMetric("sys.cpu.total", StreamedMetric.tagsFromArray("foo=bar", "sna=foo")).setValueType(ValueType.ACCUMULATOR);
 		log("SM1: [%s]:  KEY: [%s]", sm, sm.metricKey());
 		final byte[] ser = sm.toByteArray();
 		log("SM1 serialized to [%s] bytes, Estimated: [%s]", ser.length, sm.byteSize);
@@ -90,7 +90,7 @@ public class StreamValueTest extends BaseTest {
 	 */
 	@Test
 	public void testStreamedMetricValueWithVTSerDe() {
-		final StreamedMetricValue sm = new StreamedMetricValue(nextPosDouble(), "sys.cpu.total", StreamedMetric.tagsFromArray("foo=bar", "sna=foo")).setValueType(ValueType.P);
+		final StreamedMetricValue sm = new StreamedMetricValue(nextPosDouble(), "sys.cpu.total", StreamedMetric.tagsFromArray("foo=bar", "sna=foo")).setValueType(ValueType.PERIODAGG);
 		log("SMV1: [%s]:  KEY: [%s]", sm, sm.metricKey());
 		final byte[] ser = sm.toByteArray();
 		log("SMV1 serialized to [%s] bytes, Estimated: [%s]", ser.length, sm.byteSize);
@@ -121,10 +121,10 @@ public class StreamValueTest extends BaseTest {
 		
 		final String uv = undirectedValue(now,  value, metricName, host, app, tags);
 		
-		assertEquals(new StreamedMetric(now, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.A), StreamedMetric.fromString(dvl));
+		assertEquals(new StreamedMetric(now, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.ACCUMULATOR), StreamedMetric.fromString(dvl));
 		assertEquals(new StreamedMetric(now, metricName, StreamedMetric.tagsFromArray(tags)), StreamedMetric.fromString(uvl));
 
-		assertEquals(new StreamedMetricValue(now, value, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.P), StreamedMetric.fromString(dv));
+		assertEquals(new StreamedMetricValue(now, value, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.PERIODAGG), StreamedMetric.fromString(dv));
 		assertEquals(new StreamedMetricValue(now, value, metricName, StreamedMetric.tagsFromArray(tags)), StreamedMetric.fromString(uv));
 		
 	}

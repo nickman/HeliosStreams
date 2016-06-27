@@ -27,29 +27,31 @@ import gnu.trove.map.hash.TIntObjectHashMap;
 
 public enum ValueType {
 	/** Tracking an all time total of a specific event type */
-	A("Accumulator", true, "Tracking an all time total of a specific event type"),
+	ACCUMULATOR('A', "Accumulator", true, "Tracking an all time total of a specific event type"),
 	/** Tracking the per seconds/minutes/hours/day rate of a specific event type */
-	M("Meter", true, "Tracking the per seconds/minutes/hours/day rate of a specific event type"),
+	METER('M', "Meter", true, "Tracking the per seconds/minutes/hours/day rate of a specific event type"),
 	/** The value of a given metric instance is the delta of the current and the prior value */
-	D("Delta", false, "The value of a given metric instance is the delta of the current and the prior value"),
-	/** Values are aggregated to count, min, max and average per defined period (e.g. 15 sedonds) */
-	P("PeriodAggregation", false, "Values are aggregated to count, min, max and average per defined period (e.g. 15 sedonds)"),
+	DELTA('D', "Delta", false, "The value of a given metric instance is the delta of the current and the prior value"),
+	/** Values are aggregated to count, min, max and average per defined period (e.g. 15 seconds) */
+	PERIODAGG('P', "PeriodAggregation", false, "Values are aggregated to count, min, max and average per defined period (e.g. 15 sedonds)"),
+	/** Values are aggregated to count, min, max and average per defined period (e.g. 15 seconds), but aggregations retain their values in the next period if there is no activity */
+	PERIODAGGSTICKY('T', "StickyPeriodAggregation", false, "Values are aggregated to count, min, max and average per defined period (e.g. 15 seconds), but aggregations retain their values in the next period if there is no activity"),
 	/** The metric is not aggregated and forwarded directly to endpoint */
-	S("StraightThrough", false, "The metric is not aggregated and forwarded directly to endpoint"),
-	/** The value type indicating the metric is directed (has no value type) */
-	X("Directed", true, "The value type indicating the metric is directed (has no value type)");
+	STRAIGHTTHROUGH('S', "StraightThrough", false, "The metric is not aggregated and forwarded directly to endpoint"),
+	/** The value type indicating the metric is directed by its value type or a default */
+	DIRECTED('X', "Directed", true, "The value type indicating the metric is directed by its value type or a default");
 	
 	// U for undirected ?
 	
 	private static final ValueType[] values = values();
 	private static final int MAX_INDEX = values.length -1;
 	
-	private ValueType(final String name, final boolean valueless, final String description) {
+	private ValueType(final char decode, final String name, final boolean valueless, final String description) {
 		this.name = name;
 		this.valueless = valueless;
 		this.description = description;
-		charcode[0] = name().charAt(0);
-		charcode[1] = name().toLowerCase().charAt(0);
+		charcode[0] = decode;
+		charcode[1] = charcode[0] + 32; 
 	}
 	
 	/**
@@ -66,7 +68,7 @@ public enum ValueType {
 	
 	static {
 		for(ValueType v: values()) {
-			if(v==X) continue;
+			if(v==DIRECTED) continue;
 			decodeByInt.put(v.charcode[0], v);
 			decodeByInt.put(v.charcode[1], v);
 		}
@@ -81,25 +83,31 @@ public enum ValueType {
 	/** The char representations for this value type */
 	private final int[] charcode = new int[2];
 	
+	public static void main(String[] args) {
+		for(ValueType v: values()) {
+			System.out.println(v.name() + ", cc[0]:" + ((char)v.charcode[0] ) + ", cc[1]:" + ((char)v.charcode[1] ));
+		}
+	}
+	
 	/**
 	 * Decodes the passed character to the corresponding ValueType
 	 * @param c The character to decode
-	 * @return the decoded ValueType or {@link #X} if the char does not map to a ValueType
+	 * @return the decoded ValueType or {@link #DIRECTED} if the char does not map to a ValueType
 	 */
 	public static ValueType decode(final char c) {
 		final ValueType v = decodeByInt.get(c);
-		return v==null ? X : v;
+		return v==null ? DIRECTED : v;
 	}
 	
 	/**
 	 * Decodes the first character in the passed string to the corresponding ValueType
 	 * @param value The string to decode
-	 * @return the decoded ValueType or {@link #X} if the char does not map to a ValueType
+	 * @return the decoded ValueType or {@link #DIRECTED} if the char does not map to a ValueType
 	 */
 	public static ValueType decode(final String value) {
 		if(value==null || value.trim().isEmpty()) throw new IllegalArgumentException("The passed value was null");
 		final ValueType v = decodeByInt.get(value.trim().charAt(0));
-		return v==null ? X : v;
+		return v==null ? DIRECTED : v;
 	}
 	
 	

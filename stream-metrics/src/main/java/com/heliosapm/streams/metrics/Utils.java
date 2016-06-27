@@ -48,7 +48,7 @@ public class Utils {
 	 */
 	public static ValueType valueType(final StringBuilder textLine) {
 		final ValueType v = ValueType.decode(textLine.charAt(0));
-		if(v!=ValueType.X) {
+		if(v!=ValueType.DIRECTED) {
 			textLine.deleteCharAt(0);
 		}
 		return v;		 

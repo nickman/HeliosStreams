@@ -45,7 +45,7 @@ import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricDeserializer;
 import com.heliosapm.streams.metrics.StreamedMetricSerializer;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.processor.StreamedMetricAccumulator;
+import com.heliosapm.streams.metrics.processor.StreamedMetricMeter;
 import com.heliosapm.streams.metrics.router.DefaultValueTypeMetricRouter;
 import com.heliosapm.streams.metrics.router.ValueTypeMetricRouter;
 import com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder;
@@ -159,7 +159,7 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 	protected ProcessorSupplier<String, StreamedMetric> accumulatorProvider = new ProcessorSupplier<String, StreamedMetric>() {
 		@Override
 		public Processor<String, StreamedMetric> get() {			
-			return new StreamedMetricAccumulator(5000, "tsdb.metrics.binary");
+			return new StreamedMetricMeter(5000, "tsdb.metrics.binary");
 		}
 	};
 	
@@ -217,7 +217,7 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 		
 		
 		builder.addSource(ACC_SOURCE_NAME, stringDeserializer, stringToMetricDeser, ACC_TOPIC_NAME)			
-			.addProcessor(ACC_PROCESSOR_NAME, router.route(ValueType.A, builder), ACC_SOURCE_NAME)
+			.addProcessor(ACC_PROCESSOR_NAME, router.route(ValueType.ACCUMULATOR, builder), ACC_SOURCE_NAME)
 			.addSink(ACC_SINK_NAME, ACC_TOPIC_OUT_NAME, stringSerializer, metricSerde.serializer(), ACC_PROCESSOR_NAME);
 			
 			

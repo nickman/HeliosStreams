@@ -56,7 +56,7 @@ public class DeltaStreamedMetricProcessor extends AbstractStreamedMetricProcesso
 	 * @param sink The destination sink
 	 */
 	public DeltaStreamedMetricProcessor(final long period, final String sink) {
-		super(ValueType.D, period, sink, DATA_STORES);
+		super(ValueType.DELTA, period, sink, DATA_STORES);
 	}
 	
 	/**

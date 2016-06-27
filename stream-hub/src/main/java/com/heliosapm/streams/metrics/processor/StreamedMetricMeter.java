@@ -34,13 +34,13 @@ import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedM
 import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedMetricKeySerializer;
 
 /**
- * <p>Title: StreamedMetricAccumulator</p>
+ * <p>Title: StreamedMetricMeter</p>
  * <p>Description: </p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.processor.StreamedMetricAccumulator</code></p>
+ * <p><code>com.heliosapm.streams.metrics.processor.StreamedMetricMeter</code></p>
  */
 
-public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
+public class StreamedMetricMeter extends AbstractStreamedMetricProcessor {
 	/** The baseline timestamp per metric store name */
 	public static final String TS_STORE = "metricTimestamps";
 	
@@ -75,8 +75,8 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	 * @param period The punctuation period in ms.
 	 * @param sink The name of the sink topic name this processor published to
 	 */
-	public StreamedMetricAccumulator(final long period, final String sink) {
-		super(ValueType.A, period, sink, DATA_STORES);
+	public StreamedMetricMeter(final long period, final String sink) {
+		super(ValueType.METER, period, sink, DATA_STORES);
 		windowSecs = TimeUnit.MILLISECONDS.toSeconds(period);
 		log.info("Created Instance [" + System.identityHashCode(this) + "]");
 	}

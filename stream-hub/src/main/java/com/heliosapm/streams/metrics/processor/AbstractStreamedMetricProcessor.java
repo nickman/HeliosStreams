@@ -178,5 +178,6 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 	public long getPeriod() {
 		return period;
 	}
+	
 
 }

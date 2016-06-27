@@ -18,12 +18,17 @@ package com.heliosapm.streams.metrics.router;
 import java.util.EnumMap;
 import java.util.Map;
 
-import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.kafka.streams.processor.TopologyBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.event.ContextRefreshedEvent;
 
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.processor.StraightThroughMetricProcessor;
-import com.heliosapm.streams.metrics.processor.StreamedMetricAccumulator;
 import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
 
 /**
@@ -34,7 +39,11 @@ import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
  * <p><code>com.heliosapm.streams.metrics.router.DefaultValueTypeMetricRouter</code></p>
  */
 
-public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
+public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, ApplicationContextAware, ApplicationListener<ContextRefreshedEvent> {
+	/** Instance logger */
+	protected Logger log = LogManager.getLogger(getClass());
+	/** The app context */
+	protected ApplicationContext applicationContext = null;
 	/** A map of routes keyed by the value type */
 	protected final Map<ValueType, StreamedMetricProcessor> routes = new EnumMap<ValueType, StreamedMetricProcessor>(ValueType.class);
 	
@@ -42,8 +51,6 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	 * Creates a new DefaultValueTypeMetricRouter
 	 */
 	public DefaultValueTypeMetricRouter() {
-		routes.put(ValueType.A, new StreamedMetricAccumulator(5000, "tsdb.metrics.binary"));
-		routes.put(ValueType.S, new StraightThroughMetricProcessor(1000, "tsdb.metrics.binary"));
 	}
 	
 	
@@ -55,30 +62,59 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	@Override
 	public StreamedMetricProcessor route(final ValueType valueType, final TopologyBuilder t) {
 		StreamedMetricProcessor processor = null;
-		switch(valueType) {
-			case A:
-				processor = new StreamedMetricAccumulator(5000, "tsdb.metrics.binary");
-			case D:
-				break;
-			case M:
-				break;
-			case P:
-				break;
-			case S:
-				break;
-			case X:
-				break;
-			default:
-				break;
-			
-		}
-		if(processor!=null) {
-			for(StateStoreSupplier ss: processor.getStateStores()) {
-				t.addStateStore(ss, processor.getDataStoreNames());
-			}
-		}
+//		switch(valueType) {
+//			case A:
+//				processor = new StreamedMetricMeter(5000, "tsdb.metrics.binary");
+//			case D:
+//				break;
+//			case M:
+//				break;
+//			case P:
+//				break;
+//			case S:
+//				break;
+//			case X:
+//				break;
+//			default:
+//				break;
+//			
+//		}
+//		if(processor!=null) {
+//			for(StateStoreSupplier ss: processor.getStateStores()) {
+//				t.addStateStore(ss, processor.getDataStoreNames());
+//			}
+//		}
 		return processor;
 	}
-	
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
+	@Override
+	public void setApplicationContext(final ApplicationContext applicationContext) throws BeansException {
+		this.applicationContext = applicationContext;		
+		log.info("AppContext Set");
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
+	 */
+	@Override
+	public void onApplicationEvent(final ContextRefreshedEvent event) {
+		log.info(">>>>>  Starting ValueTypeRouter...");
+		final Map<String, StreamedMetricProcessor> processors = applicationContext.getBeansOfType(StreamedMetricProcessor.class);
+		for(StreamedMetricProcessor processor : processors.values()) {
+			final ValueType vt = processor.get
+		}
+		log.info("<<<<< ValueTypeRouter Started.");
+		
+	}
+
+
+
 	
 }

@@ -34,7 +34,7 @@ public class StraightThroughMetricProcessor extends AbstractStreamedMetricProces
 	 * @param sink The topic to write to
 	 */
 	public StraightThroughMetricProcessor(final long period, final String sink) {
-		super(ValueType.S, period, sink);
+		super(ValueType.STRAIGHTTHROUGH, period, sink);
 	}
 
 	/**

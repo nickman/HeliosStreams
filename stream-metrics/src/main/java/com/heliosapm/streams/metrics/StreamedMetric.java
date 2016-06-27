@@ -545,7 +545,7 @@ public class StreamedMetric {
 		boolean isDouble = true;
 		Number n = null;
 		Map<String, String> tags = new HashMap<String, String>();		
-		if(valueType==ValueType.X) {
+		if(valueType==ValueType.DIRECTED) {
 			timestamp = Utils.toMsTime(values[0]);
 			n = Utils.numeric(values[1]);
 			if(n!=null) {
