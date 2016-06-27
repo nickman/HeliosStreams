@@ -18,6 +18,9 @@ package com.heliosapm.streams.metrics.router;
 import java.util.EnumMap;
 import java.util.Map;
 
+import org.apache.kafka.streams.processor.StateStoreSupplier;
+import org.apache.kafka.streams.processor.TopologyBuilder;
+
 import com.heliosapm.streams.metrics.ValueType;
 import com.heliosapm.streams.metrics.processor.StraightThroughMetricProcessor;
 import com.heliosapm.streams.metrics.processor.StreamedMetricAccumulator;
@@ -50,8 +53,31 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter {
 	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.ValueType)
 	 */
 	@Override
-	public StreamedMetricProcessor route(ValueType valueType) {		
-		return routes.get(valueType);
+	public StreamedMetricProcessor route(final ValueType valueType, final TopologyBuilder t) {
+		StreamedMetricProcessor processor = null;
+		switch(valueType) {
+			case A:
+				processor = new StreamedMetricAccumulator(5000, "tsdb.metrics.binary");
+			case D:
+				break;
+			case M:
+				break;
+			case P:
+				break;
+			case S:
+				break;
+			case X:
+				break;
+			default:
+				break;
+			
+		}
+		if(processor!=null) {
+			for(StateStoreSupplier ss: processor.getStateStores()) {
+				t.addStateStore(ss, processor.getDataStoreNames());
+			}
+		}
+		return processor;
 	}
 	
 	

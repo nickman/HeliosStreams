@@ -214,9 +214,10 @@ public class TextMetricStreamRouter implements ProcessorSupplier<String, String>
 		String ACC_SINK_NAME = "accumulationSink";
 		String ACC_TOPIC_OUT_NAME = "tsdb.metrics.binary";
 		
+		
+		
 		builder.addSource(ACC_SOURCE_NAME, stringDeserializer, stringToMetricDeser, ACC_TOPIC_NAME)			
-			.addProcessor(ACC_PROCESSOR_NAME, accumulatorProvider, ACC_SOURCE_NAME)
-			.addStateStore(router.route(ValueType.A).getStateStores()[0], ACC_PROCESSOR_NAME)
+			.addProcessor(ACC_PROCESSOR_NAME, router.route(ValueType.A, builder), ACC_SOURCE_NAME)
 			.addSink(ACC_SINK_NAME, ACC_TOPIC_OUT_NAME, stringSerializer, metricSerde.serializer(), ACC_PROCESSOR_NAME);
 			
 			

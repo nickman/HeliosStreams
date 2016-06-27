@@ -98,7 +98,7 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 	 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#doProcess(java.lang.String, com.heliosapm.streams.metrics.StreamedMetric)
 	 */
 	@Override
-	protected void doProcess(final String key, final StreamedMetric sm) {		
+	protected boolean doProcess(final String key, final StreamedMetric sm) {		
 		TimestampedMetricKey tmk = metricTimestampStore.get(key);
 		if(tmk==null) {
 			tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
@@ -129,7 +129,8 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
 				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
 				metricTimestampStore.put(key, tmk);				
 			}
-		}		
+		}
+		return true;
 	}	
 	
 	/**

@@ -192,6 +192,51 @@ public class StreamedMetricValue extends StreamedMetric {
 			.toString();
 	}
 	
+	/**
+	 * Updates this metric with a new timestamp and value
+	 * @param timestamp the new timestamp
+	 * @param newValue the new value
+	 * @return this metric instance
+	 */
+	public StreamedMetricValue update(final long timestamp, final long newValue) {
+		if(isDoubleValue) throw new IllegalArgumentException("This is a double valued StreamedMetric. Cannot update with a long value");
+		this.timestamp = timestamp;
+		this.longValue = newValue;
+		return this;
+	}
+	
+	/**
+	 * Updates this metric with a new value
+	 * @param newValue the new value
+	 * @return this metric instance
+	 */
+	public StreamedMetricValue update(final long newValue) {
+		return update(timestamp, newValue);
+	}
+	
+	
+	/**
+	 * Updates this metric with a new timestamp and value
+	 * @param timestamp the new timestamp
+	 * @param newValue the new value
+	 * @return this metric instance
+	 */
+	public StreamedMetricValue update(final long timestamp, final double newValue) {
+		if(!isDoubleValue) throw new IllegalArgumentException("This is a long valued StreamedMetric. Cannot update with a double value");
+		this.timestamp = timestamp;
+		this.doubleValue = newValue;
+		return this;
+	}
+	
+	/**
+	 * Updates this metric with a new value
+	 * @param newValue the new value
+	 * @return this metric instance
+	 */
+	public StreamedMetricValue update(final double newValue) {
+		return update(timestamp, newValue);
+	}
+	
 	
 	/**
 	 * Renders this metric as an OpenTSDB <b>put</p> text line which is:

@@ -42,8 +42,9 @@ public class StraightThroughMetricProcessor extends AbstractStreamedMetricProces
 	 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#doProcess(java.lang.String, com.heliosapm.streams.metrics.StreamedMetric)
 	 */
 	@Override
-	protected void doProcess(final String key, final StreamedMetric value) {
-		context.forward(key, value);		
+	protected boolean doProcess(final String key, final StreamedMetric value) {
+		context.forward(key, value);
+		return true;
 	}
 	
 	/**

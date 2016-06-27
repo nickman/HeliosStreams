@@ -15,8 +15,11 @@
  */
 package com.heliosapm.streams.metrics.router;
 
+import org.apache.kafka.streams.processor.ProcessorSupplier;
+import org.apache.kafka.streams.processor.TopologyBuilder;
+
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
 
 /**
  * <p>Title: ValueTypeMetricRouter</p>
@@ -40,7 +43,7 @@ public interface ValueTypeMetricRouter {
 	 * @param valueType The value type to route
 	 * @return the name of the topic to route to
 	 */
-	public StreamedMetricProcessor route(ValueType valueType);
+	public ProcessorSupplier<String, StreamedMetric> route(ValueType valueType, TopologyBuilder t);
 	
 	
 }

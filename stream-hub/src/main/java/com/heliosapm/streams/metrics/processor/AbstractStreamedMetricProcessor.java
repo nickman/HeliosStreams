@@ -24,12 +24,15 @@ import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.codahale.metrics.Timer;
+import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 
 /**
  * <p>Title: AbstractStreamedMetricProcessor</p>
- * <p>Description: </p> 
+ * <p>Description: The base class for StreamedMetric processors</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor</code></p>
  */
@@ -49,6 +52,8 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 	
 	/** The punctuation period */
 	protected final long period;
+	
+	protected final Timer timer = SharedMetricsRegistry.getInstance().timer("StreamedMetricProcessor." + getClass().getSimpleName());
 
 
 	/**
@@ -102,10 +107,13 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 	@Override
 	public void process(final String key, final StreamedMetric value) {
 		log.debug("Processing Metric [{}]", key);
-		doProcess(key, value);
+		final Context ctx = timer.time();
+		if(doProcess(key, value)) {
+			ctx.stop();
+		}
 	}
 	
-	protected abstract void doProcess(final String key, final StreamedMetric value);
+	protected abstract boolean doProcess(final String key, final StreamedMetric value);
 
 	/**
 	 * {@inheritDoc}
