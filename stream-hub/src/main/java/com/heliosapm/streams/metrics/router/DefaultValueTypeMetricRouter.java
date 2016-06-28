@@ -18,6 +18,7 @@ package com.heliosapm.streams.metrics.router;
 import java.util.EnumMap;
 import java.util.Map;
 
+import org.apache.kafka.streams.processor.ProcessorSupplier;
 import org.apache.kafka.streams.processor.TopologyBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -28,6 +29,7 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
 
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
 import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
 
@@ -60,7 +62,7 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, Appl
 	 * @see com.heliosapm.streams.metrics.router.ValueTypeMetricRouter#route(com.heliosapm.streams.metrics.ValueType)
 	 */
 	@Override
-	public StreamedMetricProcessor route(final ValueType valueType, final TopologyBuilder t) {
+	public ProcessorSupplier<String, StreamedMetric> route(final ValueType valueType, final TopologyBuilder t) {
 		StreamedMetricProcessor processor = null;
 //		switch(valueType) {
 //			case A:
@@ -84,7 +86,7 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, Appl
 //				t.addStateStore(ss, processor.getDataStoreNames());
 //			}
 //		}
-		return processor;
+		return null;
 	}
 
 
@@ -108,7 +110,7 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, Appl
 		log.info(">>>>>  Starting ValueTypeRouter...");
 		final Map<String, StreamedMetricProcessor> processors = applicationContext.getBeansOfType(StreamedMetricProcessor.class);
 		for(StreamedMetricProcessor processor : processors.values()) {
-			final ValueType vt = processor.get
+			
 		}
 		log.info("<<<<< ValueTypeRouter Started.");
 		

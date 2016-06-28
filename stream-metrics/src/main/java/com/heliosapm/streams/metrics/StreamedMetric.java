@@ -365,16 +365,27 @@ public class StreamedMetric {
 	}
 	
 	/**
+	 * <p>Renders this StreamedMetric (or StreamedMetricValue) to a string compatible with being re-parsed back into 
+	 * a StreamedMetric (or StreamedMetricValue) using {@link #fromString(String)}</p>
 	 * {@inheritDoc}
 	 * @see java.lang.Object#toString()
 	 */
 	@Override
 	public String toString() {
-		return new StringBuilder(96)
-			.append("[").append(timestamp).append("] ")
-			.append(metricName).append(" ")
-			.append(tags)
-			.toString();
+		//[<value-type>,]<timestamp>, [<value>,] <metric-name>, <host>, <app> [,<tagkey1>=<tagvalue1>,<tagkeyn>=<tagvaluen>]
+		final StringBuilder b = new StringBuilder(96);
+		if(valueType!=null && valueType != ValueType.DIRECTED) {
+			b.append(valueType.charCode).append(",");
+		}
+		b.append(timestamp).append(",");
+		if(isValued()) {
+			b.append(((StreamedMetricValue)this).getValue()).append(",");
+		}
+		b.append(metricName).append(",");
+		for(Map.Entry<String, String> entry: tags.entrySet()) {
+			b.append(entry.getKey()).append("=").append(entry.getValue()).append(",");
+		}
+		return b.deleteCharAt(b.length()-1).toString();
 	}
 	
 	

@@ -21,6 +21,7 @@ package com.heliosapm.streams.metrics.processors;
 import java.util.Set;
 
 import org.apache.kafka.streams.processor.ProcessorSupplier;
+import org.apache.kafka.streams.processor.TopologyBuilder;
 
 import com.heliosapm.streams.metrics.store.StateStoreDefinition;
 
@@ -36,6 +37,15 @@ import com.heliosapm.streams.metrics.store.StateStoreDefinition;
  */
 
 public interface StreamedMetricProcessorSupplier<K, V, SK, SV> extends ProcessorSupplier<K, V> {
+	
+	
+	/** The suffix for the source name */
+	public static final String SOURCE_NAME_SUFFIX = ".Source";
+	/** The suffix for the processor name */
+	public static final String PROCESSOR_NAME_SUFFIX = ".Processor";
+	/** The suffix for the sink name */
+	public static final String SINK_NAME_SUFFIX = ".Sink";
+	
 	/**
 	 * Returns the state store definitions for this processor supplier
 	 * @return the state store definitions for this processor supplier
@@ -47,4 +57,12 @@ public interface StreamedMetricProcessorSupplier<K, V, SK, SV> extends Processor
 	 * @return the names of the declared state stores
 	 */
 	public String[] getStateStoreNames();
+	
+	/**
+	 * Directs the processor supplier to configure itself using the passed builder
+	 * @param builder the builder
+	 * @param textLineSourceName The name of the text line source
+	 * @return this supplier's name that the parent will use as a sink
+	 */
+	public String configure(TopologyBuilder builder, String textLineSourceName);
 }

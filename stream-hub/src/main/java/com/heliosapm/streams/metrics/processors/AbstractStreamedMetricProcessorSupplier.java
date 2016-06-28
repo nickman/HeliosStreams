@@ -22,12 +22,15 @@ import java.util.HashSet;
 import java.util.Set;
 
 import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.streams.processor.TopologyBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.annotation.Required;
 
+import com.heliosapm.streams.metrics.ValueType;
 import com.heliosapm.streams.metrics.store.StateStoreDefinition;
+import com.heliosapm.streams.serialization.HeliosSerdes;
 
 /**
  * <p>Title: AbstractStreamedMetricProcessorSupplier</p>
@@ -45,6 +48,8 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	
 	/** The punctuation period in ms. */
 	protected long period = -1L;
+	/** The topic sink name for this processor */
+	protected String topicSink  = null;
 	/** The source names */
 	protected String[] sources = null;
 	/** The source key Serde */
@@ -55,6 +60,13 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	protected Serde<SK> sinkKeySerde = null;
 	/** The sink value Serde */
 	protected Serde<SV> sinkValueSerde = null;
+	
+	/** The topology name for this processor's source */
+	protected String sourceName = null;
+	/** The topology name for this processor */
+	protected String processorName = null;
+	/** The topology name for this processor's sink */
+	protected String sinkName = null;
 	
 	/** The definitions of the state stores declared by this processor supplier */
 	protected Set<StateStoreDefinition<?, ?>> stateStoreDefinitions = new HashSet<StateStoreDefinition<?, ?>>();
@@ -75,7 +87,42 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	 */
 	@Override
 	public void setBeanName(final String name) {
-		beanName = name;		
+		beanName = name;	
+		sourceName = beanName + SOURCE_NAME_SUFFIX;
+		processorName = beanName + PROCESSOR_NAME_SUFFIX;
+		sinkName = beanName + SINK_NAME_SUFFIX;
+		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.processors.StreamedMetricProcessorSupplier#configure(org.apache.kafka.streams.processor.TopologyBuilder, java.lang.String)
+	 */
+	@Override
+	public String configure(TopologyBuilder builder, String textLineSourceName) {
+		
+//		String ACC_TOPIC_NAME = "tsdb.metrics.accumulator";
+//		String ACC_SOURCE_NAME = "accumulator";						//  beanName + ".SOURCE";
+//		String ACC_PROCESSOR_NAME = "accumulationProcessor";
+//		String ACC_SINK_NAME = "accumulationSink";
+//		String ACC_TOPIC_OUT_NAME = "tsdb.metrics.binary";
+		
+		// HeliosSerdes.STREAMED_METRIC_DESER_FROM_STRING
+		
+		builder.addSource(sourceName, sourceKeySerde.deserializer(), sourceValueSerde.deserializer(), sources)
+			.addProcessor(processorName, this, sourceName)
+			.addSink(sinkName, topicSink, sinkKeySerde.serializer(), sinkValueSerde.serializer(), processorName);
+		
+		for(StateStoreDefinition<?,?> stateStoreDef: stateStoreDefinitions) {
+			builder.addStateStore(stateStoreDef, beanName + processorName);
+		}
+		
+//		builder.addSource(ACC_SOURCE_NAME, stringDeserializer, stringToMetricDeser, ACC_TOPIC_NAME)			
+//		.addProcessor(ACC_PROCESSOR_NAME, router.route(ValueType.ACCUMULATOR, builder), ACC_SOURCE_NAME)
+//		.addSink(ACC_SINK_NAME, ACC_TOPIC_OUT_NAME, stringSerializer, metricSerde.serializer(), ACC_PROCESSOR_NAME);
+//		
+		return processorName;
+		
 	}
 
 	/**
@@ -214,6 +261,23 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	 */
 	public String getBeanName() {
 		return beanName;
+	}
+
+	/**
+	 * Returns the name opf the topic to sink to
+	 * @return the topicSink
+	 */
+	public String getTopicSink() {
+		return topicSink;
+	}
+
+	/**
+	 * Sets the name opf the topic to sink to
+	 * @param topicSink the topicSink to set
+	 */
+	@Required
+	public void setTopicSink(final String topicSink) {
+		this.topicSink = topicSink;
 	}
 
 //	/**

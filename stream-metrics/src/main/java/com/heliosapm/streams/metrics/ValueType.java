@@ -50,6 +50,7 @@ public enum ValueType {
 		this.name = name;
 		this.valueless = valueless;
 		this.description = description;
+		charCode = decode;
 		charcode[0] = decode;
 		charcode[1] = charcode[0] + 32; 
 	}
@@ -76,6 +77,8 @@ public enum ValueType {
 	
 	/** The value type name */
 	public final String name;
+	/** The char code for this ValueType */
+	public final char charCode;
 	/** Indicates if the value type is valueless */
 	public final boolean valueless;
 	/** A description of the value type */

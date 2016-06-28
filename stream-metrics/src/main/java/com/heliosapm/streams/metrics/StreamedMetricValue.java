@@ -132,6 +132,14 @@ public class StreamedMetricValue extends StreamedMetric {
 		return isDoubleValue ? doubleValue : longValue;
 	}
 	
+	/**
+	 * Returns the value as a string
+	 * @return the value as a string
+	 */
+	public String getValue() {
+		return isDoubleValue ? String.valueOf(doubleValue) : String.valueOf(longValue);
+	}
+	
 	
 	/**
 	 * Returns the double value
@@ -177,20 +185,6 @@ public class StreamedMetricValue extends StreamedMetric {
 	}
 	
 	
-
-	/**
-	 * {@inheritDoc}
-	 * @see java.lang.Object#toString()
-	 */
-	@Override
-	public String toString() {
-		return new StringBuilder(96)
-			.append("[").append(timestamp).append("] ")
-			.append(isDoubleValue ? doubleValue : longValue).append(" ")
-			.append(metricName).append(" ")
-			.append(tags)
-			.toString();
-	}
 	
 	/**
 	 * Updates this metric with a new timestamp and value

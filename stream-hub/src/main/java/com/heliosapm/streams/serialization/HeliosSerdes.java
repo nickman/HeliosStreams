@@ -55,6 +55,26 @@ public class HeliosSerdes extends Serdes {
 	/** The {@link TimestampedMetricKey} deserializer */
 	public static final Deserializer<TimestampedMetricKey> TIMESTAMPED_METRIC_DESER = new TimestampedMetricKeyDeserializer(); 
 	
+
+	/** The {@link StreamedMetric} deserializer from a String value */
+	public static final Deserializer<StreamedMetric> STREAMED_METRIC_DESER_FROM_STRING = new StatelessDeserializer<StreamedMetric>() {
+		final Deserializer<String> stringDeser = String().deserializer();
+		@Override
+		public StreamedMetric deserialize(final java.lang.String topic, final byte[] data) {
+			return StreamedMetric.fromString(stringDeser.deserialize(topic, data));
+		}
+	};
+	
+	/** The {@link StreamedMetric} serializer to a String value */
+	public static final Serializer<StreamedMetric> STREAMED_METRIC_SER_TO_STRING = new StatelessSerializer<StreamedMetric>() {
+		final Serializer<String> stringSer = String().serializer();
+		@Override
+		public byte[] serialize(final String topic, final StreamedMetric data) {			
+			return stringSer.serialize(topic, data.toString());
+		}		
+	};
+	
+	
 	
 	/** The {@link StreamedMetric} Serde */
 	public static final Serde<StreamedMetric> STREAMED_METRIC_SERDE = new StatelessSerde<StreamedMetric>(STREAMED_METRIC_SER, STREAMED_METRIC_DESER);
@@ -62,6 +82,14 @@ public class HeliosSerdes extends Serdes {
 	public static final Serde<StreamedMetricValue> STREAMED_METRIC_VALUE_SERDE = new StatelessSerde<StreamedMetricValue>(STREAMED_METRIC_VALUE_SER, STREAMED_METRIC_VALUE_DESER);
 	/** The {@link TimestampedMetricKey} Serde */
 	public static final Serde<TimestampedMetricKey> TIMESTAMPED_METRIC_SERDE = new StatelessSerde<TimestampedMetricKey>(TIMESTAMPED_METRIC_SER, TIMESTAMPED_METRIC_DESER);
+	/** The {@link StreamedMetric} Serde with a String as an intermediary */
+	public static final Serde<StreamedMetric> STREAMED_METRIC_SERDE_THROUGH_STRING = new StatelessSerde<StreamedMetric>(STREAMED_METRIC_SER_TO_STRING, STREAMED_METRIC_DESER_FROM_STRING);
+	
+	
+	/** The {@link String} Serde */
+	public static final Serde<String> STRING_SERDE = String();
+	
+	
 	
 	private HeliosSerdes() {}
 

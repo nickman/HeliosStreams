@@ -25,6 +25,7 @@ import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
+import org.springframework.beans.factory.annotation.Required;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
@@ -41,7 +42,7 @@ import com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorS
 
 public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessorSupplier<String, StreamedMetric, String, StreamedMetric> {
 	/** The aggregation period to supply to created StreamedMetricMeter instances  */
-	protected final int aggregationPeriod;
+	protected int aggregationPeriod = -1;
 	
 	
 	/**
@@ -50,7 +51,7 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 	 */
 	@Override
 	public Processor<String, StreamedMetric> get() {
-		return new StreamedMetricMeter(final int aggregationPeriod, final long period, final String metricTimestampStoreName);
+		return new StreamedMetricMeter(aggregationPeriod, period, getStateStoreNames()[0]);
 	}
 	
 	/**
@@ -151,6 +152,24 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 		
 
 		
+	}
+
+	/**
+	 * Returns the the aggregation period to supply to created StreamedMetricMeter instances
+	 * @return the aggregationPeriod
+	 */
+	public int getAggregationPeriod() {
+		return aggregationPeriod;
+	}
+
+	/**
+	 * Sets the aggregation period to supply to created StreamedMetricMeter instances
+	 * @param aggregationPeriod the aggregationPeriod to set
+	 */
+	@Required
+	public void setAggregationPeriod(final int aggregationPeriod) {
+		if(aggregationPeriod<1) throw new IllegalArgumentException("Invalid aggregation period: " + aggregationPeriod);
+		this.aggregationPeriod = aggregationPeriod;
 	}
 
 }

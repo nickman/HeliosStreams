@@ -31,7 +31,8 @@ import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.kafka.streams.state.Stores;
 import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.annotation.Required;
+
+import com.heliosapm.streams.serialization.StatelessSerde;
 
 /**
  * <p>Title: StateStoreDefinition</p>
@@ -69,6 +70,16 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 */
 	@Override
 	public void afterPropertiesSet() throws Exception {
+		if(keySerde==null) {
+			if(keySerializer==null) throw new Exception("No Key Serializer Defined");
+			if(keyDeserializer==null) throw new Exception("No Key Deserializer Defined");
+			keySerde = new StatelessSerde<K>(keySerializer, keyDeserializer);			
+		}
+		if(valueSerde==null) {
+			if(valueSerializer==null) throw new Exception("No Value Serializer Defined");
+			if(valueDeserializer==null) throw new Exception("No Value Deserializer Defined");
+			valueSerde = new StatelessSerde<V>(valueSerializer, valueDeserializer);			
+		}		
 		final Stores.KeyValueFactory<K, V> factory = Stores.create(name)
 			.withKeys(keySerde)
 			.withValues(valueSerde);
@@ -78,6 +89,8 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 			stateStoreSupplier = factory.persistent().build();
 		}
 	}
+	
+		
 
 	/**
 	 * {@inheritDoc}
@@ -101,7 +114,7 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 * Sets the state store name 
 	 * @param name the name to set
 	 */
-	@Required
+	
 	public void setName(final String name) {
 		this.name = name;
 	}
@@ -110,7 +123,7 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 * Sets the store's key serializer
 	 * @param keySerializer the keySerializer to set
 	 */
-	@Required
+	
 	public void setKeySerializer(final Serializer<K> keySerializer) {
 		this.keySerializer = keySerializer;
 	}
@@ -119,7 +132,7 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 * Sets the store's key deserializer
 	 * @param keyDeserializer the keyDeserializer to set
 	 */
-	@Required
+	
 	public void setKeyDeserializer(final Deserializer<K> keyDeserializer) {
 		this.keyDeserializer = keyDeserializer;
 	}
@@ -128,7 +141,7 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 * Sets the store's value serializer
 	 * @param valueSerializer the valueSerializer to set
 	 */
-	@Required
+	
 	public void setValueSerializer(final Serializer<V> valueSerializer) {
 		this.valueSerializer = valueSerializer;
 	}
@@ -137,7 +150,7 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 * Sets the store's value deserializer
 	 * @param valueDeserializer the valueDeserializer to set
 	 */
-	@Required
+	
 	public void setValueDeserializer(final Deserializer<V> valueDeserializer) {
 		this.valueDeserializer = valueDeserializer;
 	}
@@ -147,7 +160,7 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 * Indicates if the state store should be in memory or persistent
 	 * @param inMemory true for in memory, false for persistent
 	 */
-	@Required
+	
 	public void setInMemory(final boolean inMemory) {
 		this.inMemory = inMemory;
 	}
@@ -183,6 +196,26 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 		} else if (!name.equals(other.name))
 			return false;
 		return true;
+	}
+
+
+
+	/**
+	 * Sets the store key serde
+	 * @param keySerde the keySerde to set
+	 */
+	public void setKeySerde(final Serde<K> keySerde) {
+		this.keySerde = keySerde;
+	}
+
+
+
+	/**
+	 * Sets the store value serde
+	 * @param valueSerde the valueSerde to set
+	 */
+	public void setValueSerde(final Serde<V> valueSerde) {
+		this.valueSerde = valueSerde;
 	}
 
 }
