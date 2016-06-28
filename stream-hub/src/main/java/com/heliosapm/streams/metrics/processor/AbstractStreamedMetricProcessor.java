@@ -79,14 +79,6 @@ public abstract class AbstractStreamedMetricProcessor implements StreamedMetricP
 		return sm.getValueType()==valueType;
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see org.apache.kafka.streams.processor.ProcessorSupplier#get()
-	 */
-	@Override
-	public Processor<String, StreamedMetric> get() {
-		return this;
-	}
 
 	/**
 	 * {@inheritDoc}

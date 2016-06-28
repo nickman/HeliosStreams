@@ -34,7 +34,7 @@ import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedM
 import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedMetricKeySerializer;
 
 /**
- * <p>Title: StreamedMetricMeter</p>
+ * <p>Title: StreamedMetricMeterSupplier</p>
  * <p>Description: </p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.processor.StreamedMetricMeter</code></p>

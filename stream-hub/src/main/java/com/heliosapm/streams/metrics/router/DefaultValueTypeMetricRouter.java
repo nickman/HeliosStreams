@@ -64,7 +64,7 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, Appl
 		StreamedMetricProcessor processor = null;
 //		switch(valueType) {
 //			case A:
-//				processor = new StreamedMetricMeter(5000, "tsdb.metrics.binary");
+//				processor = new StreamedMetricMeterSupplier(5000, "tsdb.metrics.binary");
 //			case D:
 //				break;
 //			case M:
