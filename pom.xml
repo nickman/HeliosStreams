@@ -39,7 +39,7 @@
 		<javassist.version>3.18.1-GA</javassist.version>
 		<asynchbase.version>1.7.0</asynchbase.version>
 		<spring-boot.version>1.2.3.RELEASE</spring-boot.version>
-		<spring.version>4.1.5.RELEASE</spring.version>
+		<spring.version>4.2.6.RELEASE</spring.version>
 		<chronicle.version>4.4.3</chronicle.version>
 		<zah-hashing.version>0.6</zah-hashing.version>
 		<chronicle-map.version>3.8.0</chronicle-map.version>
@@ -464,6 +464,13 @@
 		    <artifactId>log4j-1.2-api</artifactId>
 		    <version>${log4j.version}</version>
 		  </dependency>
+		  
+			<dependency>
+			  <groupId>org.apache.logging.log4j</groupId>
+			  <artifactId>log4j-1.2-api</artifactId>
+			  <version>${log4j.version}</version>
+			</dependency>
+		  
 		  		  
     
     </dependencies>

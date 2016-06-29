@@ -18,8 +18,19 @@
 		<property name="valueSerde">
 			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.TIMESTAMPED_METRIC_SERDE"/>
 		</property>
-		<property name="inMemory" value="false"/>		
+		<property name="inMemory" value="true"/>		
     </bean>
+    
+    <bean id="accumulatorStoreDefinition" class="com.heliosapm.streams.metrics.store.StateStoreDefinition">
+		<property name="keySerde">
+			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
+		</property>
+		<property name="valueSerde">
+			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.LONG_SERDE"/>
+		</property>
+		<property name="inMemory" value="true"/>		
+    </bean>
+    
     
     <bean id="meterSupplier" class="com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier">
     	<property name="aggregationPeriod" value="5"/>
@@ -45,6 +56,24 @@
     	</property>
     </bean>
     
+    <bean id="strightThroughSupplier" class="com.heliosapm.streams.metrics.processors.impl.StraightThroughMetricProcessorSupplier">
+    	<property name="maxForwards" value="5"/>
+    	<property name="period" value="10000"/>
+    	<property name="sources" value="tsdb.metrics.st"/>
+    	<property name="topicSink" value="tsdb.metrics.binary"/>
+    	<property name="sourceKeySerde">
+    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
+    	</property>
+    	<property name="sourceValueSerde">
+    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE_THROUGH_STRING"/>
+    	</property>    	
+    	<property name="sinkKeySerde">
+    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
+    	</property>
+    	<property name="sinkValueSerde">
+    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE"/>
+    	</property>
+    </bean>
     
     
     <bean id="textRouter" class="com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter">

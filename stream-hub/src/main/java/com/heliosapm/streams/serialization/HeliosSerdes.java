@@ -88,6 +88,12 @@ public class HeliosSerdes extends Serdes {
 	
 	/** The {@link String} Serde */
 	public static final Serde<String> STRING_SERDE = String();
+	/** The {@link Long} Serde */
+	public static final Serde<Long> LONG_SERDE = Long();
+	/** The {@link Integer} Serde */
+	public static final Serde<Integer> INTEGER_SERDE = Integer();
+	/** The {@link Double} Serde */
+	public static final Serde<Double> DOUBLE_SERDE = Double();
 	
 	
 	
