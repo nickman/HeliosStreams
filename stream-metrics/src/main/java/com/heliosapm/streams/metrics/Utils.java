@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.streams.processor.TimestampExtractor;
 
 /**
@@ -122,32 +121,6 @@ public class Utils {
 			return strs.toArray(new String[result.length - blanks]);
 		}
 		return result;
-	}
-	
-	/**
-	 * <p>Title: TextLineTimestampExtractor</p>
-	 * <p>Description: The text stream metrics timestamp extractor</p> 
-	 * <p>Company: Helios Development Group LLC</p>
-	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.streams.metrics.Utils.TextLineTimestampExtractor</code></p>
-	 */
-	public static class TextLineTimestampExtractor implements TimestampExtractor {
-		@Override
-		public long extract(final ConsumerRecord<Object, Object> record) {
-			try {
-				final String s = record.value().toString().trim();
-				final int index = s.indexOf(',')+1;
-				if(index==-1) return System.currentTimeMillis();			
-				if(ValueType.isValueType(s.charAt(0))) {
-					final int nextIndex = s.indexOf(',', index);
-					return toMsTime(s.substring(index, nextIndex));
-				}
-				return toMsTime(s.substring(0, index-1));
-			} catch (Exception ex) {
-				return System.currentTimeMillis();
-			}
-			
-		}
 	}
 	
 	/** An empty string array const */

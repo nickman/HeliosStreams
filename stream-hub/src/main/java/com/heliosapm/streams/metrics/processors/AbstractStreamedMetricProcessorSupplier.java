@@ -19,18 +19,21 @@ under the License.
 package com.heliosapm.streams.metrics.processors;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.TopologyBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Required;
 
-import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.store.StateStoreDefinition;
-import com.heliosapm.streams.serialization.HeliosSerdes;
 
 /**
  * <p>Title: AbstractStreamedMetricProcessorSupplier</p>
@@ -60,6 +63,9 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	protected Serde<SK> sinkKeySerde = null;
 	/** The sink value Serde */
 	protected Serde<SV> sinkValueSerde = null;
+	
+	/** All processors created from this supplier */
+	protected final List<Processor<String, StreamedMetric>> startedProcessors = new CopyOnWriteArrayList<Processor<String, StreamedMetric>>();
 	
 	/** The topology name for this processor's source */
 	protected String sourceName = null;
@@ -114,7 +120,7 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 			.addSink(sinkName, topicSink, sinkKeySerde.serializer(), sinkValueSerde.serializer(), processorName);
 		
 		for(StateStoreDefinition<?,?> stateStoreDef: stateStoreDefinitions) {
-			builder.addStateStore(stateStoreDef, beanName + processorName);
+			builder.addStateStore(stateStoreDef, processorName);
 		}
 		
 //		builder.addSource(ACC_SOURCE_NAME, stringDeserializer, stringToMetricDeser, ACC_TOPIC_NAME)			
@@ -278,6 +284,26 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	@Required
 	public void setTopicSink(final String topicSink) {
 		this.topicSink = topicSink;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.processors.StreamedMetricProcessorSupplier#shutdown()
+	 */
+	@Override
+	public void shutdown() {
+		log.info(">>>>>  Stopping [{}]...", getClass().getSimpleName());
+		for(Processor<String, StreamedMetric> p: startedProcessors) {
+			try {
+				log.info(">>>>>  Stopping Processor [{}]...", p.getClass().getSimpleName());
+				p.close();
+				log.info("<<<<<  Processor [{}] Stopped.", p.getClass().getSimpleName());
+			} catch (Exception ex) {
+				log.error("Failed to close processor [{}]", p, ex);
+			}
+		}
+		startedProcessors.clear();		
+		log.info("<<<<<  Stopped [{}]", getClass().getSimpleName());
 	}
 
 //	/**

@@ -65,4 +65,10 @@ public interface StreamedMetricProcessorSupplier<K, V, SK, SV> extends Processor
 	 * @return this supplier's name that the parent will use as a sink
 	 */
 	public String configure(TopologyBuilder builder, String textLineSourceName);
+	
+	
+	/**
+	 * Stops all processors created by this supplier
+	 */
+	public void shutdown();
 }

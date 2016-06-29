@@ -139,7 +139,12 @@ public class TextMetricStreamRouter implements InitializingBean, DisposableBean,
 	@Override
 	public void destroy() throws Exception {
 		log.info("\n\t=================================================\n\tStopping {} ...\n\t=================================================", beanName);
-		if(kafkaStreams!=null) kafkaStreams.close();		
+		if(kafkaStreams!=null) kafkaStreams.close();
+//		for(StreamedMetricProcessorSupplier<?,?,?,?> p: processorSuppliers ) {
+//			p.shutdown();
+//		}
+//		processorSuppliers.clear();
+				
 		log.info("\n\t=================================================\n\t{} Stopped\n\t=================================================", beanName);
 	}
 

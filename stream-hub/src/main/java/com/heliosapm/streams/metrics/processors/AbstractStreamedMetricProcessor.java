@@ -141,15 +141,19 @@ public abstract class AbstractStreamedMetricProcessor implements Processor<Strin
 	 */
 	@Override
 	public void close() {
-		if(!stateStores.isEmpty()) {
-			for(String key: new HashSet<String>(stateStores.keySet())) {
-				final StateStore store = stateStores.remove(key);
-				if(store!=null) {
-					try { store.flush(); } catch (Exception x) {/* No Op */}
-					try { store.close(); } catch (Exception x) {/* No Op */}
-				}
-			}
-		}
+//		log.info(">>>>>  Stopping [{}]...", getClass().getSimpleName());
+//		if(!stateStores.isEmpty()) {
+//			for(String key: new HashSet<String>(stateStores.keySet())) {
+//				final StateStore store = stateStores.remove(key);
+//				if(store!=null) {					
+//					log.info("\tClosing Store [{}]...", store.name());
+//					try { store.flush(); } catch (Exception x) {/* No Op */}
+//					try { store.close(); } catch (Exception x) {/* No Op */}
+//					log.info("\tStore Closed [{}].", store.name());
+//				}
+//			}
+//		}
+//		log.info("<<<<< Stopped [{}].", getClass().getSimpleName());
 	}
 	
 	/**

@@ -51,7 +51,9 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 	 */
 	@Override
 	public Processor<String, StreamedMetric> get() {
-		return new StreamedMetricMeter(aggregationPeriod, period, getStateStoreNames()[0]);
+		final StreamedMetricMeter processor = new StreamedMetricMeter(aggregationPeriod, period, getStateStoreNames()[0]);
+		startedProcessors.add(processor);
+		return processor;
 	}
 	
 	/**
@@ -86,8 +88,9 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 		@SuppressWarnings("unchecked")
 		public void init(final ProcessorContext context) {
 			super.init(context);		
-			metricTimestampStore = (KeyValueStore<String, TimestampedMetricKey>)getStateStore("metricTimestamps");			
+			metricTimestampStore = (KeyValueStore<String, TimestampedMetricKey>)getStateStore("metricTimestampStoreDefinition");			
 			log.info("Set context on Instance [" + System.identityHashCode(this) + "]: {}", context);
+			
 		}
 		
 
@@ -101,11 +104,11 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 			if(tmk==null) {
 				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
 				metricTimestampStore.put(key, tmk);
-				log.info("Wrote MTS: [{}]", tmk);
+				log.debug("Wrote MTS: [{}]", tmk);
 			} else {
-				log.info("MTS from Store: [{}]", tmk);
+				log.debug("MTS from Store: [{}]", tmk);
 				if(!tmk.isSameSecondAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong(), aggregationPeriod)) {
-					log.info("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
+					log.debug("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
 					final StreamedMetric f = StreamedMetric.fromKey(System.currentTimeMillis(), tmk.getMetricKey(), tmk.getCount());
 					boolean ok = true;
 					if(context==null) {
@@ -123,6 +126,8 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 					if(ok) {
 						context.forward(f.metricKey(), f);
 						context.commit();
+						
+						log.info("Committed Batch: [{}]:[{}]",  tmk.getMetricKey(), tmk.getCount());
 					}
 					tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
 					metricTimestampStore.put(key, tmk);				
@@ -140,19 +145,19 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 			final KeyValueIterator<String, TimestampedMetricKey> iter = metricTimestampStore.all();
 			try {
 				final KeyValue<String, TimestampedMetricKey> kv = iter.next();
-				if(kv.value.isExpired(timestamp, aggregationPeriod)) {
-					iter.remove();
+				if(kv.value.isExpired(timestamp, aggregationPeriod)) {					
 					context.forward(kv.key, StreamedMetric.fromKey(timestamp, kv.value.getMetricKey(), kv.value.getCount()));
 					context.commit();
+					metricTimestampStore.delete(kv.key);
 				}
 			} finally {
 				iter.close();
 			}
 		}
-		
-
-		
 	}
+	
+	
+	
 
 	/**
 	 * Returns the the aggregation period to supply to created StreamedMetricMeter instances

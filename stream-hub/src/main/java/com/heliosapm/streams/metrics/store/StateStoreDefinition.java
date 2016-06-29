@@ -30,6 +30,7 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.processor.StateStore;
 import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.kafka.streams.state.Stores;
+import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.InitializingBean;
 
 import com.heliosapm.streams.serialization.StatelessSerde;
@@ -44,7 +45,7 @@ import com.heliosapm.streams.serialization.StatelessSerde;
  * @param <V> The store value type
  */
 
-public class StateStoreDefinition<K,V> implements StateStoreSupplier, InitializingBean {
+public class StateStoreDefinition<K,V> implements StateStoreSupplier, InitializingBean, BeanNameAware {
 	/** The state store name */
 	protected String name = null;
 	/** The key serializer */
@@ -216,6 +217,18 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	 */
 	public void setValueSerde(final Serde<V> valueSerde) {
 		this.valueSerde = valueSerde;
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.beans.factory.BeanNameAware#setBeanName(java.lang.String)
+	 */
+	@Override
+	public void setBeanName(final String name) {
+		this.name = name;
+		
 	}
 
 }
