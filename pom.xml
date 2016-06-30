@@ -39,6 +39,7 @@
 		<javassist.version>3.18.1-GA</javassist.version>
 		<asynchbase.version>1.7.0</asynchbase.version>
 		<spring-boot.version>1.3.5.RELEASE</spring-boot.version>
+		<spring-boot-admin.version>1.3.3</spring-boot-admin.version>
 		<spring.version>4.2.6.RELEASE</spring.version>
 		<chronicle.version>4.4.3</chronicle.version>
 		<zah-hashing.version>0.6</zah-hashing.version>
@@ -403,6 +404,59 @@
 		  <version>${asynchbase.version}</version>
 		  <scope>provided</scope>
 		</dependency>
+
+		<!-- ==========================================================
+		    Spring Boot Dependencies
+		    ========================================================== -->		
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot</artifactId>
+		  <version>${spring-boot.version}</version>
+  		</dependency>
+  		
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot-loader</artifactId>
+		  <version>${spring-boot.version}</version>
+		</dependency>
+
+
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot-actuator</artifactId>
+		  <version>${spring-boot.version}</version>
+		</dependency>
+
+
+		<dependency>
+		    <groupId>org.springframework.boot</groupId>
+		    <artifactId>spring-boot-starter-remote-shell</artifactId>
+		    <version>${spring-boot.version}</version>
+			  <exclusions>
+               	<exclusion>
+		          <groupId>ch.qos.logback</groupId>
+		          <artifactId>logback-classic</artifactId>
+		        </exclusion>
+			  	<exclusion>
+		          <groupId>org.slf4j</groupId>
+		          <artifactId>slf4j-log4j12</artifactId>
+		        </exclusion>
+			  	<exclusion>
+		          <groupId>log4j</groupId>
+		          <artifactId>log4j</artifactId>
+		        </exclusion>		        		        
+			  </exclusions>			  		    
+		 </dependency>
+
+
+
+		<dependency>
+		    <groupId>de.codecentric</groupId>
+		    <artifactId>spring-boot-admin-starter-client</artifactId>
+		    <version>${spring-boot-admin.version}</version>
+		</dependency>
+
+
 		
 		<!-- ==========================================================
 		    Spring Dependencies
@@ -465,11 +519,6 @@
 		    <version>${log4j.version}</version>
 		  </dependency>
 		  
-			<dependency>
-			  <groupId>org.apache.logging.log4j</groupId>
-			  <artifactId>log4j-1.2-api</artifactId>
-			  <version>${log4j.version}</version>
-			</dependency>
 		  
 		  		  
     

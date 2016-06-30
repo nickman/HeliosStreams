@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<Configuration monitorInterval="60">
+<Configuration monitorInterval="60" status="ERROR" >
 <Properties>
     <Property name="log-path">logs</Property>
     <Property name="archive">${log-path}/archive</Property>
@@ -22,13 +22,13 @@
     </File>        
 </Appenders>
 
-<Loggers>
-           <Logger name="com.heliosapm" level="info" additivity="false">
-               <AppenderRef ref="Console-Appender" level="info"/>               
-           </Logger>
-           <Logger name="org.I0Itec" level="info" additivity="false">
-               <AppenderRef ref="Console-Appender" level="info"/>               
-           </Logger>
+	<Loggers>
+        <Logger name="com.heliosapm" level="info" additivity="false">
+            <AppenderRef ref="Console-Appender" level="info"/>               
+        </Logger>
+        <Logger name="org.I0Itec" level="info" additivity="false">
+            <AppenderRef ref="Console-Appender" level="info"/>               
+        </Logger>
            
         <Root level="info">
             <AppenderRef ref="Console-Appender"/>

@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.streams;
 
 import java.net.URL;
+import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -26,16 +27,19 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationFailedEvent;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
-import org.springframework.context.event.ContextStoppedEvent;
 
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.url.URLHelper;
+
+import de.codecentric.boot.admin.config.EnableAdminServer;
 
 /**
  * <p>Title: StreamHub</p>
@@ -46,6 +50,8 @@ import com.heliosapm.utils.jmx.JMXHelper;
 @SpringBootApplication
 @Configuration
 @ImportResource("classpath:streamhub.xml")
+@EnableDiscoveryClient
+@EnableAdminServer
 public class StreamHub {
 	/** The default URL */
 	private static final URL defaultURL = StreamHub.class.getClassLoader().getResource("streamhub.xml");
@@ -58,6 +64,12 @@ public class StreamHub {
 		"streamhub.statestore.metrictimestamp.inmemory",
 		"streamhub.statestore.accumulator.inmemory",
 	};
+	
+	/*
+	 * Admin props:  spring.boot.admin.url=http://localhost:8080
+	 * App Version:  info.version=@project.version@
+	 * spring.boot.admin.api-path:"api/applications"
+	 */
 	
 	/**
 	 * Creates a new StreamHub
@@ -87,10 +99,17 @@ public class StreamHub {
 	 * TODO: Add JMXMP Port and iface
 	 * TODO: Add help
 	 */
-	public static void main(String[] args) {
+	public static void main(final String[] args) {
 		final Thread main = Thread.currentThread();
+		if(System.getProperty("os.name", "").toLowerCase().contains("windows")) {
+			for(String key: stateStoreInMems) {
+				System.setProperty(key, "true");
+			}
+		}
+		loadProps(args);
 		System.setProperty("java.net.preferIPv4Stack" , "true");
-		System.setProperty("spring.output.ansi.enabled", "true");
+		System.setProperty("spring.output.ansi.enabled", "DETECT");
+		System.setProperty("spring.boot.admin.url", "http://localhost:8080");
 		ExtendedThreadManager.install();
 		final SpringApplication app = new SpringApplication(StreamHub.class);
 		app.addListeners(new ApplicationListener<ApplicationFailedEvent>() {
@@ -151,7 +170,8 @@ public class StreamHub {
 			public void run() {
 				try {
 					appCtx.close();
-				} catch (Exception x) {
+				} catch (Exception ex) {
+					LOG.warn("Failure on app context close", ex);
 				} finally {					
 					main.interrupt();
 				}
@@ -171,6 +191,21 @@ public class StreamHub {
 //	System.setProperty("sun.java.command", "StreamHubOK");
 //	System.setProperty("sun.rt.javaCommand" , "StreamHubOK");						
 	
+	
+	private static void loadProps(final String[] args) {
+		if(args!=null) {
+			for(String s: args) {
+				try {
+					final Properties p = URLHelper.readProperties(URLHelper.toURL(s));
+					if(!p.isEmpty()) {
+						for(String key: p.stringPropertyNames()) {
+							System.setProperty(key, p.getProperty(key, "").trim());
+						}
+					}
+				} catch (Exception x) {/* No Op */}
+			}
+		}
+	}
 	
 	/**
 	 * Err prints the usage
