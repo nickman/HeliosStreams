@@ -51,9 +51,11 @@ import com.heliosapm.streams.metrics.Utils;
 public class StreamsConfigBuilder {
 	
 	/** The default client id which is the runtime name */
-	public static final String DEFAULT_CLIENT_ID = ManagementFactory.getRuntimeMXBean().getName().replace('@', '-');
+	public static final String DEFAULT_CLIENT_ID = "StreamHubNode." + ManagementFactory.getRuntimeMXBean().getName().replace('@', '.');
 	/** The default state store directory */
-	public static final File DEFAULT_STATE_STORE = new File(new File(System.getProperty("java.io.tmpdir")), "kafka-streams");	
+	public static final File DEFAULT_STATE_STORE = new File(new File(System.getProperty("java.io.tmpdir")), "kafka-streams-state-store");	
+	/** The default state store directory name */
+	public static final String DEFAULT_STATE_STORE_NAME = new File(new File(System.getProperty("java.io.tmpdir")), "kafka-streams-state-store").getAbsolutePath();	
 	
 	// ============================
 	// Mandatory Config

@@ -8,3 +8,37 @@ http://docs.confluent.io/2.1.0-alpha1/streams/javadocs/index.html
 Create topic: bin/kafka-topics.sh --zookeeper localhost:2181 --create --topic tsdb.metrics.binary --partitions 2 --replication-factor 1
 
 Add partitions to topic:  kafka-topics.bat --zookeeper localhost:2181 --alter --topic tsdb.metrics.binary --partitions 10
+
+Global
+====================================================================================
+streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary
+
+Bean Specific
+====================================================================================
+streamhub.statestore.metrictimestamp.inmemory
+streamhub.statestore.accumulator.inmemory
+streamhub.streamed.metric.supplier.meter.aggregationperiod:5
+streamhub.streamed.metric.supplier.meter.period:5000
+
+streamhub.streamed.metric.supplier.meter.aggregationperiod:5
+streamhub.streamed.metric.supplier.meter.period:5000
+streamhub.streamed.metric.supplier.meter.source:tsdb.metrics.accumulator
+
+streamhub.streamed.metric.supplier.straightthrough.maxforwards:100
+streamhub.streamed.metric.supplier.straightthrough.period:10000
+streamhub.streamed.metric.supplier.straightthrough.source:tsdb.metrics.st
+
+
+streamhub.config.bootstrapservers:localhost:9092
+streamhub.config.zookeeperconnect:localhost:2181
+streamhub.config.pollwaitms:10
+streamhub.config.timeextractor:com.heliosapm.streams.metrics.TextLineTimestampExtractor
+
+
+        http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+        http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.2.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.2.xsd">
+
+
+
+

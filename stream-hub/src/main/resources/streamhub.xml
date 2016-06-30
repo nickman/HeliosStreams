@@ -4,9 +4,9 @@
     xmlns:util="http://www.springframework.org/schema/util"
     xmlns:context="http://www.springframework.org/schema/context" 
     xsi:schemaLocation="
-        http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.1.xsd
-        http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.1.xsd
-		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.1.xsd">
+        http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.2.xsd
+        http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util-4.2.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.2.xsd">
         
         
     <context:property-placeholder/>
@@ -18,7 +18,7 @@
 		<property name="valueSerde">
 			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.TIMESTAMPED_METRIC_SERDE"/>
 		</property>
-		<property name="inMemory" value="true"/>		
+		<property name="inMemory" value="${streamhub.statestore.metrictimestamp.inmemory:false}"/>		
     </bean>
     
     <bean id="accumulatorStoreDefinition" class="com.heliosapm.streams.metrics.store.StateStoreDefinition">
@@ -28,15 +28,15 @@
 		<property name="valueSerde">
 			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.LONG_SERDE"/>
 		</property>
-		<property name="inMemory" value="true"/>		
+		<property name="inMemory" value="${streamhub.statestore.accumulator.inmemory:false}"/>		
     </bean>
     
     
     <bean id="meterSupplier" class="com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier">
-    	<property name="aggregationPeriod" value="5"/>
-    	<property name="period" value="5000"/>
-    	<property name="sources" value="tsdb.metrics.accumulator"/>
-    	<property name="topicSink" value="tsdb.metrics.binary"/>
+    	<property name="aggregationPeriod" value="${streamhub.streamed.metric.supplier.meter.aggregationperiod:5}"/>
+    	<property name="period" value="${streamhub.streamed.metric.supplier.meter.period:5000}"/>
+    	<property name="sources" value="${streamhub.streamed.metric.supplier.meter.source:tsdb.metrics.accumulator}"/>
+    	<property name="topicSink" value="${streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary}"/>
     	<property name="sourceKeySerde">
     		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
     	</property>
@@ -57,10 +57,10 @@
     </bean>
     
     <bean id="strightThroughSupplier" class="com.heliosapm.streams.metrics.processors.impl.StraightThroughMetricProcessorSupplier">
-    	<property name="maxForwards" value="5"/>
-    	<property name="period" value="10000"/>
-    	<property name="sources" value="tsdb.metrics.st"/>
-    	<property name="topicSink" value="tsdb.metrics.binary"/>
+    	<property name="maxForwards" value="${streamhub.streamed.metric.supplier.straightthrough.maxforwards:100}"/>
+    	<property name="period" value="${streamhub.streamed.metric.supplier.straightthrough.period:10000}"/>
+    	<property name="sources" value="${streamhub.streamed.metric.supplier.straightthrough.source:tsdb.metrics.st}"/>
+    	<property name="topicSink" value="${streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary}"/>
     	<property name="sourceKeySerde">
     		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
     	</property>
@@ -77,30 +77,40 @@
     
     
     <bean id="textRouter" class="com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter">
-		<constructor-arg ref="streamsConfigProperties"/> 	
+		<constructor-arg ref="streamsConfigProps"/> 	
     	<property name="processorSuppliers">
     		<util:list>
     			<ref bean="meterSupplier"/>
+    			<ref bean="strightThroughSupplier"/>
     		</util:list>
     	</property>
-    	
-    	
     </bean>
+    
+    <bean id="streamsConfigProps" class="java.util.Properties" factory-bean="streamsConfig" factory-method="buildProperties"/>
+    
+    
     
     <bean id="streamsConfig" class="com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder" >
-    	<property name="applicationId" value="StreamHubApplication"/>
-    	<property name="bootstrapServers" value="localhost:9092"/>
-    	<property name="zookeeperConnect" value="localhost:2181"/>
-    	<property name="clientId" value="StreamHub"/>
-    	<property name="pollWaitMs" value="10"/>
-    	<property name="stateStoreDir" value="${java.io.tmpdir}/streamHubStore"/>
-    	<property name="timeExtractor" value="com.heliosapm.streams.metrics.TextLineTimestampExtractor"/>
+    	<property name="applicationId" value="StreamHub"/>
+    	<property name="bootstrapServers" value="${streamhub.config.bootstrapservers:localhost:9092}"/>
+    	<property name="zookeeperConnect" value="${streamhub.config.zookeeperconnect:localhost:2181}"/>
+    	<property name="clientId">
+    		<util:constant static-field="com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder.DEFAULT_CLIENT_ID" />
+    	</property>
+    	<property name="pollWaitMs" value="${streamhub.config.pollwaitms:10}"/>
+    	<property name="stateStoreDir">
+    		<util:constant static-field="com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder.DEFAULT_STATE_STORE_NAME" />
+    	</property>
+    	<property name="timeExtractor" value="${streamhub.config.timeextractor:com.heliosapm.streams.metrics.TextLineTimestampExtractor}"/>
     </bean>
     
+    
+    <!-- 
     <bean id="streamsConfigProperties" class="org.springframework.beans.factory.config.MethodInvokingFactoryBean">
   		<property name="targetObject" ref="streamsConfig" />
   		<property name="targetMethod" value="buildProperties" />
 	</bean>
+	-->
 
 
 </beans>

@@ -20,12 +20,22 @@ package com.heliosapm.streams;
 
 import java.net.URL;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.support.GenericXmlApplicationContext;
-import org.springframework.core.io.UrlResource;
+import org.springframework.boot.context.event.ApplicationFailedEvent;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.ImportResource;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.ContextStoppedEvent;
 
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
 
 /**
  * <p>Title: StreamHub</p>
@@ -34,19 +44,28 @@ import com.heliosapm.utils.concurrency.ExtendedThreadManager;
  * <p><code>com.heliosapm.streams.StreamHub</code></p>
  */
 @SpringBootApplication
+@Configuration
+@ImportResource("classpath:streamhub.xml")
 public class StreamHub {
 	/** The default URL */
 	private static final URL defaultURL = StreamHub.class.getClassLoader().getResource("streamhub.xml");
 	private static SpringApplication app = null;
-	private static GenericXmlApplicationContext appCtx = null;
+	private static ConfigurableApplicationContext appCtx = null;
+	/** Static class logger */
+	public static final Logger LOG = LogManager.getLogger(StreamHub.class);
+	
+	private static final String[] stateStoreInMems = {
+		"streamhub.statestore.metrictimestamp.inmemory",
+		"streamhub.statestore.accumulator.inmemory",
+	};
 	
 	/**
 	 * Creates a new StreamHub
 	 * @param configXML The configuration XML
 	 */
 	public StreamHub(final URL configXML) {
-		appCtx = new GenericXmlApplicationContext();
-		appCtx.load(new UrlResource(configXML));
+//		appCtx = new GenericXmlApplicationContext();
+//		appCtx.load(new UrlResource(configXML));
 	}
 	
 	public StreamHub() {
@@ -69,10 +88,35 @@ public class StreamHub {
 	 * TODO: Add help
 	 */
 	public static void main(String[] args) {
+		final Thread main = Thread.currentThread();
 		System.setProperty("java.net.preferIPv4Stack" , "true");
+		System.setProperty("spring.output.ansi.enabled", "true");
 		ExtendedThreadManager.install();
-		SpringApplication app = new SpringApplication(StreamHub.class);
-//		JMXHelper.fireUpJMXMPServer(1829);
+		final SpringApplication app = new SpringApplication(StreamHub.class);
+		app.addListeners(new ApplicationListener<ApplicationFailedEvent>() {
+			@Override
+			public void onApplicationEvent(final ApplicationFailedEvent appFailedEvent) {
+				final Throwable t = appFailedEvent.getException();
+				LOG.error("AppCtx failed on startup", t);
+				try { appFailedEvent.getApplicationContext().close(); } catch (Exception x) {/* No Op */}
+				main.interrupt();
+			}	
+		});
+		app.addListeners(new ApplicationListener<ApplicationReadyEvent>() {
+			@Override
+			public void onApplicationEvent(final ApplicationReadyEvent readyEvent) {
+				LOG.info("\n\t*************************************\n\tStreamHub Started\n\t*************************************\n");
+			}
+		});
+		app.addListeners(new ApplicationListener<ContextClosedEvent>() {
+			@Override
+			public void onApplicationEvent(final ContextClosedEvent appStoppedEvent) {
+				LOG.error("AppCtx Stopped");
+				main.interrupt();
+			}	
+		});
+		
+		JMXHelper.fireUpJMXMPServer(1829);
 //		URL configURL = defaultURL;
 //		final int maxIndex = args.length-1;
 //		for(int i = 0; i < args.length; i++) {
@@ -89,28 +133,37 @@ public class StreamHub {
 //			}
 //		}
 //		final StreamHub streamHub = new StreamHub(configURL);
-//		final Thread main = Thread.currentThread();
-//		final Thread t = new Thread("StreamHubRunner") {
-//			public void run() {
-//				try {
-//					streamHub.start();
-//				} catch (Exception ex) {
-//					try { appCtx.close(); } catch (Exception x) {/* No Op */}
-//					main.interrupt();
-//					Runtime.getRuntime().halt(-1);
-//				}
-//			}
-//		};
-//		t.setDaemon(true);
-//		t.start();
-//		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
-//			public void run() {
-//				try {
-//					appCtx.close();
-//				} catch (Exception x) {/* No Op */}
-//				System.exit(0);
-//			}
-//		}).run();
+		
+		final Thread t = new Thread("StreamHubRunner") {
+			public void run() {
+				try {
+					appCtx = app.run(args);
+				} catch (Exception ex) {
+					try { appCtx.close(); } catch (Exception x) {/* No Op */}
+					main.interrupt();
+					Runtime.getRuntime().halt(-1);
+				}
+			}
+		};
+		t.setDaemon(true);
+		t.start();
+		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
+			public void run() {
+				try {
+					appCtx.close();
+				} catch (Exception x) {
+				} finally {					
+					main.interrupt();
+				}
+			}
+		}).runAsync(true)
+		.join();
+		
+//		try {
+//			Thread.currentThread().join();
+//		} catch (InterruptedException ex) {
+//			System.exit(0);
+//		}
 	}
 	
 //	JMXHelper.getAgentProperties().setProperty("sun.java.command", "StreamHubOK");
