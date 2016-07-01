@@ -2,4 +2,5 @@
   / __/ /________ ___ ___ _  / // /_ __/ / 
  _\ \/ __/ __/ -_) _ `/  ' \/ _  / // / _ \
 /___/\__/_/  \__/\_,_/_/_/_/_//_/\_,_/_.__/
-                                           
+::${AnsiColor.BLUE} Streaming all the metrics ${AnsiColor.DEFAULT}::
+${application.formatted-version}                                           

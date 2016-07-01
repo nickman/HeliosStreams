@@ -21,15 +21,15 @@ package com.heliosapm.streams;
 import java.net.URL;
 import java.util.Properties;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationFailedEvent;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
@@ -46,14 +46,20 @@ import com.heliosapm.utils.url.URLHelper;
  * <p><code>com.heliosapm.streams.StreamHub</code></p>
  */
 @SpringBootApplication
+
+/*  All these are in @SpringBootApplication
 @Configuration
+@ComponentScan
+@EnableAutoConfiguration
+*/
+
 @ImportResource("classpath:streamhub.xml")
 @EnableDiscoveryClient
 //@EnableAdminServer
 public class StreamHub {
 	private static ConfigurableApplicationContext appCtx = null;
 	/** Static class logger */
-	public static final Logger LOG = LogManager.getLogger(StreamHub.class);
+//	public static final Logger LOG = LogManager.getLogger(StreamHub.class);
 	
 	private static final String[] stateStoreInMems = {
 		"streamhub.statestore.metrictimestamp.inmemory",
@@ -104,13 +110,15 @@ public class StreamHub {
 		loadProps(args);
 		System.setProperty("java.net.preferIPv4Stack" , "true");
 		System.setProperty("spring.output.ansi.enabled", "DETECT");
+		System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
 		ExtendedThreadManager.install();
 		final SpringApplication app = new SpringApplication(StreamHub.class);
 		app.addListeners(new ApplicationListener<ApplicationFailedEvent>() {
 			@Override
 			public void onApplicationEvent(final ApplicationFailedEvent appFailedEvent) {
 				final Throwable t = appFailedEvent.getException();
-				LOG.error("AppCtx failed on startup", t);
+				System.err.println("AppCtx failed on startup");
+				t.printStackTrace(System.err);
 				try { appFailedEvent.getApplicationContext().close(); } catch (Exception x) {/* No Op */}
 				main.interrupt();
 			}	
@@ -118,13 +126,13 @@ public class StreamHub {
 		app.addListeners(new ApplicationListener<ApplicationReadyEvent>() {
 			@Override
 			public void onApplicationEvent(final ApplicationReadyEvent readyEvent) {
-				LOG.info("\n\t*************************************\n\tStreamHub Started\n\t*************************************\n");
+				System.out.println("\n\t*************************************\n\tStreamHub Started\n\t*************************************\n");
 			}
 		});
 		app.addListeners(new ApplicationListener<ContextClosedEvent>() {
 			@Override
 			public void onApplicationEvent(final ContextClosedEvent appStoppedEvent) {
-				LOG.error("AppCtx Stopped");
+				System.out.println("AppCtx Stopped");
 				main.interrupt();
 			}	
 		});
@@ -165,7 +173,7 @@ public class StreamHub {
 				try {
 					appCtx.close();
 				} catch (Exception ex) {
-					LOG.warn("Failure on app context close", ex);
+					System.out.println("WARN: Failure on app context close:" + ex);
 				} finally {					
 					main.interrupt();
 				}

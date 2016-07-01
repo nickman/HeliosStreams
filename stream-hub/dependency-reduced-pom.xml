@@ -111,8 +111,9 @@
         <version>${surefire.version}</version>
       </plugin>
       <plugin>
-        <artifactId>maven-shade-plugin</artifactId>
-        <version>${shade.version}</version>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <version>${spring-boot.version}</version>
       </plugin>
       <plugin>
         <artifactId>maven-shade-plugin</artifactId>
@@ -124,20 +125,25 @@
               <goal>shade</goal>
             </goals>
             <configuration>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                  </excludes>
+                </filter>
+              </filters>
               <artifactSet>
                 <excludes>
-                  <exclude>log4j:log4j:jar:</exclude>
-                  <exclude>org.slf4j:*:jar:</exclude>
                   <exclude>org.codehaus.groovy:*:jar:</exclude>
-                  <exclude>META-INF/*.SF</exclude>
-                  <exclude>META-INF/*.DSA</exclude>
-                  <exclude>META-INF/*.RSA</exclude>
                 </excludes>
                 <includes />
               </artifactSet>
               <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
               <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
-              <includePluginDependencies>false</includePluginDependencies>
+              <includePluginDependencies>true</includePluginDependencies>
               <transformers>
                 <transformer>
                   <resource>META-INF/spring.handlers</resource>
@@ -148,11 +154,7 @@
                 <transformer />
                 <transformer />
                 <transformer />
-                <transformer>
-                  <resource>.SF</resource>
-                  <resource>.DSA</resource>
-                  <resource>.RSA</resource>
-                </transformer>
+                <transformer />
               </transformers>
             </configuration>
           </execution>
