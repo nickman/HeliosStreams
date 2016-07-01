@@ -16,6 +16,7 @@
 		<module>stream-hub</module>
 		<module>stream-metrics</module>
 		<module>opentsdb-connector</module>
+		<module>stream-hub-admin</module>
 	</modules>
 	
     <properties>    	 
@@ -468,6 +469,19 @@
 		    <artifactId>spring-boot-admin-starter-client</artifactId>
 		    <version>${spring-boot-admin.version}</version>
 		</dependency>
+
+		<dependency>
+		    <groupId>de.codecentric</groupId>
+		    <artifactId>spring-boot-admin-server</artifactId>
+		    <version>${spring-boot-admin.version}</version>
+		</dependency>
+
+		<dependency>
+		    <groupId>de.codecentric</groupId>
+		    <artifactId>spring-boot-admin-server-ui</artifactId>
+		    <version>${spring-boot-admin.version}</version>
+		</dependency>
+
 
 
 		

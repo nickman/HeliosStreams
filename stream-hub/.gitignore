@@ -4,3 +4,4 @@
 /.classpath
 /.project
 /create-topics.sh~
+*.log
