@@ -39,8 +39,6 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
 
-import de.codecentric.boot.admin.config.EnableAdminServer;
-
 /**
  * <p>Title: StreamHub</p>
  * <p>Description: </p> 
@@ -51,11 +49,8 @@ import de.codecentric.boot.admin.config.EnableAdminServer;
 @Configuration
 @ImportResource("classpath:streamhub.xml")
 @EnableDiscoveryClient
-@EnableAdminServer
+//@EnableAdminServer
 public class StreamHub {
-	/** The default URL */
-	private static final URL defaultURL = StreamHub.class.getClassLoader().getResource("streamhub.xml");
-	private static SpringApplication app = null;
 	private static ConfigurableApplicationContext appCtx = null;
 	/** Static class logger */
 	public static final Logger LOG = LogManager.getLogger(StreamHub.class);
@@ -109,7 +104,6 @@ public class StreamHub {
 		loadProps(args);
 		System.setProperty("java.net.preferIPv4Stack" , "true");
 		System.setProperty("spring.output.ansi.enabled", "DETECT");
-		System.setProperty("spring.boot.admin.url", "http://localhost:8080");
 		ExtendedThreadManager.install();
 		final SpringApplication app = new SpringApplication(StreamHub.class);
 		app.addListeners(new ApplicationListener<ApplicationFailedEvent>() {
