@@ -19,8 +19,16 @@ under the License.
 package com.heliosapm.streams;
 
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.data.Stat;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationFailedEvent;
@@ -31,6 +39,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
 
+
+import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -47,7 +57,7 @@ import com.heliosapm.utils.url.URLHelper;
 @ImportResource("classpath:streamhub.xml")
 @EnableDiscoveryClient
 //@EnableAdminServer
-public class StreamHub {
+public class StreamHub implements Watcher {
 	private static ConfigurableApplicationContext appCtx = null;
 	/** Static class logger */
 //	public static final Logger LOG = LogManager.getLogger(StreamHub.class);
@@ -56,6 +66,27 @@ public class StreamHub {
 		"streamhub.statestore.metrictimestamp.inmemory",
 		"streamhub.statestore.accumulator.inmemory",
 	};
+
+	/** The zookeep parent node name to retrieve the streamhub admin url */
+	public static final String ZOOKEEP_URL_ROOT = "/streamhub/admin";
+	/** The zookeep node name to retrieve the streamhub admin url */
+	public static final String ZOOKEEP_URL = ZOOKEEP_URL_ROOT + "/url";
+	
+	/** The command line arg prefix for the zookeep connect */
+	public static final String ZOOKEEP_CONNECT_ARG = "--zookeep=";
+	/** The default zookeep connect */
+	public static final String DEFAULT_ZOOKEEP_CONNECT = "localhost:2181";
+	/** The command line arg prefix for the zookeep connect timeout in ms. */
+	public static final String ZOOKEEP_TIMEOUT_ARG = "--ztimeout=";
+	/** The default zookeep connect timeout in ms. */
+	public static final int DEFAULT_ZOOKEEP_TIMEOUT = 15000;
+	
+	
+	/** The original system props so we can reset */
+	private static final Map<String, String> VIRGIN_SYS_PROPS = Collections.unmodifiableMap(new HashMap<String, String>(Props.asMap(System.getProperties())));
+	
+	/** The UTF character set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
 	
 	/*
 	 * Admin props:  spring.boot.admin.url=http://localhost:8080
@@ -73,32 +104,12 @@ public class StreamHub {
 	}
 	
 	public StreamHub() {
-		
-	}
-	
-	/**
-	 * Starts the stream hub
-	 */
-	public void start() {
-		appCtx.refresh();
-	}
-
-	/**
-	 * Main entry point for StreamHub
-	 * @param args Supported arguments are all <b><code>--</code></b> prefixed, followed by the value if not a boolean flag: <ul>
-	 * 	<li><b>--config &lt;URL or file for the spring xml configuration file&gt;</b> Overrides the built in spring config.</li>
-	 * </ul>
-	 * TODO: Add JMXMP Port and iface
-	 * TODO: Add help
-	 */
-	public static void main(final String[] args) {
 		final Thread main = Thread.currentThread();
 		if(System.getProperty("os.name", "").toLowerCase().contains("windows")) {
 			for(String key: stateStoreInMems) {
 				System.setProperty(key, "true");
 			}
 		}
-		loadProps(args);
 		System.setProperty("java.net.preferIPv4Stack" , "true");
 		System.setProperty("spring.output.ansi.enabled", "DETECT");
 		System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
@@ -149,7 +160,7 @@ public class StreamHub {
 		final Thread t = new Thread("StreamHubRunner") {
 			public void run() {
 				try {
-					appCtx = app.run(args);
+					appCtx = app.run();
 				} catch (Exception ex) {
 					try { appCtx.close(); } catch (Exception x) {/* No Op */}
 					main.interrupt();
@@ -177,6 +188,54 @@ public class StreamHub {
 //		} catch (InterruptedException ex) {
 //			System.exit(0);
 //		}
+		
+	}
+	
+	/** The discovery zookeep client */
+	protected ZooKeeper zk;
+	
+	public StreamHub(final String[] args) {
+		final String zooKeepConnect = findArg(ZOOKEEP_CONNECT_ARG, DEFAULT_ZOOKEEP_CONNECT, args);
+		final int zooKeepTimeout = findArg(ZOOKEEP_TIMEOUT_ARG, DEFAULT_ZOOKEEP_TIMEOUT, args);
+		 
+		try {
+			zk = new ZooKeeper(zooKeepConnect, zooKeepTimeout, this);
+			Stat stat = zk.exists(ZOOKEEP_URL_ROOT, false);
+			if(stat==null) {
+				System.err.println("No StreamHub Admin Root [" + ZOOKEEP_URL_ROOT + "] on connected zookeep server. Is the admin server running ?");
+				System.exit(-1);
+			}
+			stat = zk.exists(ZOOKEEP_URL, false);
+			if(stat==null) {
+				
+			} else {
+				byte[] data = zk.getData(ZOOKEEP_URL, false, stat);
+				String urlStr = new String(data, UTF8);
+				System.out.println("StreamHubAdmin is at: [" + urlStr + "]");
+			}
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to acquire zookeeper connection at [" + zooKeepConnect + "]", ex);
+		}
+		
+	}
+	
+	/**
+	 * Starts the stream hub
+	 */
+	public void start() {
+		appCtx.refresh();
+	}
+
+	/**
+	 * Main entry point for StreamHub
+	 * @param args Supported arguments are all <b><code>--</code></b> prefixed, followed by the value if not a boolean flag: <ul>
+	 * 	<li><b>--config &lt;URL or file for the spring xml configuration file&gt;</b> Overrides the built in spring config.</li>
+	 * </ul>
+	 * TODO: Add JMXMP Port and iface
+	 * TODO: Add help
+	 */
+	public static void main(final String[] args) {
+		final StreamHub hub = new StreamHub(args);
 	}
 	
 //	JMXHelper.getAgentProperties().setProperty("sun.java.command", "StreamHubOK");
@@ -201,10 +260,52 @@ public class StreamHub {
 	}
 	
 	/**
+	 * Finds a command line arg value
+	 * @param prefix The prefix
+	 * @param defaultValue The default value if not found
+	 * @param args The command line args to search
+	 * @return the value
+	 */
+	private static int findArg(final String prefix, final int defaultValue, final String[] args) {
+		final String s = findArg(prefix, (String)null, args);
+		if(s==null) return defaultValue;
+		try {
+			return Integer.parseInt(s);
+		} catch (Exception ex) {
+			return defaultValue;
+		}
+	}
+	
+	
+	/**
+	 * Finds a command line arg value
+	 * @param prefix The prefix
+	 * @param defaultValue The default value if not found
+	 * @param args The command line args to search
+	 * @return the value
+	 */
+	private static String findArg(final String prefix, final String defaultValue, final String[] args) {
+		for(String s: args) {
+			if(s.startsWith(prefix)) {
+				s = s.replace(prefix, "").trim();
+				return s;
+			}
+		}
+		return defaultValue;
+	}
+	
+	
+	/**
 	 * Err prints the usage
 	 */
 	public static void usage() {
 		System.err.println("Usage:\n\t//TODO: implements this");
+	}
+
+	@Override
+	public void process(WatchedEvent arg0) {
+		// TODO Auto-generated method stub
+		
 	}
 
 }

@@ -60,6 +60,24 @@
 		  <artifactId>zookeeper</artifactId>
 		</dependency>
 		
+		<!--  Curator -->
+		
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-client</artifactId>
+		</dependency>
+		
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-framework</artifactId>
+		</dependency>
+
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-recipes</artifactId>
+		</dependency>
+
+		
 		
 
 		<dependency>
