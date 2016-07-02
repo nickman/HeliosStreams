@@ -57,7 +57,7 @@
 		<jexl.version>3.0</jexl.version>
 		<!-- <kafka.version>0.9.0.1</kafka.version> -->
 		<kafka.version>0.10.0.0</kafka.version>
-		
+		<zookeeper.version>3.4.8</zookeeper.version>
 		<!-- Plugin Versions -->
 		<compiler-plugin.version>3.5.1</compiler-plugin.version>
 		<source-plugin.version>2.2</source-plugin.version>
@@ -143,6 +143,13 @@
 		      ZooKeeper Artifacts
 		      ========================================
 		      -->
+
+			<dependency>
+			  <groupId>org.apache.zookeeper</groupId>
+			  <artifactId>zookeeper</artifactId>
+			  <version>${zookeeper.version}</version>
+			</dependency>
+
 			<dependency>
 			  <groupId>org.apache.curator</groupId>
 			  <artifactId>curator-framework</artifactId>

@@ -56,6 +56,14 @@
         	<artifactId>spring-boot-starter-web</artifactId>		
         </dependency>
 		
+
+        <!-- ZooKeep -->
+
+		<dependency>
+		  <groupId>org.apache.zookeeper</groupId>
+		  <artifactId>zookeeper</artifactId>
+		</dependency>
+		
 		
 
 		<dependency>
