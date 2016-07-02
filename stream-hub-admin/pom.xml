@@ -47,7 +47,7 @@
 		
 		<dependency>
 		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-tomcat</artifactId>
+		    <artifactId>spring-boot-starter-undertow</artifactId>
 		</dependency>
 		
 		<dependency>
@@ -195,7 +195,7 @@
                    <addClasspath>true</addClasspath>
                </manifest>
                <manifestEntries>
-	               <Main-Class>com.heliosapm.streams.StreamHub</Main-Class>
+	               <Main-Class>com.heliosapm.streams.admin.StreamHubAdminServer</Main-Class>
                </manifestEntries>
            </archive>
 				  

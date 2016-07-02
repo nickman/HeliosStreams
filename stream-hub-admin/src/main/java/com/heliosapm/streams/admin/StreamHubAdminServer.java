@@ -21,13 +21,21 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import javax.management.remote.jmxmp.JMXMPConnectorServer;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.ContextRefreshedEvent;
 
+import com.heliosapm.streams.admin.zookeep.ZooKeepPublisher;
 import com.heliosapm.utils.collections.Props;
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 import de.codecentric.boot.admin.config.EnableAdminServer;
@@ -39,9 +47,9 @@ import de.codecentric.boot.admin.config.EnableAdminServer;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.admin.StreamHubAdminServer</code></p>
  */
-@Configuration
-@EnableAutoConfiguration
+@SpringBootApplication
 @EnableAdminServer
+@EnableAutoConfiguration
 public class StreamHubAdminServer {
 
 	/** The command line arg prefix for the properties config for this admin instance */
@@ -55,6 +63,11 @@ public class StreamHubAdminServer {
 	
 	/** The original system props so we can reset */
 	private static final Map<String, String> VIRGIN_SYS_PROPS = Collections.unmodifiableMap(new HashMap<String, String>(Props.asMap(System.getProperties())));
+	
+	/** The publisher that registers the advertised URL in ZooKeeper */
+	private static ZooKeepPublisher zooKeepPublisher = null;
+	
+	private static SpringApplication springApp = null;
 
 	
 	
@@ -69,9 +82,42 @@ public class StreamHubAdminServer {
 	 * @param args As follows:
 	 */
 	public static void main(final String[] args) {
+		System.setProperty("spring.application.name", "StreamHubAdmin");
 		Props.setFromUnless(DEFAULT_ADMIN_PROPS, System.getProperties(), false);		
 		installProps(args);
-		appCtx = SpringApplication.run(StreamHubAdminServer.class, args);
+		final JMXMPConnectorServer jmxmp = JMXHelper.fireUpJMXMPServer(System.getProperty("jmx.jmxmp.uri"));
+		if(jmxmp!=null) {
+			System.out.println("JMXMP Server enabled on [" + jmxmp.getAddress() + "]");
+		}
+		zooKeepPublisher = new ZooKeepPublisher();
+		ExtendedThreadManager.install();
+		springApp = new SpringApplication(StreamHubAdminServer.class);							
+		springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
+			@Override
+			public void onApplicationEvent(final ContextRefreshedEvent event) {
+				try {
+					zooKeepPublisher.start();
+					System.out.println("\n\t==================================================\n\tStreamHubAdmin Server Started\n\t==================================================\n");
+				} catch (Exception ex) {
+					System.err.println("Failed to register with ZooKeeper. Shutting down. Stack trace follows.");
+					ex.printStackTrace(System.err);
+					System.exit(-1);
+				}						
+			}
+		});
+		springApp.addListeners(new ApplicationListener<ContextClosedEvent>(){
+			@Override
+			public void onApplicationEvent(final ContextClosedEvent event) {
+				if(zooKeepPublisher!=null) {
+					zooKeepPublisher.stop();
+					if(jmxmp!=null) {
+						try { jmxmp.stop(); System.out.println("Stopped JMXMP Connection Server"); } catch (Exception x) {/* No Op */}
+					}
+					System.out.println("\n\t==================================================\n\tStreamHubAdmin Server Stopped\n\t==================================================\n");						
+				}
+			}
+		});			
+		appCtx = springApp.run(args);
         StdInCommandHandler.getInstance().run();
     }	
 	

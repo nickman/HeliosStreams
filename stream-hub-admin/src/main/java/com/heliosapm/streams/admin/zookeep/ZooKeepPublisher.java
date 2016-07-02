@@ -19,14 +19,33 @@ under the License.
 package com.heliosapm.streams.admin.zookeep;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.nio.charset.Charset;
+import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+import javax.management.MBeanNotificationInfo;
+import javax.management.Notification;
+import javax.management.NotificationBroadcasterSupport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooDefs;
+import org.apache.zookeeper.ZooDefs.Ids;
 import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.data.ACL;
+import org.apache.zookeeper.data.Stat;
 
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.SharedNotificationExecutor;
+import com.heliosapm.utils.net.LocalHost;
 
 /**
  * <p>Title: ZooKeepPublisher</p>
@@ -35,56 +54,146 @@ import com.heliosapm.utils.config.ConfigurationHelper;
  * <p><code>com.heliosapm.streams.admin.zookeep.ZooKeepPublisher</code></p>
  */
 
-public class ZooKeepPublisher implements Watcher {
+public class ZooKeepPublisher extends NotificationBroadcasterSupport implements Watcher, ZooKeepPublisherMBean {
 
-	/** The config key for the name of the zookeeper node the admin server will publish its http URL into */
-	public static final String CONFIG_NODE_NAME = "streamhub.config.zookeeper.admin.nodename";
-	/** The default name of the zookeeper node the admin server will publish its http URL into */
-	public static final String DEFAULT_NODE_NAME = "streamhub-admin-url";
 	/** The config key for the zookeeper connect string */
 	public static final String CONFIG_CONNECT = "streamhub.config.zookeeperconnect";
 	/** The default zookeeper connect string */
 	public static final String DEFAULT_CONNECT = "localhost:2181";
-	/** The config key for the zookeeper chroot */
-	public static final String CONFIG_CHROOT = "streamhub.config.zookeeper.chroot";
-	/** The default zookeeper chroot */
-	public static final String DEFAULT_CHROOT = "/streamhub";
+
+	/** The config key for the remotable host name the admin is listening on */
+	public static final String CONFIG_HOST_NAME = "server.address";
+	/** The config key for the port the admin is listening on */
+	public static final String CONFIG_PORT = "server.port";
+	
+	
+	
+	/** Indicates if we're running on Windows */
+	public static final boolean IS_WIN = System.getProperty("os.name", "").toLowerCase().contains("windows");
+	/** The JVM's PID */
+	public static final String SPID = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
+	/** The JVM's host name according to the RuntimeMXBean */
+	public static final String HOST = ManagementFactory.getRuntimeMXBean().getName().split("@")[1];
 
 	/** The config key for the zookeeper session timeout */
 	public static final String CONFIG_TIMEOUT = "streamhub.config.zookeeper.timeout";
 	/** The default zookeeper session timeout */
-	public static final int DEFAULT_TIMEOUT = 60000;
+	public static final int DEFAULT_TIMEOUT = 15000;
+	
+	/** The zookeep root node */
+	public static final String ROOT_NODE = "/streamhub";
+	/** The zookeep root admin node */
+	public static final String ROOT_ADMIN_NODE = ROOT_NODE + "/admin";
+	/** The zookeep root admin node containing the advertised URL */
+	public static final String ROOT_ADMIN_NODE_URL = ROOT_ADMIN_NODE + "/url";
+	
+	/** The JMX notification infos */
+	private static final MBeanNotificationInfo[] NOTIF_INFOS = new MBeanNotificationInfo[] {
+			new MBeanNotificationInfo(new String[]{NOTIF_CONNECTED}, Notification.class.getName(), "Emitted when the ZooKeep connection is established"),
+			new MBeanNotificationInfo(new String[]{NOTIF_DISCONNECTED}, Notification.class.getName(), "Emitted when the ZooKeep connection is cleanly closed"),
+			new MBeanNotificationInfo(new String[]{NOTIF_EXPIRED}, Notification.class.getName(), "Emitted when the ZooKeep connection expires")
+	};
+	
+	
+	
+	
+	/** The UTF8 character set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
 
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The configured connect string */	
 	protected final String connect;
-	/** The configured chroot string */
-	protected final String chroot;
-	/** The configured node name */
-	protected final String nodeName;
 	/** The session timeout in ms. */
 	protected final int timeout;
 	/** The zookeeper client instance */
-	protected final ZooKeeper zk;
+	protected ZooKeeper zk = null;
+	/** flag indicating if we're connected to zookeeper */
+	protected final AtomicBoolean connected = new AtomicBoolean(false);
+	/** The advertised URL to connect to the admin for worker nodes */
+	protected final String adminUrl;
+	
+	/** Serial factory for JMX notifications */
+	protected final AtomicLong notifSerial = new AtomicLong();
+	
+	/** The current session id */
+	protected Long sessionId = null;
 	
 	/**
 	 * Creates a new ZooKeepPublisher
+	 */
+	public ZooKeepPublisher() {
+		super(SharedNotificationExecutor.getInstance(), NOTIF_INFOS);
+		connect = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_CONNECT, DEFAULT_CONNECT);
+		timeout = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_TIMEOUT, DEFAULT_TIMEOUT);
+		adminUrl = "http://" + hostName() + ":" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_PORT, 7560) + ConfigurationHelper.getSystemThenEnvProperty("server.context-path", "/" + ROOT_ADMIN_NODE.replace("/", ""));
+		log.info("Advertised Admin URL: [{}]", adminUrl);
+	}
+	
+	
+	/**
+	 * Starts the publisher
 	 * @throws IOException thrown if we can't create the zk
 	 */
-	public ZooKeepPublisher() throws IOException {
-		connect = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_CONNECT, DEFAULT_CONNECT);
-		chroot = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_CHROOT, DEFAULT_CHROOT);
-		nodeName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_NODE_NAME, DEFAULT_NODE_NAME);
-		timeout = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_TIMEOUT, DEFAULT_TIMEOUT);
-		zk = new ZooKeeper(connect + chroot, timeout, this);
+	public void start() throws IOException {
+		log.info(">>>>> Starting ZooKeepPublisher...");
+		zk = new ZooKeeper(connect, timeout, this);
+		try {
+			final List<ACL> rootAcls = Arrays.asList(
+					new ACL(ZooDefs.Perms.ALL, ZooDefs.Ids.ANYONE_ID_UNSAFE)
+			);
+			Exception firstEx = null;
+			try { zk.create(ROOT_NODE, new byte[0], Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT); } catch (Exception x) {
+				firstEx = x;
+			}
+			try { zk.create(ROOT_ADMIN_NODE, new byte[0], rootAcls, CreateMode.PERSISTENT);} catch (Exception x) {
+				if(firstEx==null) firstEx = x;
+			}
+			Stat rootStat = zk.exists(ROOT_ADMIN_NODE, false);
+			if(rootStat==null) {
+				throw new RuntimeException("No admin root [" + ROOT_ADMIN_NODE + "] found and failed to create", firstEx);
+			}
+			log.info("Root Admin Node: [{}]", rootStat);
+			try { 
+				zk.create(ROOT_ADMIN_NODE_URL, adminUrl.getBytes(UTF8), Ids.READ_ACL_UNSAFE, CreateMode.EPHEMERAL);
+				log.info("Registered Admin URL [{}] in [{}]", ROOT_ADMIN_NODE_URL, ROOT_ADMIN_NODE_URL);
+			} catch (Exception ex) {
+				log.error("Failed to register admin URL", ex);
+			}
+			JMXHelper.registerMBean(this, OBJECT_NAME);
+			log.info("<<<<< ZooKeepPublisher Started.");
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to start ZooKeeperPublisher", ex);
+		}
+		
+	}
+	
+	/**
+	 * Stops the publisher
+	 */
+	public void stop() {
+		log.info(">>>>> Stopping ZooKeepPublisher...");
+		if(zk!=null) {
+			try { zk.delete(ROOT_ADMIN_NODE_URL, -1); } catch (Exception x) {/* No Op */}
+			try { zk.close(); } catch (Exception x) {/* No Op */}
+			try { JMXHelper.unregisterMBean(OBJECT_NAME); } catch (Exception x) {/* No Op */}
+		}
+		log.info("<<<<< ZooKeepPublisher Stopped.");
 	}
 	
 	public static void main(String[] args) {
 		try {
-			ZooKeepPublisher pub = new ZooKeepPublisher();
-			pub.log.info("Created Zk");
-			Thread.currentThread().join(60000);
+			JMXHelper.fireUpJMXMPServer(1829);
+			final ZooKeepPublisher pub = new ZooKeepPublisher();
+			pub.start();
+			StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
+				@Override
+				public void run() {
+					pub.stop();
+					System.exit(0);					
+				}
+			}).run();
+//			pub.stop();
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			System.exit(-1);
@@ -96,39 +205,59 @@ public class ZooKeepPublisher implements Watcher {
 	 * @see org.apache.zookeeper.Watcher#process(org.apache.zookeeper.WatchedEvent)
 	 */
 	@Override
-	public void process(final WatchedEvent event) {
-		log.info("ZooKeep Event: [{}]", event);		
+	public void process(final WatchedEvent event) {			
+		switch(event.getState()) {
+			case Disconnected:
+				connected.set(false);
+				log.info("ZooKeep Session Disconnected");	
+				sessionId = null;
+				sendNotification(new Notification(NOTIF_DISCONNECTED, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "ZooKeeperPublisher disconnected from ZooKeeper [" + connect + "]"));
+				break;
+			case Expired:
+				connected.set(false);
+				log.info("ZooKeep Session Expired");
+				sessionId = null;
+				sendNotification(new Notification(NOTIF_EXPIRED, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "ZooKeeperPublisher connection expored from ZooKeeper [" + connect + "]"));
+				break;
+			case SyncConnected:
+				connected.set(true);
+				sessionId = zk.getSessionId();
+				log.info("ZooKeep Connected. SessionID: [{}]", sessionId);
+				sendNotification(new Notification(NOTIF_EXPIRED, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "ZooKeeperPublisher connected to ZooKeeper [" + connect + "]"));
+				break;
+			default:
+				log.info("ZooKeep Event: [{}]", event);
+				break;		
+		}		
+	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.admin.zookeep.ZooKeepPublisherMBean#isConnected()
+	 */
+	@Override
+	public boolean isConnected() {
+		return connected.get();
 	}
 
 	/**
-	 * Returns the connect string
-	 * @return the connect
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.admin.zookeep.ZooKeepPublisherMBean#getZooConnect()
 	 */
-	public String getConnect() {
+	@Override
+	public String getZooConnect() {
 		return connect;
 	}
 
-	/**
-	 * Returns the connect chroot
-	 * @return the chroot
-	 */
-	public String getChroot() {
-		return chroot;
-	}
+
 
 	/**
-	 * Returns the binding node name
-	 * @return the nodeName
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.admin.zookeep.ZooKeepPublisherMBean#getZooTimeout()
 	 */
-	public String getNodeName() {
-		return nodeName;
-	}
-
-	/**
-	 * Returns the session timeout in ms.
-	 * @return the timeout
-	 */
-	public int getTimeout() {
+	@Override
+	public int getZooTimeout() {
 		return timeout;
 	}
 
@@ -139,5 +268,45 @@ public class ZooKeepPublisher implements Watcher {
 	public ZooKeeper getZk() {
 		return zk;
 	}
+	
+	
+	/**
+	 * Attempts a series of methods of divining the host name
+	 * @return the determined host name
+	 */
+	public static String hostName() {	
+		String host = System.getProperty(CONFIG_HOST_NAME, "").trim();
+		if(host!=null && !host.isEmpty()) return host;
+		host = LocalHost.getHostNameByNic();
+		if(host!=null) return host;		
+		host = LocalHost.getHostNameByInet();
+		if(host!=null) return host;
+		host = System.getenv(IS_WIN ? "COMPUTERNAME" : "HOSTNAME");
+		if(host!=null && !host.trim().isEmpty()) return host;
+		return HOST;
+	}	
+	
+	/**
+	 * The real host name (no configs consulted)
+	 * @return the determined host name
+	 */
+	public static String realHostName() {	
+		String host = LocalHost.getHostNameByNic();
+		if(host!=null) return host;		
+		host = LocalHost.getHostNameByInet();
+		if(host!=null) return host;
+		host = System.getenv(IS_WIN ? "COMPUTERNAME" : "HOSTNAME");
+		if(host!=null && !host.trim().isEmpty()) return host;
+		return HOST;
+	}
+
+	/**
+	 * Returns the advertised URL for admin services
+	 * @return the advertised URL for admin services
+	 */
+	public String getAdminUrl() {
+		return adminUrl;
+	}	
+	
 
 }

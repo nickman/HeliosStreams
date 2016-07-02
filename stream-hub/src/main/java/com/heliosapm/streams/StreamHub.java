@@ -42,14 +42,8 @@ import com.heliosapm.utils.url.URLHelper;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.StreamHub</code></p>
  */
+
 @SpringBootApplication
-
-/*  All these are in @SpringBootApplication
-@Configuration
-@ComponentScan
-@EnableAutoConfiguration
-*/
-
 @ImportResource("classpath:streamhub.xml")
 @EnableDiscoveryClient
 //@EnableAdminServer
