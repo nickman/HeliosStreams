@@ -24,12 +24,21 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.curator.CuratorZookeeperClient;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.RetrySleeper;
-import org.apache.curator.SessionFailRetryLoop;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.listen.Listenable;
+import org.apache.curator.framework.recipes.cache.ChildData;
+import org.apache.curator.framework.recipes.cache.TreeCache;
+import org.apache.curator.framework.recipes.cache.TreeCacheEvent;
+import org.apache.curator.framework.recipes.cache.TreeCacheListener;
 import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.zookeeper.ClientCnxn;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
@@ -105,55 +114,58 @@ public class AdminFinder implements Watcher, RetryPolicy {
 		zookeepConnect = findArg(ZOOKEEP_CONNECT_ARG, DEFAULT_ZOOKEEP_CONNECT, args);
 		zookeepTimeout = findArg(ZOOKEEP_TIMEOUT_ARG, DEFAULT_ZOOKEEP_TIMEOUT, args);
 		connectTimeout = findArg(CONNECT_TIMEOUT_ARG, DEFAULT_CONNECT_TIMEOUT, args);
-		retryPauseTime = findArg(RETRY_ARG, DEFAULT_RETRY, args);
-		
+		retryPauseTime = findArg(RETRY_ARG, DEFAULT_RETRY, args);		
 	}
 	
 	public void start() {
 		try {
-			CuratorFramework cf = CuratorFrameworkFactory.newClient(zookeepConnect, zookeepTimeout, connectTimeout, this);
+			log.info("Starting Connection Loop");
+//			loff();
+			//CuratorFramework cf = CuratorFrameworkFactory.newClient(zookeepConnect, zookeepTimeout, connectTimeout, this);
 					
-//					CuratorFrameworkFactory.builder()
-//					.canBeReadOnly(true)
-//					.connectionTimeoutMs(connectTimeout)
-//					.sessionTimeoutMs(zookeepTimeout)
-//					.connectString(zookeepConnect)
-//					
-//					//.retryPolicy(new ExponentialBackoffRetry(5000, 200))
-//					.retryPolicy(this)
-//					.threadFactory(threadFactory)
-//					.build();
+			CuratorFramework cf = CuratorFrameworkFactory.builder()
+					.canBeReadOnly(false)
+					.connectionTimeoutMs(connectTimeout)
+					.sessionTimeoutMs(zookeepTimeout)
+					.connectString(zookeepConnect)
+					
+					.retryPolicy(new ExponentialBackoffRetry(5000, 200))
+					//.retryPolicy(this)
+					.threadFactory(threadFactory)
+					.build();
 			cf.start();
+			log.info("CF Started");
 			cf.blockUntilConnected();
+			lon();
+			log.info("Connected");
 			czk = cf.getZookeeperClient();
-			
-//			SessionFailRetryLoop retryLoop = czk.newSessionFailRetryLoop(SessionFailRetryLoop.Mode.RETRY);
-//			final AtomicBoolean inited = new AtomicBoolean(false);
-//			retryLoop.start();
-//			try {
-//				while ( retryLoop.shouldContinue()) {
-//					try {
-//						if(!inited.get()) {
-//							czk.start();
-//							inited.set(true);
-//							break;
-//						}						
-//			         } catch ( Exception e ) {
-////			             retryLoop.takeException(e);
-//			             if(!retryLoop.shouldContinue()) {
-//			            	 log.error("Retry Limit. We're outa here");
-//			            	 System.exit(-1);
-//			             }
-//			         }
-//			     }
-//			 } finally {
-//			     retryLoop.close();
-//			 }			
+			log.info("CZK Connected: {}",  czk.isConnected());
 			zk = czk.getZooKeeper();
 			Stat stat = zk.exists(ZOOKEEP_URL_ROOT, false);
 			if(stat==null) {
+				
 				log.error("Connected ZooKeeper server does not contain the StreamHubAdmin node. Are you connected to the right server ?");
-				System.exit(-1);
+				TreeCache tc = new TreeCache(cf, "/");
+				tc.start();
+				log.info("TreeCache Started");
+				Listenable<TreeCacheListener> listen = tc.getListenable();
+				listen.addListener(new TreeCacheListener(){
+					/**
+					 * {@inheritDoc}
+					 * @see org.apache.curator.framework.recipes.cache.TreeCacheListener#childEvent(org.apache.curator.framework.CuratorFramework, org.apache.curator.framework.recipes.cache.TreeCacheEvent)
+					 */
+					@Override
+					public void childEvent(CuratorFramework client, TreeCacheEvent event) throws Exception {
+						ChildData cd = event.getData();
+						if(cd!=null) {
+							log.info("TreeCache Bound [{}]", cd.getPath());
+							// /streamhub/admin
+							// /streamhub/admin/url
+						}
+					}
+				});
+				Thread.currentThread().join();
+				//System.exit(-1);
 			} else {
 				byte[] data = zk.getData(ZOOKEEP_URL, false, stat);
 				String urlStr = new String(data, UTF8);
@@ -174,7 +186,26 @@ public class AdminFinder implements Watcher, RetryPolicy {
 		}
 	}
 	
-
+	protected volatile Level cxnLevel = Level.INFO;
+	
+	protected void loff() {
+		LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+		Configuration config = ctx.getConfiguration();
+		LoggerConfig loggerConfig = config.getLoggerConfig(ClientCnxn.class.getName());
+		cxnLevel = loggerConfig.getLevel();
+		log.info("CXN Logger Level: {}", cxnLevel.name());
+		loggerConfig.setLevel(Level.ERROR);
+		ctx.updateLoggers();		
+	}
+	
+	protected void lon() {
+		LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+		Configuration config = ctx.getConfiguration();
+		LoggerConfig loggerConfig = config.getLoggerConfig(ClientCnxn.class.getName()); 
+		loggerConfig.setLevel(cxnLevel);
+		ctx.updateLoggers();		
+	}
+	
 	
 	/**
 	 * Finds a command line arg value
