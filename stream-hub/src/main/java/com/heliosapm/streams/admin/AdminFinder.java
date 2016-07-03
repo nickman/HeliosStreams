@@ -27,6 +27,7 @@ import org.apache.curator.RetrySleeper;
 import org.apache.curator.SessionFailRetryLoop;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
@@ -110,25 +111,35 @@ public class AdminFinder implements Watcher, RetryPolicy {
 	
 	public void start() {
 		try {
-			CuratorFramework cf = CuratorFrameworkFactory.builder()
-					.canBeReadOnly(true)
-					.connectionTimeoutMs(connectTimeout)
-					.sessionTimeoutMs(zookeepTimeout)
-					.connectString(zookeepConnect)
-					.retryPolicy(this)
-					.threadFactory(threadFactory)
-					.build();
+			CuratorFramework cf = CuratorFrameworkFactory.newClient(zookeepConnect, zookeepTimeout, connectTimeout, this);
+					
+//					CuratorFrameworkFactory.builder()
+//					.canBeReadOnly(true)
+//					.connectionTimeoutMs(connectTimeout)
+//					.sessionTimeoutMs(zookeepTimeout)
+//					.connectString(zookeepConnect)
+//					
+//					//.retryPolicy(new ExponentialBackoffRetry(5000, 200))
+//					.retryPolicy(this)
+//					.threadFactory(threadFactory)
+//					.build();
 			cf.start();
+			cf.blockUntilConnected();
 			czk = cf.getZookeeperClient();
-			czk.start();
+			
 //			SessionFailRetryLoop retryLoop = czk.newSessionFailRetryLoop(SessionFailRetryLoop.Mode.RETRY);
+//			final AtomicBoolean inited = new AtomicBoolean(false);
 //			retryLoop.start();
 //			try {
 //				while ( retryLoop.shouldContinue()) {
 //					try {
-//						if(czk.blockUntilConnectedOrTimedOut()) break;
+//						if(!inited.get()) {
+//							czk.start();
+//							inited.set(true);
+//							break;
+//						}						
 //			         } catch ( Exception e ) {
-//			             retryLoop.takeException(e);
+////			             retryLoop.takeException(e);
 //			             if(!retryLoop.shouldContinue()) {
 //			            	 log.error("Retry Limit. We're outa here");
 //			            	 System.exit(-1);
