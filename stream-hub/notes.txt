@@ -40,5 +40,15 @@ streamhub.config.timeextractor:com.heliosapm.streams.metrics.TextLineTimestampEx
 		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.2.xsd">
 
 
+=========================================
+AdminFinder:
+============
+start connect loop
+on connect
+	create treecache (FILTER)
+	if url not present, listen on url
+	on url drop latch
 
-
+listen on node removed/changed
+	if removed, start listener
+	if changed, update and reset app
