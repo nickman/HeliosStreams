@@ -34,6 +34,8 @@ import org.apache.curator.framework.recipes.cache.ChildData;
 import org.apache.curator.framework.recipes.cache.TreeCache;
 import org.apache.curator.framework.recipes.cache.TreeCacheEvent;
 import org.apache.curator.framework.recipes.cache.TreeCacheListener;
+import org.apache.curator.framework.state.ConnectionState;
+import org.apache.curator.framework.state.ConnectionStateListener;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -69,7 +71,7 @@ listen on node removed/changed
 
  */
 
-public class AdminFinder implements Watcher, RetryPolicy {
+public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListener {
 	/** The singleton instance */
 	private static volatile AdminFinder instance = null;
 	/** The singleton instance ctor lock */
@@ -146,10 +148,11 @@ public class AdminFinder implements Watcher, RetryPolicy {
 	/** The curator framework */
 	protected CuratorFramework cf = null;
 	
-	/** Indicates if we're connected */
-	protected final AtomicBoolean connected = new AtomicBoolean(false);
 	/** The admin URL */
 	protected final AtomicReference<String> adminURL = new AtomicReference<String>(null);
+	/** The curator framework connection state */
+	protected final AtomicReference<ConnectionState> cfState = new AtomicReference<ConnectionState>(ConnectionState.LOST);
+	
 	
 	/** The zookeep session id */
 	protected Long sessionId = null;
@@ -178,7 +181,8 @@ public class AdminFinder implements Watcher, RetryPolicy {
 				.retryPolicy(new ExponentialBackoffRetry(5000, 200))
 				//.retryPolicy(this)
 				.threadFactory(threadFactory)
-				.build();		
+				.build();	
+		cf.getConnectionStateListenable().addListener(this);
 	}
 	
 	/*
@@ -191,18 +195,17 @@ public class AdminFinder implements Watcher, RetryPolicy {
 	 */
 	
 	protected void start() {
-		if(!connected.get()) {
+		if(!isConnected()) {
 			log.info("Starting Connection Loop");
-			final CountDownLatch connectLatch = new CountDownLatch(1);
 			threadFactory.newThread(new Runnable(){
+				@Override
 				public void run() {
 					if(cf.getState()==CuratorFrameworkState.STOPPED) {
 						loff();
 						try {
 							cf.start();
 							try {
-								cf.blockUntilConnected();
-								
+								cf.blockUntilConnected();																
 							} catch (InterruptedException iex) {
 								log.error("Interupted while waiting on connect", iex);
 							}
@@ -215,6 +218,56 @@ public class AdminFinder implements Watcher, RetryPolicy {
 			}).start();
 		}
 	}
+	
+	public String getAdminURL() {
+		return null;
+	}
+	
+	public void registerAdminURLListener(final )
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.curator.framework.state.ConnectionStateListener#stateChanged(org.apache.curator.framework.CuratorFramework, org.apache.curator.framework.state.ConnectionState)
+	 */
+	@Override
+	public void stateChanged(final CuratorFramework client, final ConnectionState newState) {
+		final ConnectionState cs = cfState.getAndSet(newState);
+		log.info("cfState transition: [{}] --> [{}]", cs, newState);
+		
+		switch(newState) {			
+			case CONNECTED:
+				break;
+			case LOST:
+				break;
+			case READ_ONLY:
+				break;
+			case RECONNECTED:
+				break;
+			case SUSPENDED:
+				break;
+			default:
+				break;
+				
+			}
+	}
+	
+	/**
+	 * Indicates if the underlying curator framework is started
+	 * @return true if the underlying curator framework is started, false otherwise
+	 */
+	public boolean isStarted() {
+		return cf.getState()!=CuratorFrameworkState.STOPPED;
+	}
+	
+	/**
+	 * Indicates if the underlying curator framework is connected
+	 * @return true if the underlying curator framework is connected, false otherwise
+	 */
+	public boolean isConnected() {
+		return cfState.get().isConnected();
+	}
+	
+	
 	
 	public void startx() {
 		try {
