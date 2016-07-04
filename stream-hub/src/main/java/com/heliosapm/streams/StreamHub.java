@@ -28,7 +28,6 @@ import java.util.Properties;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
-import org.apache.zookeeper.data.Stat;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationFailedEvent;
@@ -39,7 +38,7 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
 
-
+import com.heliosapm.streams.admin.AdminFinder;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.io.StdInCommandHandler;
@@ -59,6 +58,7 @@ import com.heliosapm.utils.url.URLHelper;
 //@EnableAdminServer
 public class StreamHub implements Watcher {
 	private static ConfigurableApplicationContext appCtx = null;
+	private static SpringApplication springApp = null;
 	/** Static class logger */
 //	public static final Logger LOG = LogManager.getLogger(StreamHub.class);
 	
@@ -170,18 +170,18 @@ public class StreamHub implements Watcher {
 		};
 		t.setDaemon(true);
 		t.start();
-		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
-			public void run() {
-				try {
-					appCtx.close();
-				} catch (Exception ex) {
-					System.out.println("WARN: Failure on app context close:" + ex);
-				} finally {					
-					main.interrupt();
-				}
-			}
-		}).runAsync(true)
-		.join();
+//		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
+//			public void run() {
+//				try {
+//					appCtx.close();
+//				} catch (Exception ex) {
+//					System.out.println("WARN: Failure on app context close:" + ex);
+//				} finally {					
+//					main.interrupt();
+//				}
+//			}
+//		}).runAsync(true)
+//		.join();
 		
 //		try {
 //			Thread.currentThread().join();
@@ -195,26 +195,15 @@ public class StreamHub implements Watcher {
 	protected ZooKeeper zk;
 	
 	public StreamHub(final String[] args) {
-		final String zooKeepConnect = findArg(ZOOKEEP_CONNECT_ARG, DEFAULT_ZOOKEEP_CONNECT, args);
-		final int zooKeepTimeout = findArg(ZOOKEEP_TIMEOUT_ARG, DEFAULT_ZOOKEEP_TIMEOUT, args);
-		 
+		final AdminFinder af = AdminFinder.getInstance(args);
 		try {
-			zk = new ZooKeeper(zooKeepConnect, zooKeepTimeout, this);
-			Stat stat = zk.exists(ZOOKEEP_URL_ROOT, false);
-			if(stat==null) {
-				System.err.println("No StreamHub Admin Root [" + ZOOKEEP_URL_ROOT + "] on connected zookeep server. Is the admin server running ?");
-				System.exit(-1);
-			}
-			stat = zk.exists(ZOOKEEP_URL, false);
-			if(stat==null) {
-				
-			} else {
-				byte[] data = zk.getData(ZOOKEEP_URL, false, stat);
-				String urlStr = new String(data, UTF8);
-				System.out.println("StreamHubAdmin is at: [" + urlStr + "]");
-			}
+			final String adminURL = af.getAdminURL(true);
+			System.setProperty("spring.boot.admin.url", adminURL);
+			springApp = new SpringApplication(StreamHub.class);			
+			appCtx = springApp.run(args);			
+			
 		} catch (Exception ex) {
-			throw new RuntimeException("Failed to acquire zookeeper connection at [" + zooKeepConnect + "]", ex);
+			throw new RuntimeException("Failed to start StreamHub Instance", ex);
 		}
 		
 	}

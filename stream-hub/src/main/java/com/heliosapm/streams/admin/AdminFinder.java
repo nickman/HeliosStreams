@@ -16,6 +16,8 @@
 package com.heliosapm.streams.admin;
 
 import java.nio.charset.Charset;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
@@ -49,7 +51,11 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
+import com.heliosapm.utils.jmx.JMXManagedThreadPool;
+import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 
 /**
  * <p>Title: AdminFinder</p>
@@ -112,6 +118,8 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 				}
 			}
 		}
+		instance.loff();
+		instance.start();
 		return instance;
 	}
 	
@@ -150,6 +158,9 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	
 	/** The admin URL */
 	protected final AtomicReference<String> adminURL = new AtomicReference<String>(null);
+	/** The admin URL latch to wait on if not set */
+	protected final AtomicReference<CountDownLatch> adminURLLatch = new AtomicReference<CountDownLatch>(new CountDownLatch(1));
+	
 	/** The curator framework connection state */
 	protected final AtomicReference<ConnectionState> cfState = new AtomicReference<ConnectionState>(ConnectionState.LOST);
 	
@@ -160,8 +171,23 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	protected int connectTimeout = -1;
 	/** The reconnect payse time in ms. */
 	protected int retryPauseTime = -1;
-	/** The thread factry for the curator client */
-	protected final ThreadFactory threadFactory = JMXManagedThreadFactory.newThreadFactory("ZooKeeperAdminFinder", true); 
+	/** The thread factroy for the curator client */
+	protected final ThreadFactory threadFactory = JMXManagedThreadFactory.newThreadFactory("ZooKeeperAdminFinder", true);
+	/** The thread pool to run async tasks in */
+	protected final JMXManagedThreadPool threadPool = JMXManagedThreadPool.builder()
+		.corePoolSize(2)
+		.maxPoolSize(12)
+		.keepAliveTimeMs(60000)
+		.objectName(JMXHelper.objectName("com.heliosapm.streams.admin:service=ThreadPool,name=AdminFinder"))
+		.poolName("AdminFinder")
+		.prestart(2)
+		.publishJMX(true)
+		.queueSize(32)
+		.threadFactory(threadFactory)
+		.build();
+	
+	/** A set of registered admin URL listeners */
+	protected final Set<AdminURLListener> listeners = new CopyOnWriteArraySet<AdminURLListener>();
 	
 
 	/**
@@ -182,7 +208,7 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 				//.retryPolicy(this)
 				.threadFactory(threadFactory)
 				.build();	
-		cf.getConnectionStateListenable().addListener(this);
+		cf.getConnectionStateListenable().addListener(this);		
 	}
 	
 	/*
@@ -194,20 +220,41 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	 * 
 	 */
 	
-	protected void start() {
-		if(!isConnected()) {
-			log.info("Starting Connection Loop");
+	/**
+	 * Starts the connection attempt loop
+	 * @return this AdminFinder 
+	 */
+	protected AdminFinder start() {
+		if(!isConnected()) {			
 			threadFactory.newThread(new Runnable(){
 				@Override
 				public void run() {
-					if(cf.getState()==CuratorFrameworkState.STOPPED) {
+					log.info("Starting Connection Loop");
+					if(cf.getState()!=CuratorFrameworkState.STARTED) {
 						loff();
-						try {
+						try {							
 							cf.start();
-							try {
-								cf.blockUntilConnected();																
-							} catch (InterruptedException iex) {
-								log.error("Interupted while waiting on connect", iex);
+							final AtomicInteger attempt = new AtomicInteger(0);
+							while(true) {
+								final int att = attempt.incrementAndGet();
+								final long start = System.currentTimeMillis();
+								try {
+									log.info("Starting connection attempt #{}", att);
+									if(cf.blockUntilConnected(retryPauseTime, TimeUnit.MILLISECONDS)) {
+										log.info("Connected to [{}] on attempt #{}", cf.getZookeeperClient().getCurrentConnectionString(), att);
+										czk = cf.getZookeeperClient();
+										try { zk = czk.getZooKeeper(); } catch (Exception ex) {
+											log.warn("Failed to get ZooKeeper instance from connected CuratorZookeeperClient", ex);
+										}
+										acquireAdminURL();
+										break;
+									}
+									final long elapsedSecs = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis()-start);
+									log.info("No connection acquired in last [{}] seconds for attempt #{}. Retrying....", elapsedSecs, att);
+								} catch (InterruptedException iex) {
+									if(Thread.interrupted()) Thread.interrupted();
+									log.info("Connect attempt #{} Interrupted while waiting on connect. Starting new attempt.", att);
+								}
 							}
 						} finally {
 							lon();
@@ -217,13 +264,46 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 				}
 			}).start();
 		}
+		return this;
 	}
 	
-	public String getAdminURL() {
-		return null;
+	public String getAdminURL(final boolean block) {
+		String s = adminURL.get();
+		if(s==null && block) {
+			try {
+				adminURLLatch.get().await();
+				s = adminURL.get();
+			} catch (InterruptedException iex) {
+				log.error("Interrupted while waiting on AdminURL", iex);
+				throw new RuntimeException("Interrupted while waiting on AdminURL", iex);
+			}
+		}
+		return s;
 	}
 	
-	public void registerAdminURLListener(final )
+	
+	/**
+	 * Adds an adminURL listener
+	 * @param listener the listener to add
+	 */
+	public void registerAdminURLListener(final AdminURLListener listener) {
+		if(listener!=null) {
+			listeners.add(listener);
+			final String s = adminURL.get();
+			if(s!=null) listener.onAdminURL(s);
+		}
+	}
+	
+	/**
+	 * Removes an adminURL listener
+	 * @param listener the listener to remove
+	 */
+	public void removeAdminURLListener(final AdminURLListener listener) {
+		if(listener!=null) {
+			listeners.remove(listener);
+		}
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -269,73 +349,141 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	
 	
 	
-	public void startx() {
+	/**
+	 * Attempts to acquire the AdminURL. If not present, starts an AdminURL waiting loop.
+	 */
+	protected void acquireAdminURL() {
 		try {
-			log.info("Starting Connection Loop");
-//			loff();
-			//CuratorFramework cf = CuratorFrameworkFactory.newClient(zookeepConnect, zookeepTimeout, connectTimeout, this);
-					
-			CuratorFramework cf = CuratorFrameworkFactory.builder()
-					.canBeReadOnly(false)
-					.connectionTimeoutMs(connectTimeout)
-					.sessionTimeoutMs(zookeepTimeout)
-					.connectString(zookeepConnect)
-					
-					.retryPolicy(new ExponentialBackoffRetry(5000, 200))
-					//.retryPolicy(this)
-					.threadFactory(threadFactory)
-					.build();
-			cf.start();
-			log.info("CF Started");
-			cf.blockUntilConnected();
-			lon();
-			log.info("Connected");
-			czk = cf.getZookeeperClient();
-			log.info("CZK Connected: {}",  czk.isConnected());
-			zk = czk.getZooKeeper();
-			Stat stat = zk.exists(ZOOKEEP_URL_ROOT, false);
-			if(stat==null) {
-				
-				log.error("Connected ZooKeeper server does not contain the StreamHubAdmin node. Are you connected to the right server ?");
-				TreeCache tc = new TreeCache(cf, "/");
-				tc.start();
-				log.info("TreeCache Started");
-				Listenable<TreeCacheListener> listen = tc.getListenable();
-				listen.addListener(new TreeCacheListener(){
-					/**
-					 * {@inheritDoc}
-					 * @see org.apache.curator.framework.recipes.cache.TreeCacheListener#childEvent(org.apache.curator.framework.CuratorFramework, org.apache.curator.framework.recipes.cache.TreeCacheEvent)
-					 */
-					@Override
-					public void childEvent(CuratorFramework client, TreeCacheEvent event) throws Exception {
-						ChildData cd = event.getData();
-						if(cd!=null) {
-							log.info("TreeCache Bound [{}]", cd.getPath());
-							// /streamhub/admin
-							// /streamhub/admin/url
-						}
-					}
-				});
-				Thread.currentThread().join();
-				//System.exit(-1);
+			log.info("Starting AdminURL Acquisition Loop");
+			Stat stat = zk.exists(ZOOKEEP_URL, false);
+			if(stat!=null) {
+				updateAdminURL(zk.getData(ZOOKEEP_URL, false, stat));
 			} else {
-				byte[] data = zk.getData(ZOOKEEP_URL, false, stat);
-				String urlStr = new String(data, UTF8);
-				System.out.println("StreamHubAdmin is at: [" + urlStr + "]");
-			}
-			
+				log.error("Connected ZooKeeper server does not contain the StreamHubAdmin URL. Will wait for it on [{}]", czk.getCurrentConnectionString());
+				waitForAdminURLBind();
+			}			
 		} catch (Exception ex) {
-			throw new RuntimeException("Failed to acquire zookeeper connection at [" + zookeepConnect + "]", ex);
+			throw new RuntimeException("Failed to acquire AdminURL from [" + zookeepConnect + "]", ex);
 		}
 	}
 	
-	public static void main(final String[] args) {
-		AdminFinder af = new AdminFinder(args);
-		try {
-			af.start();
-		} catch (Exception ex) {
-			ex.printStackTrace(System.err);
+	/**
+	 * Handles tasks required when the AdminURL is acquired
+	 * @param data The data acquired from thezookeep bound URL
+	 */
+	protected void updateAdminURL(final byte[] data) {
+		final String aUrl = new String(data, UTF8);
+		log.info("AdminURL acquired: [{}]",  aUrl);
+		final String prior = adminURL.getAndSet(aUrl);
+		adminURLLatch.get().countDown();
+		fireAdminURLAcquired(prior, aUrl);
+	}
+	
+	/**
+	 * Starts an AdminURL bind event loop
+	 */
+	protected void waitForAdminURLBind() {
+		final TreeCache tc = TreeCache.newBuilder(cf, ZOOKEEP_URL)
+				//.setExecutor(threadFactory)
+				//.setExecutor((ExecutorService)threadPool)
+				//.setCacheData(true)
+				.build();
+		final AtomicBoolean waiting = new AtomicBoolean(true);
+		final Thread waitForAdminURLThread = threadFactory.newThread(new Runnable(){
+			@Override
+			public void run() {
+				final Thread waitThread = Thread.currentThread();
+				try {						
+					final Listenable<TreeCacheListener> listen = tc.getListenable();			
+					listen.addListener(new TreeCacheListener(){
+						@Override
+						public void childEvent(final CuratorFramework client, final TreeCacheEvent event) throws Exception {
+							ChildData cd = event.getData();
+							if(cd!=null) {
+								log.info("TreeCache Bound [{}]", cd.getPath());
+								final String boundPath = cd.getPath();
+								if(ZOOKEEP_URL.equals(boundPath)) {
+									updateAdminURL(cd.getData());
+									tc.close();
+									waiting.set(false);
+									waitThread.interrupt();
+								}
+							}
+						}
+					});
+					tc.start();
+					log.debug("AdminURL TreeCache Started");			
+					// Check for the data one more time in case we missed 
+					// the bind event while setting up the listener
+					final ZooKeeper z = cf.getZookeeperClient().getZooKeeper();
+					final Stat st = z.exists(ZOOKEEP_URL, false);
+					if(st!=null) {
+						updateAdminURL(z.getData(ZOOKEEP_URL, false, st));
+						tc.close();
+					}
+					while(true) {
+						try {
+							Thread.currentThread().join(retryPauseTime);
+							log.info("Still waiting for AdminURL....");
+						} catch (InterruptedException iex) {
+							if(Thread.interrupted()) Thread.interrupted();
+						}
+						if(!waiting.get()) break;
+					}
+					log.info("Ended wait for AdminURL");					
+				} catch (Exception ex) {
+					log.error("Failed to wait for AdminURL bind",  ex);
+					// FIXME:
+				} finally {
+					try { tc.close(); } catch (Exception x) {/* No Op */}
+				}				
+			}
+		});
+		waitForAdminURLThread.start();
+	}
+	
+	/**
+	 * Notifies all registered listeners of an AdminURL event
+	 * @param priorUrl The prior URL, null if this is the first
+	 * @param newUrl The new URL, null if a removed
+	 */
+	protected void fireAdminURLAcquired(final String priorUrl, final String newUrl) {
+		if(!listeners.isEmpty()) {
+			for(final AdminURLListener listener: listeners) {
+				threadPool.execute(new Runnable(){
+					@Override
+					public void run() {
+						if(newUrl!=null) {
+							if(priorUrl!=null) {
+								listener.onAdminURLChanged(priorUrl, newUrl);
+							} else {
+								listener.onAdminURL(newUrl);
+							}
+						} else {
+							listener.onAdminURLRemoved(priorUrl);
+						}
+					}
+				});							
+			}
 		}
+	}
+
+	public static void main(final String[] args) {
+		final AdminFinder af = AdminFinder.getInstance(args);
+		af.registerAdminURLListener(new EmptyAdminURLListener(){
+			@Override
+			public void onAdminURL(final String adminURL) {
+				System.err.println("GOT ADMIN URL: " + adminURL);
+			}
+		});
+		af.threadPool.execute(new Runnable(){
+			public void run() {
+				System.err.println("[" + Thread.currentThread().getName() + "] Starting wait for AdminURL...");
+				final String s = af.getAdminURL(true);
+				System.err.println("[" + Thread.currentThread().getName() + "] Got it: [" + s + "]");
+			}
+		});
+		StdInCommandHandler.getInstance().run();
 	}
 	
 	protected volatile Level cxnLevel = Level.INFO;
@@ -345,7 +493,6 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 		Configuration config = ctx.getConfiguration();
 		LoggerConfig loggerConfig = config.getLoggerConfig(ClientCnxn.class.getName());
 		cxnLevel = loggerConfig.getLevel();
-		log.info("CXN Logger Level: {}", cxnLevel.name());
 		loggerConfig.setLevel(Level.ERROR);
 		ctx.updateLoggers();		
 	}
@@ -420,17 +567,14 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	public void process(final WatchedEvent event) {			
 		switch(event.getState()) {
 			case Disconnected:
-				connected.set(false);
 				log.info("ZooKeep Session Disconnected");	
 				sessionId = null;
 				break;
 			case Expired:
-				connected.set(false);
 				log.info("ZooKeep Session Expired");
 				sessionId = null;
 				break;
 			case SyncConnected:
-				connected.set(true);
 				sessionId = getSessionId();
 				log.info("ZooKeep Connected. SessionID: [{}]", sessionId);
 				break;
