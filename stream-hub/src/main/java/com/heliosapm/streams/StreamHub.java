@@ -139,7 +139,7 @@ public class StreamHub implements Watcher {
 			}	
 		});
 		
-		JMXHelper.fireUpJMXMPServer(1829);
+//		JMXHelper.fireUpJMXMPServer(1828);
 //		URL configURL = defaultURL;
 //		final int maxIndex = args.length-1;
 //		for(int i = 0; i < args.length; i++) {
@@ -198,7 +198,10 @@ public class StreamHub implements Watcher {
 		final AdminFinder af = AdminFinder.getInstance(args);
 		try {
 			final String adminURL = af.getAdminURL(true);
-			System.setProperty("spring.boot.admin.url", adminURL);
+			//System.setProperty("spring.boot.admin.url", adminURL);
+			System.setProperty("spring.boot.admin.url", "http://localhost:7560/streamhubadmin");
+			final Properties p = URLHelper.readProperties(URLHelper.toURL(adminURL + "/streamhubadmin/nodeconfig/helioleopard/streamhub"));
+			System.getProperties().putAll(p);
 			springApp = new SpringApplication(StreamHub.class);			
 			appCtx = springApp.run(args);			
 			
@@ -224,6 +227,9 @@ public class StreamHub implements Watcher {
 	 * TODO: Add help
 	 */
 	public static void main(final String[] args) {
+		System.setProperty("spring.boot.admin.client.enabled", "true");
+		System.setProperty("info.version", "1.0.1");
+		System.setProperty("spring.boot.admin.client.name", "StreamHubNode");
 		final StreamHub hub = new StreamHub(args);
 	}
 	
