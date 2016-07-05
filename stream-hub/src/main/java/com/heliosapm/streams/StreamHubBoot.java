@@ -25,6 +25,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
+import javax.management.remote.jmxmp.JMXMPConnectorServer;
+
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.context.event.ApplicationFailedEvent;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -35,6 +37,7 @@ import org.springframework.context.event.ContextClosedEvent;
 import com.heliosapm.streams.admin.AdminFinder;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 /**
@@ -107,14 +110,23 @@ public class StreamHubBoot {
 		log("<<<<< Discovered admin server url: [%s]", adminServerUrl);
 		System.setProperty("spring.boot.admin.url", adminServerUrl);		
 		final String nodeConfigUrl = adminServerUrl + "/streamhubadmin/nodeconfig/" + HOST + "/streamhub";
-		log(">>>>> Fetching marching orders from [%s]", nodeConfigUrl);
-		final Properties p = URLHelper.readProperties(URLHelper.toURL(nodeConfigUrl));
-		System.getProperties().putAll(p);
+//		log(">>>>> Fetching marching orders from [%s]", nodeConfigUrl);
+//		final Properties p = URLHelper.readProperties(URLHelper.toURL(nodeConfigUrl));
+//		System.getProperties().putAll(p);
+		System.setProperty("spring.config.location", nodeConfigUrl);
 		log("<<<<< Configured marching orders");
-		for(String key: p.stringPropertyNames()) {
-			log("\t%s : %s", key, p.getProperty(key));
+//		for(String key: p.stringPropertyNames()) {
+//			log("\t%s : %s", key, p.getProperty(key));
+//		}
+				
+		final JMXMPConnectorServer jmxmp = JMXHelper.fireUpJMXMPServer(System.getProperty("jmx.jmxmp.uri"));
+		if(jmxmp!=null) {
+			System.out.println("JMXMP Server enabled on [" + jmxmp.getAddress() + "]");
 		}
-		SpringApplication.run(StreamHub.class, args);
+		
+		
+		StreamHub sh = new StreamHub(args);
+//		SpringApplication.run(StreamHub.class, args);
 	}
 	
 //	app.addListeners(new ApplicationListener<ApplicationFailedEvent>() {
@@ -172,6 +184,38 @@ public class StreamHubBoot {
 		System.err.println(String.format(fmt.toString(), args));
 	}
 	
+	/**
+	 * Finds a command line arg value
+	 * @param prefix The prefix
+	 * @param defaultValue The default value if not found
+	 * @param args The command line args to search
+	 * @return the value
+	 */
+	private static int findArg(final String prefix, final int defaultValue, final String[] args) {
+		final String s = findArg(prefix, (String)null, args);
+		if(s==null) return defaultValue;
+		try {
+			return Integer.parseInt(s);
+		} catch (Exception ex) {
+			return defaultValue;
+		}
+	}
 
+	/**
+	 * Finds a command line arg value
+	 * @param prefix The prefix
+	 * @param defaultValue The default value if not found
+	 * @param args The command line args to search
+	 * @return the value
+	 */
+	private static String findArg(final String prefix, final String defaultValue, final String[] args) {
+		for(String s: args) {
+			if(s.startsWith(prefix)) {
+				s = s.replace(prefix, "").trim();
+				return s;
+			}
+		}
+		return defaultValue;
+	}
 
 }
