@@ -362,7 +362,7 @@
                    <addClasspath>true</addClasspath>
                </manifest>
                <manifestEntries>
-	               <Main-Class>com.heliosapm.streams.StreamHub</Main-Class>
+	               <Main-Class>com.heliosapm.streams.StreamHubBoot</Main-Class>
                </manifestEntries>
            </archive>
 				  

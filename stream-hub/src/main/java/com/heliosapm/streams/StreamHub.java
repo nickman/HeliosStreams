@@ -29,6 +29,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
+import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -37,6 +38,8 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.StandardEnvironment;
 
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.io.StdInCommandHandler;
@@ -57,6 +60,8 @@ public class StreamHub implements Watcher {
 	private static ConfigurableApplicationContext appCtx = null;
 	/** The current booted spring app */
 	private static SpringApplication springApp = null;
+	/** The spring boot launch thread */
+	private static Thread springBootLaunchThread = null;
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(StreamHub.class);
 	
@@ -91,21 +96,23 @@ public class StreamHub implements Watcher {
 	}
 	
 	
-	public StreamHub(final String[] args) {
+	public StreamHub(final String[] args, final Properties p) {
 		try {			
 			System.setProperty("spring.boot.admin.client.enabled", "true");
 			System.setProperty("info.version", "1.0.1");
-			System.setProperty("spring.boot.admin.client.name", "StreamHubNodeA");
+			System.setProperty("spring.boot.admin.client.name", "StreamHubNode");
 //			System.setProperty("spring.config.name", "StreamHubNodeB");
-			
-
-			System.out.println("Booting StreamHub from spring.boot.admin.url [" + System.getProperty("spring.boot.admin.url") + "]");
+//			final String configLocation = p.getProperty("spring.config.location");
+//			System.out.println("Spring Config Location [" + configLocation + "]");
+//			System.setProperty("spring.config.location", configLocation);
+			System.out.println("Booting StreamHub from spring.boot.admin.url [" + p.getProperty("spring.boot.admin.url") + "]");
+			System.getProperties().putAll(p);
 			springApp = new SpringApplication(StreamHub.class);		
 			springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
 				@Override
 				public void onApplicationEvent(final ContextRefreshedEvent event) {
 					try {
-						log.info("\n\t==================================================\n\tStreamHubAdmin Server Started\n\t==================================================\n");
+						log.info("\n\t==================================================\n\tStreamHubNode Started\n\t==================================================\n");
 					} catch (Exception ex) {
 						System.err.println("AppContext Startup Failure. Shutting down. Stack trace follows.");
 						ex.printStackTrace(System.err);
@@ -116,19 +123,44 @@ public class StreamHub implements Watcher {
 			springApp.addListeners(new ApplicationListener<ContextClosedEvent>(){
 				@Override
 				public void onApplicationEvent(final ContextClosedEvent event) {
-					log.info("\n\t==================================================\n\tStreamHubAdmin Server Stopped\n\t==================================================\n");						
-
+					log.info("\n\t==================================================\n\tStreamHubNode Stopped\n\t==================================================\n");											
 				}
-			});		
-			springApp.setDefaultProperties(System.getProperties());
-			appCtx = springApp.run(args);			
+			});
+//			springApp.setResourceLoader(resourceLoader);
+//			springApp.setDefaultProperties(p);
+			
+//			springApp.setDefaultProperties(p);
+//			StandardEnvironment environment = new StandardEnvironment();
+			
+			springBootLaunchThread = new Thread("SpringBootLaunchThread") {
+				public void run() {
+					appCtx = springApp.run(args);
+				}
+			};
+			springBootLaunchThread.setContextClassLoader(this.getClass().getClassLoader());
+			springBootLaunchThread.setDaemon(true);
+			springBootLaunchThread.start();
+			
 			log.info("Starting StdIn Handler");
+			final Thread MAIN = Thread.currentThread();
 			StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
 				public void run() {
 					log.info("StdIn Handler Shutting Down AppCtx....");
-					appCtx.close();
+//					Thread stopThread = new Thread("ShutdownThread") {
+//						public void run() {
+//							
+//						}
+//					};
+					SpringApplication.exit(appCtx, new ExitCodeGenerator(){
+						@Override
+						public int getExitCode() {
+							return 1;
+						}});
+					
+					MAIN.interrupt();
+					
 				}
-			}).run();
+			}).runAsync(true).join();
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw new RuntimeException("Failed to start StreamHub Instance", ex);

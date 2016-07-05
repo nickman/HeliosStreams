@@ -90,6 +90,8 @@ public class StreamHubBoot {
 	/** The discovered admin server url */
 	protected String adminServerUrl = null;
 	
+	protected StreamHub streamHub = null;
+	
 	/**
 	 * Creates a new StreamHubBoot
 	 * @param args The command line args
@@ -108,24 +110,26 @@ public class StreamHubBoot {
 		adminFinder = AdminFinder.getInstance(args);
 		adminServerUrl = adminFinder.getAdminURL(true);
 		log("<<<<< Discovered admin server url: [%s]", adminServerUrl);
-		System.setProperty("spring.boot.admin.url", adminServerUrl);		
-		final String nodeConfigUrl = adminServerUrl + "/streamhubadmin/nodeconfig/" + HOST + "/streamhub";
-//		log(">>>>> Fetching marching orders from [%s]", nodeConfigUrl);
-//		final Properties p = URLHelper.readProperties(URLHelper.toURL(nodeConfigUrl));
-//		System.getProperties().putAll(p);
-		System.setProperty("spring.config.location", nodeConfigUrl);
-		log("<<<<< Configured marching orders");
-//		for(String key: p.stringPropertyNames()) {
-//			log("\t%s : %s", key, p.getProperty(key));
-//		}
 				
-		final JMXMPConnectorServer jmxmp = JMXHelper.fireUpJMXMPServer(System.getProperty("jmx.jmxmp.uri"));
+		final String nodeConfigUrl = adminServerUrl + "/nodeconfig/" + HOST.toLowerCase() + "/streamhub";
+		log(">>>>> Fetching marching orders from [%s]", nodeConfigUrl);
+		final Properties p = URLHelper.readProperties(URLHelper.toURL(nodeConfigUrl));
+		p.setProperty("spring.boot.admin.url", adminServerUrl);
+		p.setProperty("spring.config.location", nodeConfigUrl);
+//		System.getProperties().putAll(p);
+//		p.setProperty("spring.config.location", nodeConfigUrl);
+		log("<<<<< Configured marching orders. App Properties: [%s]", p.size());
+		for(String key: p.stringPropertyNames()) {
+			log("\t%s : %s", key, p.getProperty(key));
+		}
+				
+		final JMXMPConnectorServer jmxmp = JMXHelper.fireUpJMXMPServer(p.getProperty("jmx.jmxmp.uri", "jmxmp://0.0.0.0:0"));
 		if(jmxmp!=null) {
 			System.out.println("JMXMP Server enabled on [" + jmxmp.getAddress() + "]");
 		}
 		
 		
-		StreamHub sh = new StreamHub(args);
+		streamHub = new StreamHub(args, p);
 //		SpringApplication.run(StreamHub.class, args);
 	}
 	
