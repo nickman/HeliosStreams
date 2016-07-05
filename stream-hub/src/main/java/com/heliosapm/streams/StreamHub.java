@@ -41,8 +41,6 @@ import org.springframework.context.event.ContextClosedEvent;
 import com.heliosapm.streams.admin.AdminFinder;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
-import com.heliosapm.utils.io.StdInCommandHandler;
-import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 /**
@@ -104,40 +102,6 @@ public class StreamHub implements Watcher {
 	}
 	
 	public StreamHub() {
-		final Thread main = Thread.currentThread();
-		if(System.getProperty("os.name", "").toLowerCase().contains("windows")) {
-			for(String key: stateStoreInMems) {
-				System.setProperty(key, "true");
-			}
-		}
-		System.setProperty("java.net.preferIPv4Stack" , "true");
-		System.setProperty("spring.output.ansi.enabled", "DETECT");
-		System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
-		ExtendedThreadManager.install();
-		final SpringApplication app = new SpringApplication(StreamHub.class);
-		app.addListeners(new ApplicationListener<ApplicationFailedEvent>() {
-			@Override
-			public void onApplicationEvent(final ApplicationFailedEvent appFailedEvent) {
-				final Throwable t = appFailedEvent.getException();
-				System.err.println("AppCtx failed on startup");
-				t.printStackTrace(System.err);
-				try { appFailedEvent.getApplicationContext().close(); } catch (Exception x) {/* No Op */}
-				main.interrupt();
-			}	
-		});
-		app.addListeners(new ApplicationListener<ApplicationReadyEvent>() {
-			@Override
-			public void onApplicationEvent(final ApplicationReadyEvent readyEvent) {
-				System.out.println("\n\t*************************************\n\tStreamHub Started\n\t*************************************\n");
-			}
-		});
-		app.addListeners(new ApplicationListener<ContextClosedEvent>() {
-			@Override
-			public void onApplicationEvent(final ContextClosedEvent appStoppedEvent) {
-				System.out.println("AppCtx Stopped");
-				main.interrupt();
-			}	
-		});
 		
 //		JMXHelper.fireUpJMXMPServer(1828);
 //		URL configURL = defaultURL;
@@ -157,19 +121,19 @@ public class StreamHub implements Watcher {
 //		}
 //		final StreamHub streamHub = new StreamHub(configURL);
 		
-		final Thread t = new Thread("StreamHubRunner") {
-			public void run() {
-				try {
-					appCtx = app.run();
-				} catch (Exception ex) {
-					try { appCtx.close(); } catch (Exception x) {/* No Op */}
-					main.interrupt();
-					Runtime.getRuntime().halt(-1);
-				}
-			}
-		};
-		t.setDaemon(true);
-		t.start();
+//		final Thread t = new Thread("StreamHubRunner") {
+//			public void run() {
+//				try {
+//					appCtx = app.run();
+//				} catch (Exception ex) {
+//					try { appCtx.close(); } catch (Exception x) {/* No Op */}
+//					main.interrupt();
+//					Runtime.getRuntime().halt(-1);
+//				}
+//			}
+//		};
+//		t.setDaemon(true);
+//		t.start();
 //		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
 //			public void run() {
 //				try {
