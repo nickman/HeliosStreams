@@ -18,12 +18,14 @@ under the License.
  */
 package com.heliosapm.streams.metrics.internal;
 
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.Gauge;
 import com.codahale.metrics.JmxReporter;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricRegistry;
@@ -96,7 +98,27 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 		return timer(name).time();
 	}
 	
-	
+	/**
+	 * Creates and registers a new gauge
+	 * @param name The name to register the gauge as
+	 * @param provider The callable that provides the value of the gauge
+	 * @return the gauge value
+	 * @param <T> The value type of the gauge
+	 */
+	public <T> Gauge<T> gauge(final String name, final Callable<T> provider) {
+		final Gauge<T> g = new Gauge<T>() {
+			@Override
+			public T getValue() {	
+				try {
+					return provider.call();
+				} catch (Exception ex) {
+					return null;
+				}
+			}
+		};
+		this.register(name, g);
+		return g;
+	}
 	
 
 //	@Override

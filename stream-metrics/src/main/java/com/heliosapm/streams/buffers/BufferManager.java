@@ -67,12 +67,18 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	/** The pooled buffer allocator default normal buffer cache size */
 	public static final int DEFAULT_NORMAL_CACHE_SIZE = PooledByteBufAllocator.defaultNormalCacheSize();
 	
+	/** The config name for enabling leak detection */
+	public static final String ENABLE_LEAK_DETECTION = "buffers.leakdetection";
+	/** The default enabled leak detection */
+	public static final boolean DEFAULT_LEAK_DETECTION = false;
+	
 
 	/** Indicates if we're using pooled or unpooled byteBuffs in the child channels */
 	protected final boolean pooledBuffers;
 	/** Indicates if we prefer using direct byteBuffs in the child channels */
 	protected final boolean directBuffers;
-	
+	/** Indicates if leak detection is enabled */
+	protected final boolean leakDetection;
 	/** The number of pooled buffer heap arenas */
 	protected final int nHeapArena;
 	/** The number of pooled buffer direct arenas */
@@ -91,6 +97,9 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	private final Logger log = LoggerFactory.getLogger(getClass());
 	/** The pooled buffer allocator */
 	protected final PooledByteBufAllocator pooledBufferAllocator;
+	/** The unpooled buffer allocator */
+	protected final UnpooledByteBufAllocator unpooledBufferAllocator;
+	
 	/** The child channel buffer allocator, which will be the same instance as the pooled allocator if pooling is enabled */
 	protected final ByteBufAllocator childChannelBufferAllocator;
 	/** The JMX ObjectName for the BufferManager's MBean */
@@ -122,6 +131,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * Creates a new BufferManager
 	 */
 	private BufferManager() {
+		leakDetection = getBoolean(ENABLE_LEAK_DETECTION, DEFAULT_LEAK_DETECTION);
 		pooledBuffers = getBoolean("buffers.pooled", true);
 		directBuffers = getBoolean("buffers.direct", true);
 		nHeapArena = getInt("buffers.heaparenas", DEFAULT_NUM_HEAP_ARENA);
@@ -132,10 +142,11 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 		smallCacheSize = getInt("buffers.scachesize", DEFAULT_SMALL_CACHE_SIZE);
 		normalCacheSize = getInt("buffers.ncachesize", DEFAULT_NORMAL_CACHE_SIZE);			
 		pooledBufferAllocator = new PooledByteBufAllocator(directBuffers, nHeapArena, nDirectArena, pageSize, maxOrder, tinyCacheSize, smallCacheSize, normalCacheSize);
+		unpooledBufferAllocator = new UnpooledByteBufAllocator(directBuffers, leakDetection);
 		if(pooledBuffers) {
 			childChannelBufferAllocator = pooledBufferAllocator;
 		} else {
-			childChannelBufferAllocator = new UnpooledByteBufAllocator(directBuffers);
+			childChannelBufferAllocator = unpooledBufferAllocator;
 		}		
 		try {
 			objectName = new ObjectName(OBJECT_NAME);
@@ -171,50 +182,112 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 		return childChannelBufferAllocator;
 	}
 	
+	
+	/**
+	 * Returns the pooled buffer allocator
+	 * @return the pooled buffer allocator
+	 */
+	public ByteBufAllocator getPooledAllocator() {
+		return pooledBufferAllocator;
+	}
+	
+	/**
+	 * Returns the unpooled buffer allocator
+	 * @return the unpooled buffer allocator
+	 */
+	public ByteBufAllocator getUnPooledAllocator() {
+		return unpooledBufferAllocator;
+	}
+	
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#isPooledBuffers()
+	 */
 	@Override
 	public boolean isPooledBuffers() {
 		return pooledBuffers;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#isDirectBuffers()
+	 */
 	@Override
 	public boolean isDirectBuffers() {
 		return directBuffers;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#getHeapArenas()
+	 */
 	@Override
 	public int getHeapArenas() {
 		return nHeapArena;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#getDirectArenas()
+	 */
 	@Override
 	public int getDirectArenas() {
 		return nDirectArena;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#getPageSize()
+	 */
 	@Override
 	public int getPageSize() {
 		return pageSize;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#getMaxOrder()
+	 */
 	@Override
 	public int getMaxOrder() {
 		return maxOrder;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#getTinyCacheSize()
+	 */
 	@Override
 	public int getTinyCacheSize() {
 		return tinyCacheSize;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#getSmallCacheSize()
+	 */
 	@Override
 	public int getSmallCacheSize() {
 		return smallCacheSize;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#getNormalCacheSize()
+	 */
 	@Override
 	public int getNormalCacheSize() {
 		return normalCacheSize;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#isLeakDetection()
+	 */
+	@Override
+	public boolean isLeakDetection() {
+		return leakDetection;
 	}
 	
 	/**

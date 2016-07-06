@@ -32,6 +32,12 @@ public interface BufferManagerMBean {
 	public static final String OBJECT_NAME = "net.opentsdb:service=BufferManager";
 	
 	/**
+	 * Indicates if leak detection is enabled
+	 * @return true if leak detection is enabled, false otherwise
+	 */
+	public boolean isLeakDetection();
+	
+	/**
 	 * Indicates if the server allocator is using pooled buffers
 	 * @return true if the server allocator is using pooled buffers, false otherwise
 	 */
