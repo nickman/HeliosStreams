@@ -126,7 +126,7 @@ public class ZooKeepPublisher extends NotificationBroadcasterSupport implements 
 		super(SharedNotificationExecutor.getInstance(), NOTIF_INFOS);
 		connect = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_CONNECT, DEFAULT_CONNECT);
 		timeout = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_TIMEOUT, DEFAULT_TIMEOUT);
-		adminUrl = "http://" + hostName() + ":" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_PORT, 7560);
+		adminUrl = "http://" + hostName() + ":" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_PORT, 7560) + "/streamhubadmin";
 		//+ ConfigurationHelper.getSystemThenEnvProperty("server.context-path", "/" + ROOT_ADMIN_NODE.replace("/", ""));
 		log.info("Advertised Admin URL: [{}]", adminUrl);
 	}

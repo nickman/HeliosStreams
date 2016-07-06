@@ -99,6 +99,7 @@ public class NodeConfigurationServer implements InitializingBean {
 		final String _host = host.toLowerCase().trim().split("\\.")[0];
 		final String _appname = appname.toLowerCase().trim()  + ".properties";
 		final String key = _host + "/" + _appname;
+		log.info("Fetching config for [{}]", key);
 		return getContent(key);
 	}
 	
