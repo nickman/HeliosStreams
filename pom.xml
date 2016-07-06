@@ -81,7 +81,6 @@
   <dependencyManagement>
     <dependencies>
 
-    	
       
 		<!-- ==========================================================
 		    Test Dependencies
@@ -434,7 +433,7 @@
 
 		<dependency>
 		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-undertow</artifactId>
+		    <artifactId>spring-boot-starter-tomcat</artifactId>
 		    <version>${spring-boot.version}</version>
 		</dependency>
 
@@ -443,10 +442,12 @@
         	<artifactId>spring-boot-starter-web</artifactId>		
         	<version>${spring-boot.version}</version>
 			  <exclusions>
+			  	<!--
 				<exclusion>
 		            <groupId>org.springframework.boot</groupId>
 		            <artifactId>spring-boot-starter-tomcat</artifactId>
 		        </exclusion>			  	
+		    -->
                	<exclusion>
 		          <groupId>ch.qos.logback</groupId>
 		          <artifactId>logback-classic</artifactId>

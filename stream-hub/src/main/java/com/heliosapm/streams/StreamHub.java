@@ -38,8 +38,6 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.StandardEnvironment;
 
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.io.StdInCommandHandler;
@@ -54,7 +52,7 @@ import com.heliosapm.utils.url.URLHelper;
 
 @SpringBootApplication
 @ImportResource("classpath:streamhub.xml")
-@EnableAutoConfiguration
+@EnableAutoConfiguration 
 public class StreamHub implements Watcher {
 	/** The current booted app context */
 	private static ConfigurableApplicationContext appCtx = null;
@@ -102,11 +100,11 @@ public class StreamHub implements Watcher {
 			System.setProperty("info.version", "1.0.1");
 			System.setProperty("spring.boot.admin.client.name", "StreamHubNode");
 //			System.setProperty("spring.config.name", "StreamHubNodeB");
-//			final String configLocation = p.getProperty("spring.config.location");
-//			System.out.println("Spring Config Location [" + configLocation + "]");
-//			System.setProperty("spring.config.location", configLocation);
+			final String configLocation = p.getProperty("spring.config.location");
+			System.out.println("Spring Config Location [" + configLocation + "]");
+			System.setProperty("spring.config.location", configLocation);
 			System.out.println("Booting StreamHub from spring.boot.admin.url [" + p.getProperty("spring.boot.admin.url") + "]");
-			System.getProperties().putAll(p);
+//			System.getProperties().putAll(p);
 			springApp = new SpringApplication(StreamHub.class);		
 			springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
 				@Override

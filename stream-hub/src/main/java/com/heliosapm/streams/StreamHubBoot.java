@@ -111,10 +111,10 @@ public class StreamHubBoot {
 		adminServerUrl = adminFinder.getAdminURL(true);
 		log("<<<<< Discovered admin server url: [%s]", adminServerUrl);
 				
-		final String nodeConfigUrl = adminServerUrl + "/nodeconfig/" + HOST.toLowerCase() + "/streamhub";
+		final String nodeConfigUrl = adminServerUrl + "/nodeconfig/" + HOST.toLowerCase() + "/streamhub.properties";
 		log(">>>>> Fetching marching orders from [%s]", nodeConfigUrl);
 		final Properties p = URLHelper.readProperties(URLHelper.toURL(nodeConfigUrl));
-		p.setProperty("spring.boot.admin.url", adminServerUrl);
+		System.setProperty("spring.boot.admin.url", adminServerUrl);
 		p.setProperty("spring.config.location", nodeConfigUrl);
 //		System.getProperties().putAll(p);
 //		p.setProperty("spring.config.location", nodeConfigUrl);

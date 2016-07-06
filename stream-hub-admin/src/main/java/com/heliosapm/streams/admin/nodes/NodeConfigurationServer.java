@@ -93,10 +93,10 @@ public class NodeConfigurationServer implements InitializingBean {
 	 * @param appname The requested app for which configuration should be delivered
 	 * @return a properties file in string format
 	 */
-	@RequestMapping(value="/{host}/{appname}", method=RequestMethod.GET, produces={"text/x-java-properties"})
+	@RequestMapping(value="/{host}/{appname}.properties", method=RequestMethod.GET, produces={"text/x-java-properties"})
 	
-	public String getConfiguration(@PathVariable final String host, @PathVariable final String appname) {
-		final String _host = host.toLowerCase().trim();
+	public String getConfigurationProperties(@PathVariable final String host, @PathVariable final String appname) {
+		final String _host = host.toLowerCase().trim().split("\\.")[0];
 		final String _appname = appname.toLowerCase().trim()  + ".properties";
 		final String key = _host + "/" + _appname;
 		return getContent(key);

@@ -58,9 +58,11 @@ public abstract class AbstractStreamedMetricProcessor implements Processor<Strin
 	/** The state stores allocated for this processor */
 	protected Map<String, StateStore> stateStores = new HashMap<String, StateStore>();
 	/** The processing timer */
-	protected final Timer timer = SharedMetricsRegistry.getInstance().timer("StreamedMetricProcessor." + getClass().getSimpleName() + ".processed");
+	//protected final Timer timer = SharedMetricsRegistry.getInstance().timer("StreamedMetricProcessor." + getClass().getSimpleName() + ".processed");
+	protected final Timer timer = SharedMetricsRegistry.getInstance().timer(getClass().getSimpleName() + ".processed");
 	/** The dropped metric counter */
-	protected final Counter dropCounter = SharedMetricsRegistry.getInstance().counter("StreamedMetricProcessor." + getClass().getSimpleName() + ".dropped");
+	//protected final Counter dropCounter = SharedMetricsRegistry.getInstance().counter("StreamedMetricProcessor." + getClass().getSimpleName() + ".dropped");
+	protected final Counter dropCounter = SharedMetricsRegistry.getInstance().counter(getClass().getSimpleName() + ".dropped");
 	
 
 	/**

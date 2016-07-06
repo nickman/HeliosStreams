@@ -41,14 +41,15 @@ streamhub.config.timeextractor:com.heliosapm.streams.metrics.TextLineTimestampEx
 
 
 =========================================
-AdminFinder:
-============
-start connect loop
-on connect
-	create treecache (FILTER)
-	if url not present, listen on url
-	on url drop latch
+StreamHub:
+==========
+Bypass cloud config with a --config=<file> option.
+	No Admin ZK lookup  (just for Kafka)
+	No Admin Server Hookup
+	
+JMX Ops to:
+	Stop AppCtx
+	Reload a new config
+		
 
-listen on node removed/changed
-	if removed, start listener
-	if changed, update and reset app
+
