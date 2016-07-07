@@ -16,7 +16,6 @@
 package com.heliosapm.streams.onramp;
 
 import java.lang.management.ManagementFactory;
-import java.lang.reflect.Field;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -31,23 +30,23 @@ import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.StdInCommandHandler;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.PooledByteBufAllocator;
-
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.netty.channel.oio.OioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.channel.socket.oio.OioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GenericFutureListener;
 
 /**
  * <p>Title: OnRampBoot</p>
@@ -106,6 +105,9 @@ public class OnRampBoot {
 	/** The server channel created on socket bind */
 	protected Channel serverChannel = null;
 	
+	/** The server's close future */
+	protected ChannelFuture closeFuture = null;
+	
 	// =============================================
 	// Channel Configs
 	// =============================================
@@ -156,12 +158,27 @@ public class OnRampBoot {
 	public final URI serverURI;
 	
 	
+	private static OnRampBoot boot = null;
 	
 	
+	public static void main(String[] args) {
+		System.setProperty("java.net.preferIPv4Stack", "true");
+		final Properties p = new Properties();
+		boot = new OnRampBoot(p);
+		StdInCommandHandler.getInstance().run();
+	}
 	
-	
-	
-	
+	private final Thread shutdownHook = new Thread() {
+		public void run() {
+			
+			if(workerGroup!=null) {
+				serverChannel.close().syncUninterruptibly();
+				log.info(">>>>> Shutting down OnRamp TCP Listener....");
+				workerGroup.shutdownGracefully().syncUninterruptibly();
+				log.info("<<<<< OnRamp TCP Listener Shutdown");
+			}
+		}
+	};
 	
 	/**
 	 * Creates a new OnRampBoot
@@ -199,31 +216,20 @@ public class OnRampBoot {
 		serverBootstrap.option(ChannelOption.SO_RCVBUF, recvBuffer);
 		serverBootstrap.option(ChannelOption.SO_TIMEOUT, connectTimeout);
 		final StringBuilder uri = new StringBuilder("tcp");
-		if(async) {
-			if(IS_LINUX && !disableEpoll) {
-				bossExecutorThreadFactory = new ExecutorThreadFactory("EpollServerBoss", true);
-				bossGroup = new EpollEventLoopGroup(1, (ThreadFactory)bossExecutorThreadFactory);
-				workerExecutorThreadFactory = new ExecutorThreadFactory("EpollServerWorker", true);
-				workerGroup = new EpollEventLoopGroup(workerThreads, (ThreadFactory)workerExecutorThreadFactory);
-				channelType = EpollServerSocketChannel.class;
-				uri.append("epoll");
-			} else {
-				bossExecutorThreadFactory = new ExecutorThreadFactory("NioServerBoss", true);
-				bossGroup = new NioEventLoopGroup(1, bossExecutorThreadFactory);
-				workerExecutorThreadFactory = new ExecutorThreadFactory("NioServerWorker", true);
-				workerGroup = new NioEventLoopGroup(workerThreads, workerExecutorThreadFactory);
-				channelType = NioServerSocketChannel.class;
-				uri.append("nio");
-			}
-			serverBootstrap.channel(channelType).group(bossGroup, workerGroup);
+		if(IS_LINUX && !disableEpoll) {
+			bossExecutorThreadFactory = new ExecutorThreadFactory("EpollServerBoss", true);
+			bossGroup = new EpollEventLoopGroup(1, (ThreadFactory)bossExecutorThreadFactory);
+			workerExecutorThreadFactory = new ExecutorThreadFactory("EpollServerWorker", true);
+			workerGroup = new EpollEventLoopGroup(workerThreads, (ThreadFactory)workerExecutorThreadFactory);
+			channelType = EpollServerSocketChannel.class;
+			uri.append("epoll");
 		} else {
-			bossExecutorThreadFactory = null;
-			bossGroup = null;
-			workerExecutorThreadFactory = new ExecutorThreadFactory("OioServer", true);
-			workerGroup = new OioEventLoopGroup(workerThreads, workerExecutorThreadFactory); // workerThreads == maxChannels. see ThreadPerChannelEventLoopGroup
-			channelType = OioServerSocketChannel.class;
-			serverBootstrap.channel(channelType).group(workerGroup);
-			uri.append("oio");
+			bossExecutorThreadFactory = new ExecutorThreadFactory("NioServerBoss", true);
+			bossGroup = new NioEventLoopGroup(1, bossExecutorThreadFactory);
+			workerExecutorThreadFactory = new ExecutorThreadFactory("NioServerWorker", true);
+			workerGroup = new NioEventLoopGroup(workerThreads, workerExecutorThreadFactory);
+			channelType = NioServerSocketChannel.class;
+			uri.append("nio");
 		}
 		
 		uri.append("://").append(bindInterface).append(":").append(port);
@@ -234,6 +240,23 @@ public class OnRampBoot {
 			log.warn("Failed server URI const: [{}]. Programmer Error", uri, e);
 		}
 		serverURI = u;
+		
+		log.info(">>>>> Starting OnRamp TCP Listener on [{}]...", serverURI);
+		final ChannelFuture cf = serverBootstrap
+			.channel(channelType)
+			.group(bossGroup, workerGroup)
+			.bind(bindSocket)
+			.awaitUninterruptibly()
+			.addListener(new GenericFutureListener<Future<? super Void>>() {
+				public void operationComplete(final Future<? super Void> f) throws Exception {
+					log.info("<<<<< OnRamp TCP Listener on [{}] Started", serverURI);					
+				};
+			}).awaitUninterruptibly();
+		serverChannel = cf.channel();
+		closeFuture = serverChannel.closeFuture();
+		Runtime.getRuntime().addShutdownHook(shutdownHook);
+		
+		
 	}
 		
 	

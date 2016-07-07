@@ -17,6 +17,9 @@ package com.heliosapm.streams.onramp;
 
 import java.util.List;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.heliosapm.streams.metrics.StreamedMetric;
 
 import io.netty.channel.ChannelHandlerContext;
@@ -31,6 +34,8 @@ import io.netty.handler.codec.MessageToMessageDecoder;
  */
 
 public class TextLineRpcHandler extends MessageToMessageDecoder<String> {
+	/** The instance logger */
+	protected final Logger log = LogManager.getLogger(getClass());
 
 	/**
 	 * {@inheritDoc}
@@ -38,9 +43,20 @@ public class TextLineRpcHandler extends MessageToMessageDecoder<String> {
 	 */
 	@Override
 	protected void decode(final ChannelHandlerContext ctx, final String textLine, final  List<Object> out) throws Exception {
-		final StreamedMetric sm = StreamedMetric.fromString(textLine);
+		//final StreamedMetric sm = StreamedMetric.fromString(textLine);
+		log.info("Received Message: [{}]", textLine);
 		
 		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see io.netty.channel.ChannelHandlerAdapter#handlerRemoved(io.netty.channel.ChannelHandlerContext)
+	 */
+	@Override
+	public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
+		// TODO Auto-generated method stub
+		//super.handlerRemoved(ctx);
 	}
 
 

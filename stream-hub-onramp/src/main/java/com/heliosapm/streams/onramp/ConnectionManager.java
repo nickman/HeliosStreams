@@ -30,9 +30,11 @@ import com.codahale.metrics.Gauge;
 import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.util.IllegalReferenceCountException;
 //import io.netty.handler.codec.embedder.CodecEmbedderException;
 import io.netty.util.concurrent.DefaultEventExecutor;
 
@@ -45,7 +47,7 @@ import io.netty.util.concurrent.DefaultEventExecutor;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.onramp.ConnectionManager</code></p>
  */
-
+@ChannelHandler.Sharable
 public class ConnectionManager extends ChannelInboundHandlerAdapter {
 	/** Instance logger */
 	private final Logger LOG = LogManager.getLogger(getClass());
@@ -112,8 +114,9 @@ public class ConnectionManager extends ChannelInboundHandlerAdapter {
 			exceptions_closed.inc();
 			LOG.warn("Attempt to write to closed channel " + chan);
 			return;
-		}
-		if (cause instanceof IOException) {
+		} else if(cause instanceof IllegalReferenceCountException) {
+			LOG.warn("BadRefCount: [{}]", cause.getMessage());
+		} else if (cause instanceof IOException) {
 			final String message = cause.getMessage();
 			if ("Connection reset by peer".equals(message)) {
 				exceptions_reset.inc();

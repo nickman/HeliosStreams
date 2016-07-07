@@ -80,6 +80,8 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 	
 	/** The idle channel reaper */
 	private final IdleSessionKillerHandler idleReaper;
+	/** The instance logger */
+	protected final Logger log = LogManager.getLogger(getClass());
 
 
 	/** The server side socket timeout. **/
@@ -159,7 +161,7 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 				log.debug("Switching to Telnet [{}]", ctx.channel());
 				switchToTelnet(ctx);
 			}
-			ctx.pipeline().remove(this);
+//			ctx.pipeline().remove(this);
 			in.retain();
 			log.info("Sending [{}] up pipeline {}", in, ctx.pipeline().names());
 			ctx.fireChannelRead(in);  		
@@ -168,8 +170,9 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 		private void switchToTelnet(final ChannelHandlerContext ctx) {
 			ChannelPipeline p = ctx.pipeline();
 			p.addLast("framer", new LineBasedFrameDecoder(1024, true, true));
-			p.addLast("encoder", ENCODER);
-			p.addLast("stringdecoder", new StringDecoder(UTF8));
+//			p.addLast("encoder", ENCODER);
+//			p.addLast("stringdecoder", new StringDecoder(UTF8));
+			p.addLast("linehandler", new TextLineRpcHandler());
 			p.remove(this);
 		}
 

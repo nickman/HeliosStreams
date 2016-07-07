@@ -37,7 +37,7 @@ import io.netty.handler.codec.compression.ZlibWrapper;
  * <p><code>com.heliosapm.streams.onramp.GZipDetector</code></p>
  */
 
-@ChannelHandler.Sharable
+//@ChannelHandler.Sharable
 public class GZipDetector extends ByteToMessageDecoder  {
 	/** Instance logger */
 	private final Logger log = LogManager.getLogger(getClass());
