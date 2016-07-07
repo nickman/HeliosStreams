@@ -43,9 +43,8 @@ import org.slf4j.LoggerFactory;
  * <p>Description: Manages and monitors buffer allocation</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>net.opentsdb.buffers.BufferManager</code></p>
+ * <p><code>com.heliosapm.streams.buffers.BufferManager</code></p>
  */
-
 public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	/** The singleton instance */
 	private static volatile BufferManager instance = null;
@@ -99,9 +98,9 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	protected final PooledByteBufAllocator pooledBufferAllocator;
 	/** The unpooled buffer allocator */
 	protected final UnpooledByteBufAllocator unpooledBufferAllocator;
+	/** The default buffer allocator */
+	protected final ByteBufAllocator defaultBufferAllocator;
 	
-	/** The child channel buffer allocator, which will be the same instance as the pooled allocator if pooling is enabled */
-	protected final ByteBufAllocator childChannelBufferAllocator;
 	/** The JMX ObjectName for the BufferManager's MBean */
 	protected ObjectName objectName;
 	
@@ -143,11 +142,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 		normalCacheSize = getInt("buffers.ncachesize", DEFAULT_NORMAL_CACHE_SIZE);			
 		pooledBufferAllocator = new PooledByteBufAllocator(directBuffers, nHeapArena, nDirectArena, pageSize, maxOrder, tinyCacheSize, smallCacheSize, normalCacheSize);
 		unpooledBufferAllocator = new UnpooledByteBufAllocator(directBuffers, leakDetection);
-		if(pooledBuffers) {
-			childChannelBufferAllocator = pooledBufferAllocator;
-		} else {
-			childChannelBufferAllocator = unpooledBufferAllocator;
-		}		
+		defaultBufferAllocator = pooledBuffers ? pooledBufferAllocator : unpooledBufferAllocator;
 		try {
 			objectName = new ObjectName(OBJECT_NAME);
 			ManagementFactory.getPlatformMBeanServer().registerMBean(this, objectName);
@@ -179,7 +174,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @return the child channel buffer allocator
 	 */
 	public ByteBufAllocator getChildChannelBufferAllocator() {
-		return childChannelBufferAllocator;
+		return defaultBufferAllocator;
 	}
 	
 	
@@ -190,6 +185,15 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	public ByteBufAllocator getPooledAllocator() {
 		return pooledBufferAllocator;
 	}
+	
+	/**
+	 * Returns the default buffer allocator
+	 * @return the default buffer allocator
+	 */
+	public ByteBufAllocator getAllocator() {
+		return defaultBufferAllocator;
+	}
+	
 	
 	/**
 	 * Returns the unpooled buffer allocator
@@ -292,7 +296,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferManagerMBean#printStats()
+	 * @see com.heliosapm.streams.buffers.BufferManagerMBean#printStats()
 	 */
 	@Override
 	public String printStats() {
@@ -321,7 +325,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
    * @see io.netty.buffer.ByteBufAllocator#buffer()
    */	
 	public ByteBuf buffer() {
-		return childChannelBufferAllocator.buffer();
+		return defaultBufferAllocator.buffer();
 	}
 
   /**
@@ -332,7 +336,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
    * @see io.netty.buffer.ByteBufAllocator#buffer(int)
    */	
 	public ByteBuf buffer(final int initialCapacity) {
-		return childChannelBufferAllocator.buffer(initialCapacity);
+		return defaultBufferAllocator.buffer(initialCapacity);
 	}
 
   /**
@@ -344,7 +348,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
    * @see io.netty.buffer.ByteBufAllocator#buffer(int, int)
    */	
 	public ByteBuf buffer(final int initialCapacity, final int maxCapacity) {
-		return childChannelBufferAllocator.buffer(initialCapacity, maxCapacity);
+		return defaultBufferAllocator.buffer(initialCapacity, maxCapacity);
 	}
 
   /**
@@ -353,7 +357,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
    * @see io.netty.buffer.ByteBufAllocator#ioBuffer(int, int)
    */	
 	public ByteBuf ioBuffer() {
-		return childChannelBufferAllocator.ioBuffer();
+		return defaultBufferAllocator.ioBuffer();
 	}
 
   /**
@@ -363,7 +367,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
    * @see io.netty.buffer.ByteBufAllocator#ioBuffer(int)
    */	
 	public ByteBuf ioBuffer(final int initialCapacity) {
-		return childChannelBufferAllocator.ioBuffer(initialCapacity);
+		return defaultBufferAllocator.ioBuffer(initialCapacity);
 	}
 
   /**
@@ -374,7 +378,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
    * @see io.netty.buffer.ByteBufAllocator#ioBuffer(int, int)
    */	
 	public ByteBuf ioBuffer(final int initialCapacity, final int maxCapacity) {
-		return childChannelBufferAllocator.ioBuffer(initialCapacity, maxCapacity);
+		return defaultBufferAllocator.ioBuffer(initialCapacity, maxCapacity);
 	}
 
 	/**
@@ -382,7 +386,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#heapBuffer()
 	 */
 	public ByteBuf heapBuffer() {
-		return childChannelBufferAllocator.heapBuffer();
+		return defaultBufferAllocator.heapBuffer();
 	}
 
 	/**
@@ -391,7 +395,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#heapBuffer(int)
 	 */
 	public ByteBuf heapBuffer(int initialCapacity) {
-		return childChannelBufferAllocator.heapBuffer(initialCapacity);
+		return defaultBufferAllocator.heapBuffer(initialCapacity);
 	}
 
 	/**
@@ -401,7 +405,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#heapBuffer(int, int)
 	 */
 	public ByteBuf heapBuffer(int initialCapacity, int maxCapacity) {
-		return childChannelBufferAllocator.heapBuffer(initialCapacity, maxCapacity);
+		return defaultBufferAllocator.heapBuffer(initialCapacity, maxCapacity);
 	}
 
 	/**
@@ -409,7 +413,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#directBuffer()
 	 */
 	public ByteBuf directBuffer() {
-		return childChannelBufferAllocator.directBuffer();
+		return defaultBufferAllocator.directBuffer();
 	}
 
 	/**
@@ -418,7 +422,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#directBuffer(int)
 	 */
 	public ByteBuf directBuffer(int initialCapacity) {
-		return childChannelBufferAllocator.directBuffer(initialCapacity);
+		return defaultBufferAllocator.directBuffer(initialCapacity);
 	}
 
 	/**
@@ -428,7 +432,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#directBuffer(int, int)
 	 */
 	public ByteBuf directBuffer(int initialCapacity, int maxCapacity) {
-		return childChannelBufferAllocator.directBuffer(initialCapacity, maxCapacity);
+		return defaultBufferAllocator.directBuffer(initialCapacity, maxCapacity);
 	}
 
 	/**
@@ -436,7 +440,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#compositeBuffer()
 	 */
 	public CompositeByteBuf compositeBuffer() {
-		return childChannelBufferAllocator.compositeBuffer();
+		return defaultBufferAllocator.compositeBuffer();
 	}
 
 	/**
@@ -445,7 +449,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#compositeBuffer(int)
 	 */
 	public CompositeByteBuf compositeBuffer(int maxNumComponents) {
-		return childChannelBufferAllocator.compositeBuffer(maxNumComponents);
+		return defaultBufferAllocator.compositeBuffer(maxNumComponents);
 	}
 
 	/**
@@ -453,7 +457,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#compositeHeapBuffer()
 	 */
 	public CompositeByteBuf compositeHeapBuffer() {
-		return childChannelBufferAllocator.compositeHeapBuffer();
+		return defaultBufferAllocator.compositeHeapBuffer();
 	}
 
 	/**
@@ -462,7 +466,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#compositeHeapBuffer(int)
 	 */
 	public CompositeByteBuf compositeHeapBuffer(int maxNumComponents) {
-		return childChannelBufferAllocator.compositeHeapBuffer(maxNumComponents);
+		return defaultBufferAllocator.compositeHeapBuffer(maxNumComponents);
 	}
 
 	/**
@@ -470,7 +474,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#compositeDirectBuffer()
 	 */
 	public CompositeByteBuf compositeDirectBuffer() {
-		return childChannelBufferAllocator.compositeDirectBuffer();
+		return defaultBufferAllocator.compositeDirectBuffer();
 	}
 
 	/**
@@ -479,7 +483,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#compositeDirectBuffer(int)
 	 */
 	public CompositeByteBuf compositeDirectBuffer(int maxNumComponents) {
-		return childChannelBufferAllocator.compositeDirectBuffer(maxNumComponents);
+		return defaultBufferAllocator.compositeDirectBuffer(maxNumComponents);
 	}
 
 	/**
@@ -487,7 +491,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#isDirectBufferPooled()
 	 */
 	public boolean isDirectBufferPooled() {
-		return childChannelBufferAllocator.isDirectBufferPooled();
+		return defaultBufferAllocator.isDirectBufferPooled();
 	}
 
 	/**
@@ -497,7 +501,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	 * @see io.netty.buffer.ByteBufAllocator#calculateNewCapacity(int, int)
 	 */
 	public int calculateNewCapacity(int minNewCapacity, int maxCapacity) {
-		return childChannelBufferAllocator.calculateNewCapacity(minNewCapacity, maxCapacity);
+		return defaultBufferAllocator.calculateNewCapacity(minNewCapacity, maxCapacity);
 	}
 	
 	

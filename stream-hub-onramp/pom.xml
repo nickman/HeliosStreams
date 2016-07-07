@@ -69,48 +69,58 @@
 		  </dependency>
 		  
 		  
+			<dependency>
+			  <groupId>io.netty</groupId>
+			  <artifactId>netty-all</artifactId>
+			</dependency>
+			
+			<dependency>
+			  <groupId>com.jcraft</groupId>
+			  <artifactId>jzlib</artifactId>
+			</dependency>
+			
+
+		<!-- ==========================================================
+		    Spring Boot Dependencies
+		    ========================================================== -->
+		
 		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-transport</artifactId>
-		  <version>4.1.1.Final</version>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot</artifactId>
+  		</dependency>
+  		
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot-loader</artifactId>
 		</dependency>
 
 		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-codec-stomp</artifactId>
-		  <version>4.1.1.Final</version>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot-actuator</artifactId>
 		</dependency>
+		
+		<dependency>
+        	<groupId>org.springframework.boot</groupId>
+        	<artifactId>spring-boot-starter-web</artifactId>		
+        </dependency>
 
 		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-codec-mqtt</artifactId>
-		  <version>4.1.1.Final</version>
+		    <groupId>org.springframework.boot</groupId>
+		    <artifactId>spring-boot-starter-undertow</artifactId>
 		</dependency>
 
+		
 		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-codec-http</artifactId>
-		  <version>4.1.1.Final</version>
-		</dependency>
+		    <groupId>org.springframework.boot</groupId>
+		    <artifactId>spring-boot-starter-remote-shell</artifactId>
+		 </dependency>
 
 		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-transport-native-epoll</artifactId>
-		  <version>4.1.1.Final</version>
+		    <groupId>de.codecentric</groupId>
+		    <artifactId>spring-boot-admin-starter-client</artifactId>
 		</dependency>
+		
 
-		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-transport-native-epoll</artifactId>
-		  <version>4.1.1.Final</version>
-		  <classifier>linux-x86_64</classifier>
-		</dependency>
-
-		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-handler</artifactId>
-		  <version>4.1.1.Final</version>
-		</dependency>
 
 
 
@@ -174,8 +184,8 @@
 		<artifactId>maven-eclipse-plugin</artifactId>
 		<version>${eclipse-plugin.version}</version>
 		<configuration>
-		    <downloadJavadocs>false</downloadJavadocs>
-		    <downloadSources>false</downloadSources>
+		    <downloadJavadocs>${downloadJavadocs}</downloadJavadocs>
+		    <downloadSources>${downloadSources}</downloadSources>
 		    <classpathContainers>
 		    </classpathContainers>
 		</configuration>

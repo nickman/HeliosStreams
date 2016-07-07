@@ -24,12 +24,11 @@ package com.heliosapm.streams.buffers;
  * <p>Description: JMX MBean interface for {@link BufferManager}</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>net.opentsdb.buffers.BufferManagerMBean</code></p>
+ * <p><code>com.heliosapm.streams.buffers.BufferManagerMBean</code></p>
  */
-
 public interface BufferManagerMBean {
 	/** The JMX ObjectName string for the BufferManager management interface */
-	public static final String OBJECT_NAME = "net.opentsdb:service=BufferManager";
+	public static final String OBJECT_NAME = "com.heliosapm.streams.buffers:service=BufferManager";
 	
 	/**
 	 * Indicates if leak detection is enabled

@@ -23,7 +23,7 @@ package com.heliosapm.streams.buffers;
  * <p>Description: JMX MBean interface for {@link BufferArenaMonitor} instances</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>net.opentsdb.buffers.BufferArenaMonitorMBean</code></p>
+ * <p><code>com.heliosapm.streams.buffers.BufferArenaMonitorMBean</code></p>
  */
 
 public interface BufferArenaMonitorMBean {

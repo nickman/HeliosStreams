@@ -15,13 +15,13 @@
  */
 package com.heliosapm.streams.onramp;
 
+import java.nio.charset.Charset;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.heliosapm.streams.metrics.StreamedMetric;
-
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
 
@@ -33,32 +33,39 @@ import io.netty.handler.codec.MessageToMessageDecoder;
  * <p><code>com.heliosapm.streams.onramp.TextLineRpcHandler</code></p>
  */
 
-public class TextLineRpcHandler extends MessageToMessageDecoder<String> {
+public class TextLineRpcHandler extends MessageToMessageDecoder<ByteBuf> {
 	/** The instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
+	
+	/** The UTF8 character set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
+	
+	/** The message forwarder */
+	protected MessageForwarder mf = MessageForwarder.getInstance();
+
 
 	/**
 	 * {@inheritDoc}
 	 * @see io.netty.handler.codec.MessageToMessageDecoder#decode(io.netty.channel.ChannelHandlerContext, java.lang.Object, java.util.List)
 	 */
 	@Override
-	protected void decode(final ChannelHandlerContext ctx, final String textLine, final  List<Object> out) throws Exception {
-		//final StreamedMetric sm = StreamedMetric.fromString(textLine);
-		log.info("Received Message: [{}]", textLine);
+	protected void decode(final ChannelHandlerContext ctx, final ByteBuf buff, final  List<Object> out) throws Exception {
+		final String v = buff.toString(UTF8);
+		log.info("Received Message: [{}]", v);
+		mf.send(v);
+		out.add(buff.retain());
+		
 		
 		
 	}
 	
 	/**
 	 * {@inheritDoc}
-	 * @see io.netty.channel.ChannelHandlerAdapter#handlerRemoved(io.netty.channel.ChannelHandlerContext)
+	 * @see io.netty.channel.ChannelInboundHandlerAdapter#exceptionCaught(io.netty.channel.ChannelHandlerContext, java.lang.Throwable)
 	 */
-	@Override
-	public void handlerRemoved(ChannelHandlerContext ctx) throws Exception {
-		// TODO Auto-generated method stub
-		//super.handlerRemoved(ctx);
+	public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) throws Exception {
+		log.warn("Caught exception: {}",  cause);
 	}
-
 
 
 

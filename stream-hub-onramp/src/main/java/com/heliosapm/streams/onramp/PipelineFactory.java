@@ -45,6 +45,7 @@ import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.HashedWheelTimer;
+import io.netty.util.ReferenceCountUtil;
 import io.netty.util.Timer;
 
 
@@ -67,7 +68,7 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 	/** A UTF8 String encoder */
 	private static final StringEncoder ENCODER = new StringEncoder(UTF8);
 	/** Connection tracker */
-	private final ConnectionManager connmgr = new ConnectionManager();
+	private final ConnectionManager connmgr = ConnectionManager.getInstance();
 	/** Protocol detector */
 	private final DetectHttpOrRpc HTTP_OR_RPC = new DetectHttpOrRpc();
 	/** Idle Channel timeout handler timer */
@@ -128,8 +129,8 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 	@Override
 	protected void initChannel(final SocketChannel ch) throws Exception {
 		final ChannelPipeline pipeline = ch.pipeline();		
-		pipeline.addLast("idlestate", new IdleStateHandler(0, 0, this.socketTimeout));
-		pipeline.addLast("idlereaper", idleReaper);
+		pipeline.addLast("idlestate", new IdleStateHandler(0, 0, 5)); // this.socketTimeout
+//		pipeline.addLast("idlereaper", idleReaper);
 		pipeline.addLast("connmgr", connmgr);
 		pipeline.addLast("gzipdetector", new GZipDetector());		
 		pipeline.addLast("detect", HTTP_OR_RPC);
@@ -148,23 +149,29 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 		private final Logger log = LogManager.getLogger(getClass());
 		@Override
 		protected void channelRead0(final ChannelHandlerContext ctx, final ByteBuf in) throws Exception {
+			
 			if (in.readableBytes() < 5) {
+				in.retain();
 				return;
 			}
-			log.info("Detecting Http vs. Telnet. Pipeline is {}", ctx.pipeline().names());
-			final int magic1 = in.getUnsignedByte(in.readerIndex());
-			final int magic2 = in.getUnsignedByte(in.readerIndex() + 1);
-			if(isHttp(magic1, magic2)) {
-				log.debug("Switching to Http [{}]", ctx.channel());
-				switchToHttp(ctx, 512 * 1024); //tsdb.getConfig().max_chunked_requests());
-			} else {
-				log.debug("Switching to Telnet [{}]", ctx.channel());
-				switchToTelnet(ctx);
+			try {			
+				log.info("Detecting Http vs. Telnet. Pipeline is {}", ctx.pipeline().names());
+				final int magic1 = in.getUnsignedByte(in.readerIndex());
+				final int magic2 = in.getUnsignedByte(in.readerIndex() + 1);
+				if(isHttp(magic1, magic2)) {
+					log.debug("Switching to Http [{}]", ctx.channel());
+					switchToHttp(ctx, 512 * 1024); //tsdb.getConfig().max_chunked_requests());
+				} else {
+					log.debug("Switching to Telnet [{}]", ctx.channel());
+					switchToTelnet(ctx);
+				}
+	//			ctx.pipeline().remove(this);
+				in.retain();
+				log.info("Sending [{}] up pipeline {}", in, ctx.pipeline().names());
+				ctx.fireChannelRead(in);
+			} finally {
+//				ReferenceCountUtil.releaseLater(in);
 			}
-//			ctx.pipeline().remove(this);
-			in.retain();
-			log.info("Sending [{}] up pipeline {}", in, ctx.pipeline().names());
-			ctx.fireChannelRead(in);  		
 		}
 
 		private void switchToTelnet(final ChannelHandlerContext ctx) {

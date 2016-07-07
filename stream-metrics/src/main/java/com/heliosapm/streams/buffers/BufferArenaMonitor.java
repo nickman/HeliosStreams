@@ -42,7 +42,7 @@ import org.slf4j.LoggerFactory;
  * <p>Description: A netty pooled byte buffer allocation monitor</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>net.opentsdb.buffers.BufferArenaMonitor</code></p>
+ * <p><code>com.heliosapm.streams.buffers.BufferArenaMonitor</code></p>
  * FIXME:  !! the reset to zero will hand out bad stats. Need to put all stats
  * in a long array stored in an atomic ref.
  */
@@ -131,7 +131,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 		this.direct = direct;
 		this.type = direct ? "Direct" : "Heap";
 		log = LoggerFactory.getLogger(getClass().getName() + "." + type);
-		objectName = objectName("net.opentsdb:service=BufferManagerStats,type=" + type);
+		objectName = objectName("com.heliosapm.streams.buffers:service=BufferManagerStats,type=" + type);
 		run();
 		scheduler.scheduleAtFixedRate(this, 5, 5, TimeUnit.SECONDS);
 		try {
@@ -270,7 +270,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 	
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getAllocations()
 	 */
 	@Override
 	public long getAllocations() {
@@ -279,7 +279,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getTinyAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getTinyAllocations()
 	 */
 	@Override
 	public long getTinyAllocations() {
@@ -288,7 +288,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getSmallAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getSmallAllocations()
 	 */
 	@Override
 	public long getSmallAllocations() {
@@ -297,7 +297,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getNormalAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getNormalAllocations()
 	 */
 	@Override
 	public long getNormalAllocations() {
@@ -306,7 +306,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getHugeAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getHugeAllocations()
 	 */
 	@Override
 	public long getHugeAllocations() {
@@ -315,7 +315,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getDeallocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getDeallocations()
 	 */
 	@Override
 	public long getDeallocations() {
@@ -324,7 +324,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getTinyDeallocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getTinyDeallocations()
 	 */
 	@Override
 	public long getTinyDeallocations() {
@@ -333,7 +333,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getSmallDeallocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getSmallDeallocations()
 	 */
 	@Override
 	public long getSmallDeallocations() {
@@ -342,7 +342,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getNormalDeallocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getNormalDeallocations()
 	 */
 	@Override
 	public long getNormalDeallocations() {
@@ -351,7 +351,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getHugeDeallocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getHugeDeallocations()
 	 */
 	@Override
 	public long getHugeDeallocations() {
@@ -360,7 +360,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getActiveAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getActiveAllocations()
 	 */
 	@Override
 	public long getActiveAllocations() {
@@ -369,7 +369,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getActiveTinyAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getActiveTinyAllocations()
 	 */
 	@Override
 	public long getActiveTinyAllocations() {
@@ -378,7 +378,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getActiveSmallAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getActiveSmallAllocations()
 	 */
 	@Override
 	public long getActiveSmallAllocations() {
@@ -387,7 +387,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getActiveNormalAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getActiveNormalAllocations()
 	 */
 	@Override
 	public long getActiveNormalAllocations() {
@@ -396,7 +396,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getActiveHugeAllocations()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getActiveHugeAllocations()
 	 */
 	@Override
 	public long getActiveHugeAllocations() {
@@ -405,7 +405,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getType()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getType()
 	 */
 	@Override
 	public String getType() {
@@ -414,7 +414,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 	
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#isDirect()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#isDirect()
 	 */
 	@Override
 	public boolean isDirect() {
@@ -423,7 +423,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getChunkLists()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getChunkLists()
 	 */
 	@Override
 	public int getChunkLists() {
@@ -432,7 +432,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getSmallSubPages()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getSmallSubPages()
 	 */
 	@Override
 	public int getSmallSubPages() {
@@ -441,7 +441,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getTinySubPages()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getTinySubPages()
 	 */
 	@Override
 	public int getTinySubPages() {
@@ -450,7 +450,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getTotalChunkSize()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getTotalChunkSize()
 	 */
 	@Override
 	public long getTotalChunkSize() {
@@ -459,7 +459,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getChunkFreeBytes()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getChunkFreeBytes()
 	 */
 	@Override
 	public long getChunkFreeBytes() {
@@ -468,7 +468,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getChunkUsedBytes()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getChunkUsedBytes()
 	 */
 	@Override
 	public long getChunkUsedBytes() {		
@@ -477,7 +477,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getChunkUsage()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getChunkUsage()
 	 */
 	@Override
 	public int getChunkUsage() {
@@ -486,7 +486,7 @@ public class BufferArenaMonitor implements BufferArenaMonitorMBean, Runnable {
 	
 	/**
 	 * {@inheritDoc}
-	 * @see net.opentsdb.buffers.BufferArenaMonitorMBean#getLastElapsed()
+	 * @see com.heliosapm.streams.buffers.BufferArenaMonitorMBean#getLastElapsed()
 	 */
 	@Override
 	public long getLastElapsed() {

@@ -27,13 +27,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.boot.ExitCodeGenerator;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.ContextRefreshedEvent;
 
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.url.URLHelper;
 
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
@@ -55,7 +64,8 @@ import io.netty.util.concurrent.GenericFutureListener;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.onramp.OnRampBoot</code></p>
  */
-
+@SpringBootApplication
+@EnableAutoConfiguration 
 public class OnRampBoot {
 	/** Indicates if we're on linux in which case, async will use epoll */
 	public static final boolean IS_LINUX = System.getProperty("os.name").toLowerCase().contains("linux");
@@ -133,39 +143,109 @@ public class OnRampBoot {
 	/** The size of a channel's send buffer in bytes */
 	protected final int sendBuffer;
 	
-	
-	
-	
-	/** The number of pooled buffer heap arenas */
-	protected int nHeapArena;
-	/** The number of pooled buffer direct arenas */
-	protected int nDirectArena;
-	/** The pooled buffer page size */
-	protected int pageSize;
-	/** The pooled buffer max order */
-	protected int maxOrder;
-	/** The pooled buffer cache size for tiny allocations */
-	protected int tinyCacheSize;
-	/** The pooled buffer cache size for small allocations */
-	protected int smallCacheSize;
-	/** The pooled buffer cache size for normal allocations */
-	protected int normalCacheSize;	
-	
-	/** The child channel buffer allocator */
-	protected final ByteBufAllocator bufferAllocator;
-	
 	/** The server URI */
 	public final URI serverURI;
 	
 	
-	private static OnRampBoot boot = null;
 	
+	/** The boot reference */
+	static OnRampBoot boot = null;
+	/** The boot configs */
+	static Properties bootConfig = null;
+	/** The Spring Application */
+	static SpringApplication springApp = null;
+	/** The Spring Application Context */
+	static ConfigurableApplicationContext appCtx = null;
 	
-	public static void main(String[] args) {
+	/**
+	 * Main boot entry point
+	 * @param args One of:<ul>
+	 * 	<li><b>--admin=&lt;The admin server URL&gt;</li>
+	 *  <li><b>--config=&lt;The URL of config properties&gt;</li>
+	 * </ul>
+	 */
+	public static void main(final String[] args) {
 		System.setProperty("java.net.preferIPv4Stack", "true");
-		final Properties p = new Properties();
-		boot = new OnRampBoot(p);
-		StdInCommandHandler.getInstance().run();
+//		System.setProperty("io.netty.leakDetectionLevel", "PARANOID");
+//		System.setProperty("buffers.leakdetection", "true");
+		System.setProperty("spring.output.ansi.enabled", "DETECT");
+//		System.setProperty("buffers.pooled", "false");
+//		System.setProperty("buffers.direct", "false");
+		System.setProperty("spring.boot.admin.client.enabled", "true");
+		System.setProperty("info.version", "0.0.3a");
+		System.setProperty("spring.boot.admin.client.name", "OnRamp");
+		System.setProperty("spring.boot.admin.url", "http://pdk-pt-cltsdb-05/streamhubadmin");
+		
+		
+//		=============================================================================
+		final Logger log = LogManager.getLogger(OnRampBoot.class);
+		final String adminUrl = findArg("--admin", null, args);
+		final String configUrl = findArg("--config", null, args);
+		if(adminUrl==null && configUrl==null) {
+			bootConfig = URLHelper.readProperties(OnRampBoot.class.getClassLoader().getResource("defaultConfig.properties"));
+			//System.getProperties().putAll(bootConfig);
+		}
+		springApp = new SpringApplication(OnRampBoot.class);
+		springApp.setDefaultProperties(bootConfig);
+		springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
+			@Override
+			public void onApplicationEvent(final ContextRefreshedEvent event) {
+				try {
+					log.info("\n\t==================================================\n\tOnRamp Started\n\t==================================================\n");
+				} catch (Exception ex) {
+					System.err.println("AppContext Startup Failure. Shutting down. Stack trace follows.");
+					ex.printStackTrace(System.err);
+					System.exit(-1);
+				}						
+			}
+		});
+		springApp.addListeners(new ApplicationListener<ContextClosedEvent>(){
+			@Override
+			public void onApplicationEvent(final ContextClosedEvent event) {
+				log.info("\n\t==================================================\n\tOnRamp Stopped\n\t==================================================\n");											
+			}
+		});
+//		springApp.setResourceLoader(resourceLoader);
+//		springApp.setDefaultProperties(p);
+		
+//		springApp.setDefaultProperties(p);
+//		StandardEnvironment environment = new StandardEnvironment();
+		
+		Thread springBootLaunchThread = new Thread("SpringBootLaunchThread") {
+			public void run() {
+				appCtx = springApp.run(args);
+			}
+		};
+		springBootLaunchThread.setContextClassLoader(OnRampBoot.class.getClassLoader());
+		springBootLaunchThread.setDaemon(true);
+		springBootLaunchThread.start();
+		
+		log.info("Starting StdIn Handler");
+		final Thread MAIN = Thread.currentThread();
+		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
+			public void run() {
+				log.info("StdIn Handler Shutting Down AppCtx....");
+//				Thread stopThread = new Thread("ShutdownThread") {
+//					public void run() {
+//						
+//					}
+//				};
+				SpringApplication.exit(appCtx, new ExitCodeGenerator(){
+					@Override
+					public int getExitCode() {
+						return 1;
+					}});
+				
+				MAIN.interrupt();
+				
+			}
+		}).runAsync(true).join();
+		
+//		
+//		
+//		final Properties p = new Properties();
+//		boot = new OnRampBoot(p);
+		
 	}
 	
 	private final Thread shutdownHook = new Thread() {
@@ -181,10 +261,21 @@ public class OnRampBoot {
 	};
 	
 	/**
+	 * Creates a new OnRampBoot using the static bootConfig
+	 */
+	public OnRampBoot() {
+		this(bootConfig);
+	}
+	
+	
+	/**
 	 * Creates a new OnRampBoot
 	 * @param appConfig  The application configuration
 	 */
 	public OnRampBoot(final Properties appConfig) {
+		final String jmxmpUri = ConfigurationHelper.getSystemThenEnvProperty("jmx.jmxmp.uri", "jmxmp://0.0.0.0:1893", appConfig);
+		JMXHelper.fireUpJMXMPServer(jmxmpUri);
+		MessageForwarder.initialize(appConfig);
 		port = ConfigurationHelper.getIntSystemThenEnvProperty("onramp.network.port", 8091, appConfig);
 		bindInterface = ConfigurationHelper.getSystemThenEnvProperty("onramp.network.bind", "0.0.0.0", appConfig);
 		bindSocket = new InetSocketAddress(bindInterface, port);
@@ -198,13 +289,12 @@ public class OnRampBoot {
 		async = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.async_io", true, appConfig);
 		tcpNoDelay = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.tcp_no_delay", true, appConfig);
 		keepAlive = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.keep_alive", true, appConfig);
-		reuseAddress = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.reuse_address", true, appConfig);
-		bufferAllocator = BufferManager.getInstance().getPooledBufferAllocator();
+		reuseAddress = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.reuse_address", true, appConfig);		
 		pipelineFactory = new PipelineFactory(appConfig);
 		serverBootstrap.handler(new LoggingHandler(getClass(), LogLevel.INFO));
 		serverBootstrap.childHandler(pipelineFactory);
 		// Set the child options
-		serverBootstrap.childOption(ChannelOption.ALLOCATOR, bufferAllocator);
+		serverBootstrap.childOption(ChannelOption.ALLOCATOR, BufferManager.getInstance().getAllocator());
 		serverBootstrap.childOption(ChannelOption.TCP_NODELAY, tcpNoDelay);
 		serverBootstrap.childOption(ChannelOption.SO_KEEPALIVE, keepAlive);
 		serverBootstrap.childOption(ChannelOption.SO_RCVBUF, recvBuffer);
@@ -317,6 +407,22 @@ public class OnRampBoot {
 		}
 	}
 	
+	/**
+	 * Finds a command line arg value
+	 * @param prefix The prefix
+	 * @param defaultValue The default value if not found
+	 * @param args The command line args to search
+	 * @return the value
+	 */
+	private static String findArg(final String prefix, final String defaultValue, final String[] args) {
+		for(String s: args) {
+			if(s.startsWith(prefix)) {
+				s = s.replace(prefix, "").trim();
+				return s;
+			}
+		}
+		return defaultValue;
+	}
 	
 	
 

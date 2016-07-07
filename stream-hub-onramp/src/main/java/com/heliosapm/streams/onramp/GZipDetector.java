@@ -21,12 +21,10 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
 import io.netty.handler.codec.ByteToMessageDecoder;
-import io.netty.handler.codec.compression.JZlibDecoder;
-import io.netty.handler.codec.compression.JZlibEncoder;
+import io.netty.handler.codec.compression.ZlibCodecFactory;
 import io.netty.handler.codec.compression.ZlibWrapper;
 
 /**
@@ -64,7 +62,7 @@ public class GZipDetector extends ByteToMessageDecoder  {
 			} else {
 				ctx.pipeline().remove(this);
 			}
-			out.add(buff);
+			out.add(buff.retain());
 		}
 	}
 
@@ -72,12 +70,10 @@ public class GZipDetector extends ByteToMessageDecoder  {
 	private void enableGzip(final ChannelHandlerContext ctx) {
 		final ChannelPipeline p = ctx.pipeline();
 		try {	         
-			p.addBefore("buffer", "gzipdeflater", new JZlibEncoder(ZlibWrapper.GZIP){
-				// TODO
-			});	         
-			p.addBefore("streamSplitter", "gzipinflater", new JZlibDecoder(ZlibWrapper.GZIP){
-				// TODO
-			});
+//			p.addAfter("connmgr", "gzipdeflater", new JZlibEncoder(ZlibWrapper.GZIP){
+//				// TODO
+//			});	         
+			p.addAfter("gzipdetector", "gzipinflater",  ZlibCodecFactory.newZlibDecoder(ZlibWrapper.GZIP));
 			p.remove(this);
 		} catch (Exception ex) {
 			log.error("Failed to add gzip handlers", ex);

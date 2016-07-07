@@ -54,8 +54,19 @@
 
 		<dependency>
 		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-tomcat</artifactId>
+		    <artifactId>spring-boot-starter-undertow</artifactId>
 		</dependency>
+
+		<dependency>
+		    <groupId>org.springframework.boot</groupId>
+		    <artifactId>spring-boot-starter-remote-shell</artifactId>
+		 </dependency>
+
+		<dependency>
+		    <groupId>de.codecentric</groupId>
+		    <artifactId>spring-boot-admin-starter-client</artifactId>
+		</dependency>
+
 
 		
 
@@ -85,22 +96,6 @@
 
 		
 		
-
-		<dependency>
-		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-remote-shell</artifactId>
-		    <exclusions>
-		    	<exclusion>
-		    		<groupId>org.slf4j</groupId>
-		    		<artifactId>log4j-over-slf4j</artifactId>
-		    	</exclusion>
-		    </exclusions>
-		 </dependency>
-
-		<dependency>
-		    <groupId>de.codecentric</groupId>
-		    <artifactId>spring-boot-admin-starter-client</artifactId>
-		</dependency>
 
 
 
@@ -418,8 +413,8 @@
 		<artifactId>maven-eclipse-plugin</artifactId>
 		<version>${eclipse-plugin.version}</version>
 		<configuration>
-		    <downloadJavadocs>false</downloadJavadocs>
-		    <downloadSources>false</downloadSources>
+		    <downloadJavadocs>${downloadJavadocs}</downloadJavadocs>
+		    <downloadSources>${downloadSources}</downloadSources>
 		    <classpathContainers>
 			<classpathContainer>
 		org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8

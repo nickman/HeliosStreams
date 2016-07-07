@@ -27,32 +27,33 @@ import gnu.trove.map.hash.TIntObjectHashMap;
 
 public enum ValueType {
 	/** Tracking an all time total of a specific event type */
-	ACCUMULATOR('A', "Accumulator", true, "Tracking an all time total of a specific event type"),
+	ACCUMULATOR('A', "Accumulator", "tsdb.metrics.accumulator", true, "Tracking an all time total of a specific event type"),
 	/** Tracking the per seconds/minutes/hours/day rate of a specific event type */
-	METER('M', "Meter", true, "Tracking the per seconds/minutes/hours/day rate of a specific event type"),
+	METER('M', "Meter", "tsdb.metrics.meter", true, "Tracking the per seconds/minutes/hours/day rate of a specific event type"),
 	/** The value of a given metric instance is the delta of the current and the prior value */
-	DELTA('D', "Delta", false, "The value of a given metric instance is the delta of the current and the prior value"),
+	DELTA('D', "Delta", "tsdb.metrics.delta", false, "The value of a given metric instance is the delta of the current and the prior value"),
 	/** Values are aggregated to count, min, max and average per defined period (e.g. 15 seconds) */
-	PERIODAGG('P', "PeriodAggregation", false, "Values are aggregated to count, min, max and average per defined period (e.g. 15 sedonds)"),
+	PERIODAGG('P', "PeriodAggregation", "tsdb.metrics.pagg", false, "Values are aggregated to count, min, max and average per defined period (e.g. 15 sedonds)"),
 	/** Values are aggregated to count, min, max and average per defined period (e.g. 15 seconds), but aggregations retain their values in the next period if there is no activity */
-	PERIODAGGSTICKY('T', "StickyPeriodAggregation", false, "Values are aggregated to count, min, max and average per defined period (e.g. 15 seconds), but aggregations retain their values in the next period if there is no activity"),
+	PERIODAGGSTICKY('T', "StickyPeriodAggregation", "tsdb.metrics.spagg", false, "Values are aggregated to count, min, max and average per defined period (e.g. 15 seconds), but aggregations retain their values in the next period if there is no activity"),
 	/** The metric is not aggregated and forwarded directly to endpoint */
-	STRAIGHTTHROUGH('S', "StraightThrough", false, "The metric is not aggregated and forwarded directly to endpoint"),
+	STRAIGHTTHROUGH('S', "StraightThrough", "tsdb.metrics.st", false, "The metric is not aggregated and forwarded directly to endpoint"),
 	/** The value type indicating the metric is directed by its value type or a default */
-	DIRECTED('X', "Directed", true, "The value type indicating the metric is directed by its value type or a default");
+	DIRECTED('X', "Directed", "tsdb.metrics.directed", true, "The value type indicating the metric is directed by its value type or a default");
 	
 	// U for undirected ?
 	
 	private static final ValueType[] values = values();
 	private static final int MAX_INDEX = values.length -1;
 	
-	private ValueType(final char decode, final String name, final boolean valueless, final String description) {
+	private ValueType(final char decode, final String name, final String topicName, final boolean valueless, final String description) {
 		this.name = name;
 		this.valueless = valueless;
 		this.description = description;
 		charCode = decode;
 		charcode[0] = decode;
 		charcode[1] = charcode[0] + 32; 
+		this.topicName = topicName;
 	}
 	
 	/**
@@ -85,6 +86,9 @@ public enum ValueType {
 	public final String description;
 	/** The char representations for this value type */
 	private final int[] charcode = new int[2];
+	
+	/** The default name of the topic this type of values is sent to */
+	public final String topicName;
 	
 	public static void main(String[] args) {
 		for(ValueType v: values()) {
