@@ -71,7 +71,7 @@ import io.netty.util.concurrent.GenericFutureListener;
  */
 @SpringBootApplication
 @EnableAutoConfiguration 
-@ComponentScan(basePackages={"com.heliosapm.streams.metrics.internal"})
+@ComponentScan(basePackages={"com.heliosapm.streams.onramp.internal"})
 public class OnRampBoot {
 	/** Indicates if we're on linux in which case, async will use epoll */
 	public static final boolean IS_LINUX = System.getProperty("os.name").toLowerCase().contains("linux");
@@ -84,7 +84,7 @@ public class OnRampBoot {
 	
 
 	/** The instance logger */
-	protected final Logger log = LogManager.getLogger(getClass());
+	protected final Logger log = LogManager.getLogger(OnRampBoot.class);
 	/** The port to listen on */
 	protected final int port;
 	/** The nic interface to bind to */

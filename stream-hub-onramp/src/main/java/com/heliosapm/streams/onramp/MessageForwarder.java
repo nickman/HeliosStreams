@@ -45,8 +45,12 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.codahale.metrics.Counter;
+import com.codahale.metrics.Timer;
+import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
+import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 import com.heliosapm.utils.lang.StringHelper;
 
 /**
@@ -71,6 +75,12 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	private final Producer<String, StreamedMetric> producer;
 	/** Indicates if the producer is open */
 	private final AtomicBoolean open = new AtomicBoolean(false);
+	
+	/** A counter of sent messages */
+	private final Timer sendMessage = SharedMetricsRegistry.getInstance().timer("message.send");
+	/** A counter of message send drops */
+	private final Counter droppedMessages = SharedMetricsRegistry.getInstance().counter("messages.drop.count");
+
 	
 	/**
 	 * Initializes the MessageForwarder singleton instance
@@ -146,8 +156,14 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	 * @return A future which will eventually contain the response information
 	 * @see org.apache.kafka.clients.producer.Producer#send(org.apache.kafka.clients.producer.ProducerRecord)
 	 */
+	@Override
 	public Future<RecordMetadata> send(final ProducerRecord<String, StreamedMetric> record) {
-		return producer.send(record);
+		final Context ctx = sendMessage.time();
+		try { 
+			return producer.send(record);
+		} finally {
+			ctx.stop();
+		}
 	}
 	
 	/**
@@ -160,6 +176,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 		try {
 			sm = StreamedMetric.fromString(metric);
 		} catch (Exception ex) {
+			droppedMessages.inc();
 			return;
 		}
 		final ValueType vt = sm.getValueType();
@@ -215,8 +232,14 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	 * @return A future which will eventually contain the response information
 	 * @see org.apache.kafka.clients.producer.Producer#send(org.apache.kafka.clients.producer.ProducerRecord, org.apache.kafka.clients.producer.Callback)
 	 */
+	@Override
 	public Future<RecordMetadata> send(final ProducerRecord<String, StreamedMetric> record, final Callback callback) {
-		return producer.send(record, callback);
+		final Context ctx = sendMessage.time();
+		try { 
+			return producer.send(record, callback);
+		} finally {
+			ctx.stop();
+		}
 	}
 
 
@@ -224,6 +247,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	 * Flush any accumulated records from the producer.
 	 * @see org.apache.kafka.clients.producer.Producer#flush()
 	 */
+	@Override
 	public void flush() {
 		producer.flush();
 	}
@@ -236,6 +260,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	 * @return the partition data
 	 * @see org.apache.kafka.clients.producer.Producer#partitionsFor(java.lang.String)
 	 */
+	@Override
 	public List<PartitionInfo> partitionsFor(final String topic) {
 		return producer.partitionsFor(topic);
 	}
@@ -246,6 +271,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	 * @return a map of metrics maintained by the producer
 	 * @see org.apache.kafka.clients.producer.Producer#metrics()
 	 */
+	@Override
 	public Map<MetricName, ? extends Metric> metrics() {
 		return producer.metrics();
 	}
@@ -255,6 +281,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	 * This is a No Op
 	 * @see org.apache.kafka.clients.producer.Producer#close()
 	 */
+	@Override
 	public void close() {
 		/* No Op */
 	}
@@ -266,6 +293,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	 * @param unit
 	 * @see org.apache.kafka.clients.producer.Producer#close(long, java.util.concurrent.TimeUnit)
 	 */
+	@Override
 	public void close(final long timeout, final TimeUnit unit) {
 		/* No Op */
 	}

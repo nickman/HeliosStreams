@@ -63,6 +63,7 @@ public class TextLineRpcHandler extends MessageToMessageDecoder<ByteBuf> {
 	 * {@inheritDoc}
 	 * @see io.netty.channel.ChannelInboundHandlerAdapter#exceptionCaught(io.netty.channel.ChannelHandlerContext, java.lang.Throwable)
 	 */
+	@Override
 	public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) throws Exception {
 		log.warn("Caught exception: {}",  cause);
 	}

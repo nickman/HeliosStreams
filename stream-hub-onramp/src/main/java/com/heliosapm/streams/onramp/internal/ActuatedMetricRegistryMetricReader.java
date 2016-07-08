@@ -22,7 +22,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.streams.onramp;
+package com.heliosapm.streams.onramp.internal;
 
 import org.springframework.boot.actuate.autoconfigure.ExportMetricReader;
 import org.springframework.boot.actuate.metrics.reader.MetricReader;
