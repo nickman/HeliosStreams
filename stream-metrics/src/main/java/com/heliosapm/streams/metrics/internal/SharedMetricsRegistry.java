@@ -25,10 +25,14 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
+import com.codahale.metrics.Histogram;
 import com.codahale.metrics.JmxReporter;
+import com.codahale.metrics.Meter;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.heliosapm.utils.jmx.JMXHelper;
 
@@ -116,11 +120,48 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 				}
 			}
 		};
-		this.register(name, g);
+		this.register("gauge." + name, g);
 		return g;
 	}
 	
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.codahale.metrics.MetricRegistry#counter(java.lang.String)
+	 */
+	@Override
+	public Counter counter(final String name) {
+		return super.counter("counter." + name);
+	}
+		
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.codahale.metrics.MetricRegistry#timer(java.lang.String)
+	 */
+	@Override
+	public Timer timer(final String name) {
+		return super.timer("timer." + name);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.codahale.metrics.MetricRegistry#histogram(java.lang.String)
+	 */
+	@Override
+	public Histogram histogram(final String name) {
+		return super.histogram("histogram." + name);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.codahale.metrics.MetricRegistry#meter(java.lang.String)
+	 */
+	@Override
+	public Meter meter(final String name) {
+		return super.meter("meter." + name);
+	}
+		
 //	@Override
 //	public ObjectName createName(final String type, final String domain, final String name) {
 //		final Map<String, String> tags = new HashMap<String, String>();

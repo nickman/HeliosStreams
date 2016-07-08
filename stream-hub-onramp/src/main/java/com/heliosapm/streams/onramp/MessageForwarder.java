@@ -77,9 +77,12 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 	private final AtomicBoolean open = new AtomicBoolean(false);
 	
 	/** A counter of sent messages */
-	private final Timer sendMessage = SharedMetricsRegistry.getInstance().timer("message.send");
+	private final Timer sendMessage = SharedMetricsRegistry.getInstance().timer("forwarder.message.send");
+	/** A counter of sent messages */
+	private final Counter sendCounter = SharedMetricsRegistry.getInstance().counter("forwarder.messages.sent");
+	
 	/** A counter of message send drops */
-	private final Counter droppedMessages = SharedMetricsRegistry.getInstance().counter("messages.drop.count");
+	private final Counter droppedMessages = SharedMetricsRegistry.getInstance().counter("forwarder.messages.drop.count");
 
 	
 	/**
@@ -162,6 +165,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 		try { 
 			return producer.send(record);
 		} finally {
+			sendCounter.inc();
 			ctx.stop();
 		}
 	}
@@ -238,6 +242,7 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 		try { 
 			return producer.send(record, callback);
 		} finally {
+			sendCounter.inc();
 			ctx.stop();
 		}
 	}

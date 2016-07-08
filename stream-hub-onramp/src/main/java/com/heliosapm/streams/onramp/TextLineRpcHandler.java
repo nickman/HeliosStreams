@@ -51,12 +51,9 @@ public class TextLineRpcHandler extends MessageToMessageDecoder<ByteBuf> {
 	@Override
 	protected void decode(final ChannelHandlerContext ctx, final ByteBuf buff, final  List<Object> out) throws Exception {
 		final String v = buff.toString(UTF8);
-		log.info("Received Message: [{}]", v);
+		log.debug("Received Message: [{}]", v);
 		mf.send(v);
 		out.add(buff.retain());
-		
-		
-		
 	}
 	
 	/**

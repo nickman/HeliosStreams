@@ -66,25 +66,25 @@ public class ConnectionManager extends ChannelDuplexHandler implements Connectio
 	private final AtomicLong connections_established = new AtomicLong();
 	/** The shared metric publication of the connections established gauge */
 	@SuppressWarnings("unused")
-	private final Gauge<Long> connections_established_gauge = SharedMetricsRegistry.getInstance().gauge("connections.estalished", new Callable<Long>(){
+	private final Gauge<Long> connections_established_gauge = SharedMetricsRegistry.getInstance().gauge("connmgr.connections.estalished", new Callable<Long>(){
 		@Override
 		public Long call()  {
 			return connections_established.get();
 		}
 	});
 	/** A counter of connection instances */
-	private final Counter connections = SharedMetricsRegistry.getInstance().counter("connections");
+	private final Counter connections = SharedMetricsRegistry.getInstance().counter("connmgr.connections");
 	
 	/** A counter of unknown exception types */
-	private final Counter exceptions_unknown = SharedMetricsRegistry.getInstance().counter("exceptions.unknown");
+	private final Counter exceptions_unknown = SharedMetricsRegistry.getInstance().counter("connmgr.exceptions.unknown");
 	/** A counter of client side closed exceptions */
-	private final Counter exceptions_closed = SharedMetricsRegistry.getInstance().counter("exceptions.closed");	
+	private final Counter exceptions_closed = SharedMetricsRegistry.getInstance().counter("connmgr.exceptions.closed");	
 	/** A counter of reset exceptions */
-	private final Counter exceptions_reset = SharedMetricsRegistry.getInstance().counter("exceptions.reset");
+	private final Counter exceptions_reset = SharedMetricsRegistry.getInstance().counter("connmgr.exceptions.reset");
 	/** A counter of timeout exceptions */
-	private final Counter exceptions_timeout = SharedMetricsRegistry.getInstance().counter("exceptions.timeout");
+	private final Counter exceptions_timeout = SharedMetricsRegistry.getInstance().counter("connmgr.exceptions.timeout");
 	/** A counter of idle session timeouts */
-	private final Counter idle_timeout = SharedMetricsRegistry.getInstance().counter("idle.timeout");
+	private final Counter idle_timeout = SharedMetricsRegistry.getInstance().counter("connmgr.idle.timeout");
 
 	private final DefaultChannelGroup channels =
 			new DefaultChannelGroup("all-channels", new DefaultEventExecutor(new ThreadFactory(){

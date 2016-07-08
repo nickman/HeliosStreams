@@ -51,5 +51,44 @@ JMX Ops to:
 	Stop AppCtx
 	Reload a new config
 		
+=================================================
+TODO: 
 
+Shared Lib:
+==========
+	self log metrics
+	AdminFinder
+	MetricRegistry / Actuated
+	Log Level Controller to set level via JMX
+	
+Conf:
+=====
+	cleanup
+	consistent port ranges
+	onramp props
+	
+Text Metric Handler: detect std tsdb metric prefixed with "put"
+ConfHelper: extract props from args.
+StreamHub nodes:  use args4j for command handling
+
+HTTP Metrics Listener:
+======================
+Standard HTTP/JSON
+HTTP posted text
+WebSocket/JSON
+
+UDP Metrics Listener
+====================
+Text
+Binary
+
+MessageForwarder:
+=================
+Faster timeout on producer.
+How to handle producer failure ?
+
+Add spring app id as standard appId locator
+
+SystemD scripts for jvm startups.
+		
 

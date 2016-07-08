@@ -35,7 +35,7 @@ import com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorS
 
 /**
  * <p>Title: StreamedMetricMeterSupplier</p>
- * <p>Description: </p> 
+ * <p>Description: Streamed metric processor for metered metrics</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier</code></p>
  */
@@ -141,15 +141,21 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 		 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#punctuate(long)
 		 */
 		@Override
-		public void punctuate(final long timestamp) {
+		public void punctuate(final long timestamp) {			
 			final KeyValueIterator<String, TimestampedMetricKey> iter = metricTimestampStore.all();
 			try {
-				final KeyValue<String, TimestampedMetricKey> kv = iter.next();
-				if(kv.value.isExpired(timestamp, aggregationPeriod)) {					
-					context.forward(kv.key, StreamedMetric.fromKey(timestamp, kv.value.getMetricKey(), kv.value.getCount()));
-					context.commit();
-					metricTimestampStore.delete(kv.key);
+				while(iter.hasNext()) {
+					try {
+						final KeyValue<String, TimestampedMetricKey> kv = iter.next();
+						if(kv.value.isExpired(timestamp, aggregationPeriod)) {					
+							context.forward(kv.key, StreamedMetric.fromKey(timestamp, kv.value.getMetricKey(), kv.value.getCount()));
+							metricTimestampStore.delete(kv.key);
+						}						
+					} catch (Exception x) {
+						/* No Op */
+					}
 				}
+				context.commit();
 			} finally {
 				iter.close();
 			}
