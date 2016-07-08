@@ -29,8 +29,8 @@
         <Logger name="org.I0Itec" level="info" additivity="false">
             <AppenderRef ref="Console-Appender" level="info"/>               
         </Logger>
-        <Logger name="org.springframework" level="debug" additivity="false">
-            <AppenderRef ref="Console-Appender" level="debug"/>               
+        <Logger name="org.springframework" level="info" additivity="false">
+            <AppenderRef ref="Console-Appender" level="info"/>               
         </Logger>
            
         <Root level="info">

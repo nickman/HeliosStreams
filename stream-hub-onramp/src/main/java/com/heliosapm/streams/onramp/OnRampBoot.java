@@ -33,10 +33,15 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MutablePropertySources;
+import org.springframework.core.env.StandardEnvironment;
 
 import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -66,6 +71,7 @@ import io.netty.util.concurrent.GenericFutureListener;
  */
 @SpringBootApplication
 @EnableAutoConfiguration 
+@ComponentScan(basePackages={"com.heliosapm.streams.metrics.internal"})
 public class OnRampBoot {
 	/** Indicates if we're on linux in which case, async will use epoll */
 	public static final boolean IS_LINUX = System.getProperty("os.name").toLowerCase().contains("linux");
@@ -174,8 +180,8 @@ public class OnRampBoot {
 		System.setProperty("spring.boot.admin.client.enabled", "true");
 		System.setProperty("info.version", "0.0.3a");
 		System.setProperty("spring.boot.admin.client.name", "OnRamp");
-		System.setProperty("spring.boot.admin.url", "http://pdk-pt-cltsdb-05/streamhubadmin");
-		
+//		System.setProperty("spring.boot.admin.url", "http://pdk-pt-cltsdb-05/streamhubadmin");
+		ExtendedThreadManager.install();
 		
 //		=============================================================================
 		final Logger log = LogManager.getLogger(OnRampBoot.class);
@@ -186,17 +192,12 @@ public class OnRampBoot {
 			//System.getProperties().putAll(bootConfig);
 		}
 		springApp = new SpringApplication(OnRampBoot.class);
+		bootConfig.setProperty("spring.boot.admin.url", "http://localhost:7560/streamhubadmin");
 		springApp.setDefaultProperties(bootConfig);
 		springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
 			@Override
 			public void onApplicationEvent(final ContextRefreshedEvent event) {
-				try {
-					log.info("\n\t==================================================\n\tOnRamp Started\n\t==================================================\n");
-				} catch (Exception ex) {
-					System.err.println("AppContext Startup Failure. Shutting down. Stack trace follows.");
-					ex.printStackTrace(System.err);
-					System.exit(-1);
-				}						
+				log.info("\n\t==================================================\n\tOnRamp Started\n\t==================================================\n");
 			}
 		});
 		springApp.addListeners(new ApplicationListener<ContextClosedEvent>(){
