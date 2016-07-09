@@ -10,7 +10,7 @@
     <groupId>com.heliosapm.streams</groupId>
     <artifactId>stream-hub-admin</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Helios Streams :: StreamHub Admin</name>
+    <name>Helios Streams :: StreamHubAdmin</name>
     <description>Helios Stream Processing Hub Admin Server</description>
     <packaging>jar</packaging>
     <url>https://github.com/nickman</url>

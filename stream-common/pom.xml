@@ -9,10 +9,10 @@
   	</parent>
     
     <groupId>com.heliosapm.streams</groupId>
-    <artifactId>stream-hub-onramp</artifactId>
+    <artifactId>stream-common</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Helios Streams :: OnRamp</name>
-    <description>Helios Streams Multi-Protocol On Ramp</description>
+    <name>Helios Streams :: Common</name>
+    <description>Helios Streams Common Classes</description>
     <packaging>jar</packaging>
     <url>https://github.com/nickman</url>
 	
@@ -23,101 +23,106 @@
 		    <groupId>junit</groupId>
 		    <artifactId>junit</artifactId>
 		</dependency>
-		
+
+		<!-- ==========================================================
+		    ZooKeep Dependencies
+		    ========================================================== -->
+
+			<dependency>
+			  <groupId>org.apache.zookeeper</groupId>
+			  <artifactId>zookeeper</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-framework</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-recipes</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-client</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+
+
+		<!-- ==========================================================
+		    Kafka Dependencies
+		    ========================================================== -->
+
 			<dependency>
 			  <groupId>org.apache.kafka</groupId>
 			  <artifactId>kafka-clients</artifactId>
+			  <scope>provided</scope>
 			</dependency>
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>kafka-tools</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-api</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-runtime</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-json</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-file</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>kafka-log4j-appender</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>
-
 
 
 			<dependency>
 			    <groupId>com.heliosapm.streams</groupId>
 			    <artifactId>stream-metrics</artifactId>
-			    <version>${project.version}</version>				
+			    <version>${project.version}</version>
+			    <scope>provided</scope>
 			</dependency>
 
+		<!-- ==========================================================
+		    Misc Dependencies
+		    ========================================================== -->
 
 			<dependency>				
 				<groupId>com.heliosapm.utils</groupId>
 				<artifactId>heliosutils</artifactId>
+				<scope>provided</scope>
 			</dependency>
 			
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
                 <artifactId>metrics-core</artifactId>
+                <scope>provided</scope>
             </dependency>
 
+			<dependency>
+			  <groupId>io.netty</groupId>
+			  <artifactId>netty-all</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+
+		<!-- ==========================================================
+		    Logging Dependencies
+		    ========================================================== -->
 
 		  <dependency>
 		    <groupId>org.apache.logging.log4j</groupId>
 		    <artifactId>log4j-api</artifactId>
+		    <scope>provided</scope>
 		  </dependency>
 
 		  <dependency>
 		    <groupId>org.apache.logging.log4j</groupId>
 		    <artifactId>log4j-core</artifactId>
+		    <scope>provided</scope>
 		  </dependency>
 	
 	
 		  <dependency>
 		    <groupId>org.apache.logging.log4j</groupId>
 		    <artifactId>log4j-slf4j-impl</artifactId>
+		    <scope>provided</scope>
 		  </dependency>
 
 		  <dependency>
 		    <groupId>org.apache.logging.log4j</groupId>
 		    <artifactId>log4j-1.2-api</artifactId>
+		    <scope>provided</scope>
 		  </dependency>
-		  
-		  
-			<dependency>
-			  <groupId>io.netty</groupId>
-			  <artifactId>netty-all</artifactId>
-			</dependency>
-			
-			<dependency>
-			  <groupId>com.jcraft</groupId>
-			  <artifactId>jzlib</artifactId>
-			</dependency>
 			
 
 		<!-- ==========================================================
@@ -127,43 +132,15 @@
 		<dependency>
 		  <groupId>org.springframework.boot</groupId>
 		  <artifactId>spring-boot</artifactId>
+		  <scope>provided</scope>
   		</dependency>
   		
 		<dependency>
 		  <groupId>org.springframework.boot</groupId>
-		  <artifactId>spring-boot-loader</artifactId>
-		</dependency>
-
-		<dependency>
-		  <groupId>org.springframework.boot</groupId>
 		  <artifactId>spring-boot-actuator</artifactId>
+		  <scope>provided</scope>
 		</dependency>
 		
-		<dependency>
-        	<groupId>org.springframework.boot</groupId>
-        	<artifactId>spring-boot-starter-web</artifactId>		
-        </dependency>
-
-		<dependency>
-		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-undertow</artifactId>
-		</dependency>
-
-		
-		<dependency>
-		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-remote-shell</artifactId>
-		 </dependency>
-
-		<dependency>
-		    <groupId>de.codecentric</groupId>
-		    <artifactId>spring-boot-admin-starter-client</artifactId>
-		</dependency>
-		
-
-
-
-
     
     </dependencies>
     
