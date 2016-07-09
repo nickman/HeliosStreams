@@ -22,7 +22,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
  *
  */
-package com.heliosapm.streams.metrics.processor;
+package com.heliosapm.streams.metrics.processors;
 
 import java.nio.ByteOrder;
 import java.nio.charset.Charset;

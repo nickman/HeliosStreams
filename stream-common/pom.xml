@@ -65,12 +65,6 @@
 			</dependency>
 
 
-			<dependency>
-			    <groupId>com.heliosapm.streams</groupId>
-			    <artifactId>stream-metrics</artifactId>
-			    <version>${project.version}</version>
-			    <scope>provided</scope>
-			</dependency>
 
 		<!-- ==========================================================
 		    Misc Dependencies

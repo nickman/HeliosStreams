@@ -30,7 +30,9 @@ import org.springframework.boot.actuate.metrics.reader.MetricRegistryMetricReade
 import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Service;
 
-import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
+import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
+
+
 
 /**
  * <p>Title: ActuatedMetricRegistryMetricReader</p>

@@ -9,10 +9,10 @@
   	</parent>
     
     <groupId>com.heliosapm.streams</groupId>
-    <artifactId>stream-metrics</artifactId>
+    <artifactId>stream-node</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Helios Streams :: StreamMetrics</name>
-    <description>Helios Stream Metrics Pojos, Serdes and Serialization</description>
+    <name>Helios Streams :: StreamNode</name>
+    <description>Helios Stream Processing Worker Node</description>
     <packaging>jar</packaging>
     <url>https://github.com/nickman</url>
 	
@@ -26,52 +26,92 @@
 		    <groupId>junit</groupId>
 		    <artifactId>junit</artifactId>
 		</dependency>
-		
+
 		<!-- ==========================================================
-		    Kafka Dependencies
+		    Spring Boot Dependencies
 		    ========================================================== -->
+		
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot</artifactId>
+  		</dependency>
+  		
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot-loader</artifactId>
+		</dependency>
 
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>kafka-clients</artifactId>
-			  <scope>provided</scope>
-			</dependency>
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot-actuator</artifactId>
+		</dependency>
+		
+		
+		<dependency>
+        	<groupId>org.springframework.boot</groupId>
+        	<artifactId>spring-boot-starter-web</artifactId>		
+        </dependency>
 
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>kafka-streams</artifactId>
-			  <exclusions>
-			  	<exclusion>
-			  		<groupId>org.slf4j</groupId>
-			  		<artifactId>slf4j-log4j12</artifactId>
-			  	</exclusion>
-			  </exclusions>
-			  <scope>provided</scope>
-			</dependency>
+		<dependency>
+		    <groupId>org.springframework.boot</groupId>
+		    <artifactId>spring-boot-starter-undertow</artifactId>
+		</dependency>
+
+		<dependency>
+		    <groupId>org.springframework.boot</groupId>
+		    <artifactId>spring-boot-starter-remote-shell</artifactId>
+		 </dependency>
+
+		<dependency>
+		    <groupId>de.codecentric</groupId>
+		    <artifactId>spring-boot-admin-starter-client</artifactId>
+		</dependency>
 
 
-			<dependency>				
-				<groupId>com.heliosapm.utils</groupId>
-				<artifactId>heliosutils</artifactId>
-			</dependency>
+		
+
+        <!-- ZooKeep -->
+
+		<dependency>
+		  <groupId>org.apache.zookeeper</groupId>
+		  <artifactId>zookeeper</artifactId>
+		</dependency>
+		
+		<!--  Curator -->
+		
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-client</artifactId>
+		</dependency>
+		
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-framework</artifactId>
+		</dependency>
+
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-recipes</artifactId>
+		</dependency>
+
 
 		<dependency>
 		    <groupId>com.heliosapm.streams</groupId>
 		    <artifactId>stream-common</artifactId>
 		    <version>${project.version}</version>			
 		</dependency>
+  		
 
-				<dependency>
-				  <groupId>net.sf.trove4j</groupId>
-				  <artifactId>trove4j</artifactId>
-				</dependency>            
+			<dependency>				
+				<groupId>com.heliosapm.utils</groupId>
+				<artifactId>heliosutils</artifactId>
+			</dependency>
 
-
+		      
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
                 <artifactId>metrics-core</artifactId>
             </dependency>
-
 
 
 		  <dependency>
@@ -90,15 +130,10 @@
 		    <artifactId>log4j-slf4j-impl</artifactId>
 		  </dependency>
 
-		  <dependency>
-		    <groupId>org.apache.logging.log4j</groupId>
-		    <artifactId>log4j-1.2-api</artifactId>
-		  </dependency>
-		  
-		<dependency>
-		  <groupId>io.netty</groupId>
-		  <artifactId>netty-buffer</artifactId>
-		</dependency>
+			<dependency>
+			  <groupId>org.apache.logging.log4j</groupId>
+			  <artifactId>log4j-1.2-api</artifactId>
+			</dependency>
 		  
 	
 
@@ -111,12 +146,48 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>${compiler-plugin.version}</version>
+                <version>${jar-plugin.version}</version>
                 <configuration>
-                    <source>1.6</source>
-                    <target>1.6</target>
+                    <source>${compiler-source.version}</source>
+                    <target>${compiler-target.version}</target>
                 </configuration>
             </plugin>
+            
+            
+	    <plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-jar-plugin</artifactId>
+				<version>${jar-plugin.version}</version>
+				<executions>
+				  <execution>
+				    <id>jar</id>
+				    <goals>
+				      <goal>jar</goal>
+				    </goals>
+				  </execution>
+          		  <execution>
+            		<id>test-jar</id>
+		            <goals>
+		              <goal>test-jar</goal>
+		            </goals>
+		          </execution>				  
+				</executions>
+				<configuration>
+				  <forceCreation>true</forceCreation>
+           <archive>
+               <manifest>
+                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                   <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                   <addClasspath>true</addClasspath>
+               </manifest>
+               <manifestEntries>
+	               <Main-Class>com.heliosapm.streams.StreamHubBoot</Main-Class>
+               </manifestEntries>
+           </archive>
+				  
+				</configuration>
+	    </plugin>
+            
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-javadoc-plugin</artifactId>
@@ -151,13 +222,16 @@
 		    </executions>
 	    </plugin>
 	    <plugin>
-		<groupId>org.apache.maven.plugins</groupId>
-		<artifactId>maven-jar-plugin</artifactId>
-		<version>${jar-plugin.version}</version>
+		<groupId>org.codehaus.mojo</groupId>
+		<artifactId>cobertura-maven-plugin</artifactId>
+		<version>${cobertura.version}</version>
 		<configuration>
-		  <forceCreation>true</forceCreation>
+		  <formats>
+		    <format>html</format>
+		    <format>xml</format>
+		  </formats>
 		</configuration>
-	    </plugin>
+	      </plugin>	    
 	    <plugin>
 		<groupId>org.apache.maven.plugins</groupId>
 		<artifactId>maven-eclipse-plugin</artifactId>
@@ -166,6 +240,9 @@
 		    <downloadJavadocs>${downloadJavadocs}</downloadJavadocs>
 		    <downloadSources>${downloadSources}</downloadSources>
 		    <classpathContainers>
+			<classpathContainer>
+		org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8
+			</classpathContainer>		    	
 		    </classpathContainers>
 		</configuration>
 	    </plugin>
@@ -174,6 +251,19 @@
 	     <artifactId>maven-surefire-plugin</artifactId>
 	     <version>${surefire.version}</version>
 	</plugin>
+	    <plugin>
+	      <groupId>org.springframework.boot</groupId>
+	      <artifactId>spring-boot-maven-plugin</artifactId>
+	      <version>${spring-boot.version}</version>
+	      <executions>
+	        <execution>
+	          <goals>
+	            <goal>repackage</goal>
+	          </goals>
+	        </execution>
+	      </executions>
+	    </plugin>        	
+<!--         	
 	<plugin>
 	  <groupId>org.apache.maven.plugins</groupId>
 	  <artifactId>maven-shade-plugin</artifactId>
@@ -185,17 +275,19 @@
                 <goal>shade</goal>
               </goals>
               <configuration>
-              
+				<filters>
+					<filter>
+			            <artifact>*:*</artifact>
+			            <excludes>
+			                <exclude>META-INF/*.SF</exclude>
+			                <exclude>META-INF/*.DSA</exclude>
+			                <exclude>META-INF/*.RSA</exclude>
+			            </excludes>					
+					</filter>
+				</filters>              
                 <artifactSet>
                   <excludes>
-                  <!-- 
-                  	<exclude>log4j:log4j:jar:</exclude>
-                  	<exclude>org.slf4j:*:jar:</exclude>
                   	<exclude>org.codehaus.groovy:*:jar:</exclude>
-                  -->
-					  <exclude>META-INF/*.SF</exclude>
-	                  <exclude>META-INF/*.DSA</exclude>
-	                  <exclude>META-INF/*.RSA</exclude>                      	
                   </excludes>
                   <includes>
                     
@@ -204,7 +296,7 @@
               
           		<addDefaultImplementationEntries>true</addDefaultImplementationEntries>
           		<addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
-          		<includePluginDependencies>false</includePluginDependencies>
+          		<includePluginDependencies>true</includePluginDependencies>
           		
         		<transformers>
 					<transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
@@ -217,16 +309,15 @@
                 	<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                 	<transformer implementation="org.apache.maven.plugins.shade.resource.ComponentsXmlResourceTransformer"/>
                 	<transformer implementation="org.apache.maven.plugins.shade.resource.DontIncludeResourceTransformer">
-                		<resource>.SF</resource>
-                		<resource>.DSA</resource>
-                		<resource>.RSA</resource>
             		</transformer>
                 </transformers>
               </configuration>
             </execution>
           </executions>	  
 	</plugin>
+	-->
 	    
+
         </plugins>
     </build>
     

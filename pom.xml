@@ -13,6 +13,7 @@
     <url>https://github.com/nickman</url>
 	
 	<modules>
+		<module>stream-node</module>
 		<module>stream-common</module>
 		<module>stream-hub</module>
 		<module>stream-metrics</module>

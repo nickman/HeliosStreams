@@ -50,7 +50,7 @@ import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
+import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.utils.lang.StringHelper;
 
 /**

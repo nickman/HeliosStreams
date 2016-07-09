@@ -29,9 +29,9 @@ import com.heliosapm.streams.metrics.StreamedMetricSerializer;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.StreamedMetricValueDeserializer;
 import com.heliosapm.streams.metrics.StreamedMetricValueSerializer;
-import com.heliosapm.streams.metrics.processor.TimestampedMetricKey;
-import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedMetricKeyDeserializer;
-import com.heliosapm.streams.metrics.processor.TimestampedMetricKey.TimestampedMetricKeySerializer;
+import com.heliosapm.streams.metrics.processors.TimestampedMetricKey;
+import com.heliosapm.streams.metrics.processors.TimestampedMetricKey.TimestampedMetricKeyDeserializer;
+import com.heliosapm.streams.metrics.processors.TimestampedMetricKey.TimestampedMetricKeySerializer;
 
 /**
  * <p>Title: HeliosSerdes</p>

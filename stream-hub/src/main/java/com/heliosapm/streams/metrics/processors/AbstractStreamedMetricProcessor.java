@@ -19,7 +19,6 @@ under the License.
 package com.heliosapm.streams.metrics.processors;
 
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 
 import org.apache.kafka.streams.processor.Processor;
@@ -31,9 +30,9 @@ import org.apache.logging.log4j.Logger;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
+import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
 
 /**
  * <p>Title: AbstractStreamedMetricProcessor</p>

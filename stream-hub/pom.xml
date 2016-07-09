@@ -176,6 +176,11 @@
 			  </exclusions>
 			</dependency>
 
+		<dependency>
+		    <groupId>com.heliosapm.streams</groupId>
+		    <artifactId>stream-common</artifactId>
+		    <version>${project.version}</version>			
+		</dependency>
 
 			<dependency>				
 				<groupId>com.heliosapm.utils</groupId>
@@ -208,10 +213,6 @@
 			  <artifactId>netty-all</artifactId>
 			</dependency>
 
-			<dependency>
-			  <groupId>com.ning</groupId>
-			  <artifactId>async-http-client</artifactId>
-			</dependency>
 
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>

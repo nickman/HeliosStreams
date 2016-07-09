@@ -25,13 +25,12 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextRefreshedEvent;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.processor.StreamedMetricProcessor;
+import com.heliosapm.streams.metrics.processors.StreamedMetricProcessorSupplier;
 
 /**
  * <p>Title: DefaultValueTypeMetricRouter</p>
@@ -47,7 +46,7 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, Appl
 	/** The app context */
 	protected ApplicationContext applicationContext = null;
 	/** A map of routes keyed by the value type */
-	protected final Map<ValueType, StreamedMetricProcessor> routes = new EnumMap<ValueType, StreamedMetricProcessor>(ValueType.class);
+	protected final Map<ValueType, StreamedMetricProcessorSupplier> routes = new EnumMap<ValueType, StreamedMetricProcessorSupplier>(ValueType.class);
 	
 	/**
 	 * Creates a new DefaultValueTypeMetricRouter
@@ -63,7 +62,7 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, Appl
 	 */
 	@Override
 	public ProcessorSupplier<String, StreamedMetric> route(final ValueType valueType, final TopologyBuilder t) {
-		StreamedMetricProcessor processor = null;
+		StreamedMetricProcessorSupplier processor = null;
 //		switch(valueType) {
 //			case A:
 //				processor = new StreamedMetricMeterSupplier(5000, "tsdb.metrics.binary");
@@ -108,8 +107,8 @@ public class DefaultValueTypeMetricRouter implements ValueTypeMetricRouter, Appl
 	@Override
 	public void onApplicationEvent(final ContextRefreshedEvent event) {
 		log.info(">>>>>  Starting ValueTypeRouter...");
-		final Map<String, StreamedMetricProcessor> processors = applicationContext.getBeansOfType(StreamedMetricProcessor.class);
-		for(StreamedMetricProcessor processor : processors.values()) {
+		final Map<String, StreamedMetricProcessorSupplier> processors = applicationContext.getBeansOfType(StreamedMetricProcessorSupplier.class);
+		for(StreamedMetricProcessorSupplier processor : processors.values()) {
 			
 		}
 		log.info("<<<<< ValueTypeRouter Started.");

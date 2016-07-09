@@ -27,7 +27,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
-import com.heliosapm.streams.metrics.internal.SharedMetricsRegistry;
+import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.utils.jmx.JMXHelper;
 
 import io.netty.channel.Channel;

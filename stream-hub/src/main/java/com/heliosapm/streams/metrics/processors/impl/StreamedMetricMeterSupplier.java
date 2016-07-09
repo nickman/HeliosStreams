@@ -29,9 +29,9 @@ import org.springframework.beans.factory.annotation.Required;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.metrics.processor.TimestampedMetricKey;
 import com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor;
 import com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorSupplier;
+import com.heliosapm.streams.metrics.processors.TimestampedMetricKey;
 
 /**
  * <p>Title: StreamedMetricMeterSupplier</p>
