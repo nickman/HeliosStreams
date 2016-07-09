@@ -27,7 +27,6 @@ import org.slf4j.LoggerFactory;
 import com.codahale.metrics.Counter;
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.buffers.ByteBufSerde;
-import com.heliosapm.streams.common.kafka.producer.ByteBufStreamedMetricTimestampExtractor;
 import com.heliosapm.streams.common.kafka.producer.KafkaProducerService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
@@ -209,5 +208,12 @@ public class RingBufferService implements EventFactory<ByteBuf>, EventHandler<By
 			if(endOfBatch) producer.flush();
 			event.clear();
 		}
+	}
+	
+	/**
+	 * Stops the ring buffer service
+	 */
+	public void shutdown() {
+		disruptor.shutdown();		
 	}
 }

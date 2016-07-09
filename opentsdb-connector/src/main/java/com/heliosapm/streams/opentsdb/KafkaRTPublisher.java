@@ -19,7 +19,12 @@ under the License.
 package com.heliosapm.streams.opentsdb;
 
 import java.util.Map;
+import java.util.Properties;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.heliosapm.streams.opentsdb.ringbuffer.RingBufferService;
 import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.core.TSDB;
@@ -35,12 +40,16 @@ import net.opentsdb.tsd.RTPublisher;
  */
 
 public class KafkaRTPublisher extends RTPublisher {
+	/** Instance logger */
+	protected final Logger log = LoggerFactory.getLogger(getClass());	
+	/** The publication dispatch */
+	protected RingBufferService ringBufferService = null;
 
 	/**
 	 * Creates a new KafkaRTPublisher
 	 */
 	public KafkaRTPublisher() {
-		// TODO Auto-generated constructor stub
+		log.info("Created KafkaRTPublisher");
 	}
 
 	/**
@@ -48,9 +57,13 @@ public class KafkaRTPublisher extends RTPublisher {
 	 * @see net.opentsdb.tsd.RTPublisher#initialize(net.opentsdb.core.TSDB)
 	 */
 	@Override
-	public void initialize(TSDB tsdb) {
-		// TODO Auto-generated method stub
-
+	public void initialize(final TSDB tsdb) {
+		log.info(">>>>> Initializing KafkaRTPublisher...");
+		final Map<String, String> config = tsdb.getConfig().getMap();
+		final Properties p = new Properties();
+		p.putAll(config);
+		ringBufferService = RingBufferService.getInstance(p);
+		log.info("<<<<< KafkaRTPublisher initialized.");
 	}
 
 	/**
@@ -59,7 +72,6 @@ public class KafkaRTPublisher extends RTPublisher {
 	 */
 	@Override
 	public Deferred<Object> shutdown() {
-		// TODO Auto-generated method stub
 		return null;
 	}
 
