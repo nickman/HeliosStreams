@@ -23,6 +23,13 @@
 		    <groupId>junit</groupId>
 		    <artifactId>junit</artifactId>
 		</dependency>
+
+		<dependency>
+		    <groupId>com.heliosapm.streams</groupId>
+		    <artifactId>stream-common</artifactId>
+		    <version>${project.version}</version>			
+		</dependency>
+		
 		
 			<dependency>
 			  <groupId>org.apache.kafka</groupId>

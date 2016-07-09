@@ -64,6 +64,11 @@
 			  <scope>provided</scope>
 			</dependency>
 
+			<dependency>
+			  <groupId>org.apache.kafka</groupId>
+			  <artifactId>kafka-streams</artifactId>
+			  <scope>provided</scope>
+			</dependency>
 
 
 		<!-- ==========================================================
@@ -84,9 +89,14 @@
 
 			<dependency>
 			  <groupId>io.netty</groupId>
-			  <artifactId>netty-all</artifactId>
-			  <scope>provided</scope>
+			  <artifactId>netty-buffer</artifactId>
 			</dependency>
+
+				<dependency>
+				  <groupId>net.sf.trove4j</groupId>
+				  <artifactId>trove4j</artifactId>
+				</dependency>            
+
 
 
 		<!-- ==========================================================

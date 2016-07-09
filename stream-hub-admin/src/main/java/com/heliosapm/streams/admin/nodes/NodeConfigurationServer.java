@@ -16,6 +16,7 @@
 package com.heliosapm.streams.admin.nodes;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -39,6 +40,11 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.codahale.metrics.CachedGauge;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.CacheStats;
@@ -53,6 +59,7 @@ import com.heliosapm.utils.url.URLHelper;
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.admin.nodes.NodeConfigurationServer</code></p>
+ * FIXME: cache resources
  */
 @RestController
 @RequestMapping(value="/nodeconfig")
@@ -71,13 +78,20 @@ public class NodeConfigurationServer implements InitializingBean {
 	
 	/** The configuration directory name */
 	@Value("${workers.nodes.config.dir}")
-	protected String configDir = null;
+	protected String configDirName = null;
+	/** The application jar directory name */
+	@Value("${workers.nodes.app.dir}")
+	protected String appDirName = null;
+	
 	/** The content cache spec */
 	@Value("${workers.nodes.config.cachespec}")
 	protected String cacheSpec = null;
 	
-	/** The absolute directory */
-	protected File dir = null;
+	/** The absolute config directory */
+	protected File configDir = null;
+	/** The absolute app directory */
+	protected File appDir = null;
+	
 	
 	/** The content cache */
 	protected LoadingCache<String, KeyedFileContent> contentCache;
@@ -87,14 +101,18 @@ public class NodeConfigurationServer implements InitializingBean {
 	/** Timed gauge to cache the cache stats */
 	protected CachedGauge<CacheStats> cacheStats = null;
 	
+	/** The shared json node factory */
+	protected final JsonNodeFactory nodeFactory = JsonNodeFactory.instance;
+	/** The shared json object mapper */
+	protected final ObjectMapper jsonMapper = new ObjectMapper();
+	
 	/**
 	 * Retrieves the configuration for the passed host and app
 	 * @param host The requesting host
 	 * @param appname The requested app for which configuration should be delivered
 	 * @return a properties file in string format
 	 */
-	@RequestMapping(value="/{host}/{appname}.properties", method=RequestMethod.GET, produces={"text/x-java-properties"})
-	
+	@RequestMapping(value="/{host}/{appname}.properties", method=RequestMethod.GET, produces={"text/x-java-properties"})	
 	public String getConfigurationProperties(@PathVariable final String host, @PathVariable final String appname) {
 		final String _host = host.toLowerCase().trim().split("\\.")[0];
 		final String _appname = appname.toLowerCase().trim()  + ".properties";
@@ -103,6 +121,51 @@ public class NodeConfigurationServer implements InitializingBean {
 		return getContent(key);
 	}
 	
+	/**
+	 * Retrieves the resource requirements for the passed app
+	 * @param appname The requested app for which configuration should be delivered
+	 * @return a JSON document describing each resource required
+	 */
+	@RequestMapping(value="/{appname}", method=RequestMethod.GET, produces={"application/json"})	
+	public String getRequiredResources(@PathVariable final String appname) {
+		final String _appname = appname.toLowerCase().trim();
+		log.info("Fetching resources for [{}]", _appname);
+		final File d = new File(appDir, _appname);
+		final File[] resources = d.listFiles(new FileFilter(){
+			@Override
+			public boolean accept(final File pathname) {
+				return pathname.getName().endsWith(".jar");
+			}
+		});
+		final ArrayNode arrNode = nodeFactory.arrayNode();
+		for(File f: resources) {
+			final ObjectNode on = nodeFactory.objectNode();
+			on.put("resource", f.getName());
+			on.put("sha", URLHelper.hashSHA(f.getAbsolutePath()));
+			arrNode.add(on);
+		}
+		try {
+			return jsonMapper.writeValueAsString(arrNode);
+		} catch (JsonProcessingException jpe) {
+			throw new RuntimeException("Failed to render resource json for [" + appname + "]", jpe);
+		}
+	}
+	
+	/**
+	 * Returns the app resource for the passed app and resource name
+	 * @param appname The app name
+	 * @param resourceName The resource name
+	 * @return The resource bytes
+	 */
+	@RequestMapping(value="/resource/{appname}/{resourceName}", method=RequestMethod.GET, produces={"application/java-archive"})
+	public byte[] getResource(@PathVariable final String appname, @PathVariable final String resourceName) {
+		final String _appname = appname.toLowerCase().trim();
+		log.info("Fetching resource for [{}/{}]", _appname, resourceName);
+		final File d = new File(new File(appDir, _appname), resourceName);
+		return URLHelper.getBytesFromURL(URLHelper.toURL(d));
+	}
+	
+
 	
 	/**
 	 * Returns the content for the passed key, reloading if it has expired
@@ -145,9 +208,9 @@ public class NodeConfigurationServer implements InitializingBean {
 		final String[] segments = StringHelper.splitString(key, '/', true);
 		final String _host = segments[0];
 		final String _appname = segments[1];
-		File hostDir = new File(dir, _host);
+		File hostDir = new File(configDir, _host);
 		if(!hostDir.isDirectory()) {
-			hostDir = new File(dir, "default");
+			hostDir = new File(configDir, "default");
 			if(!hostDir.isDirectory()) {
 				final String msg = "Failed to find host directory for [" + _host + "] or default";
 				log.error(msg);
@@ -173,9 +236,11 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@Override
 	public void afterPropertiesSet() throws Exception {		
-		dir = new File(configDir).getAbsoluteFile();
-		if(!dir.isDirectory()) throw new IllegalArgumentException("The configuration directory [" + configDir + "] is invalid");
-		log.info("Configuration Directory: [{}]", dir);
+		configDir = new File(configDirName).getAbsoluteFile();
+		appDir = new File(appDirName).getAbsoluteFile();
+		if(!configDir.isDirectory()) throw new IllegalArgumentException("The configuration directory [" + configDirName + "] is invalid");
+		if(!appDir.isDirectory()) throw new IllegalArgumentException("The app directory [" + appDirName + "] is invalid");
+		log.info("Configuration Directory: [{}]", configDir);
 		if(!cacheSpec.contains("recordStats")) cacheSpec = cacheSpec + ",recordStats";
 		cacheLoader = loader();
 		contentCache = CacheBuilder.from(cacheSpec).build(cacheLoader);
@@ -193,7 +258,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 * Reloads the cache
 	 */
 	protected void reloadCache() {
-		for(File f : Files.fileTreeTraverser().preOrderTraversal(dir)) {
+		for(File f : Files.fileTreeTraverser().preOrderTraversal(configDir)) {
 			if(!f.getName().endsWith(".properties"))  continue;
 			final String key = new StringBuilder(f.getParentFile().getName()).append("/").append(f.getName()).toString();			
 			contentCache.put(key, new KeyedFileContent(f));
@@ -290,11 +355,11 @@ public class NodeConfigurationServer implements InitializingBean {
 	
 	
 	/**
-	 * Reloads the cache from the config dir
+	 * Reloads the cache from the config configDir
 	 * @param clearFirst if true, the cache will be invalidated first
 	 * @return the number of entries in the cache after this op completes
 	 */
-	@ManagedOperation(description="Reloads the cache from the config dir. Returns the number of entries in the cache after this op completes.")
+	@ManagedOperation(description="Reloads the cache from the config configDir. Returns the number of entries in the cache after this op completes.")
 	@ManagedOperationParameters({
 		@ManagedOperationParameter(name="clearFirst", description="If true, the cache will be invalidated first")
 	})	
@@ -311,13 +376,24 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedAttribute(description="The configuration directory")
 	public String getConfigDirectory() {
-		return dir.getAbsolutePath();
+		return configDir.getAbsolutePath();
 	}
+	
+	/**
+	 * Returns the application directory
+	 * @return the application directory
+	 */
+	@ManagedAttribute(description="The application directory")
+	public String getAppDirectory() {
+		return appDir.getAbsolutePath();
+	}
+	
 	
 	class KeyedFileContent {
 		final long timestamp;
 		final String content;
 		final File file;
+		final byte[] sha;
 		
 		/**
 		 * Creates a new KeyedFileContent
@@ -327,6 +403,7 @@ public class NodeConfigurationServer implements InitializingBean {
 			this.file = f;
 			this.timestamp = f.lastModified();
 			this.content = URLHelper.getTextFromFile(f);
+			this.sha = URLHelper.hashSHA(f.getAbsolutePath());
 		}
 		
 		public boolean isExpired() {
@@ -335,6 +412,10 @@ public class NodeConfigurationServer implements InitializingBean {
 		
 		public String getContent() {
 			return content;
+		}
+		
+		public byte[] getSHA() {
+			return sha.clone();
 		}
 	}
 

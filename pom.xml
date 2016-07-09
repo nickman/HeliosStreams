@@ -16,7 +16,6 @@
 		<module>stream-node</module>
 		<module>stream-common</module>
 		<module>stream-hub</module>
-		<module>stream-metrics</module>
 		<module>opentsdb-connector</module>
 		<module>stream-hub-admin</module>
 		<module>stream-hub-onramp</module>
