@@ -17,6 +17,7 @@ package com.heliosapm.streams.streamnode;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import com.heliosapm.streams.common.zoo.AdminFinder;
 
@@ -54,6 +55,8 @@ public class StreamNode {
 		log.info("Waiting for Admin URL");
 		adminUrl = af.getAdminURL(true);
 		log.info("Acquired Admin URL: [{}]", adminUrl);
+		// @ComponentScan(basePackages = "${scan.packages}")
+		// @SpringBootApplication
 		
 	}
 	
