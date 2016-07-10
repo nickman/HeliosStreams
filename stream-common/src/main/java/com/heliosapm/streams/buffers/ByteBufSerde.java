@@ -70,7 +70,11 @@ public class ByteBufSerde implements Serde<ByteBuf> {
 		 */
 		@Override
 		public byte[] serialize(final String topic, final ByteBuf data) {
-			return ByteBufUtil.getBytes(data, 0, data.readableBytes());
+			try {
+				return ByteBufUtil.getBytes(data, 0, data.readableBytes());
+			} finally {
+				data.release();
+			}
 		}
 
 		/**

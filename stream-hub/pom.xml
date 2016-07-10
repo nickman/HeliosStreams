@@ -162,25 +162,6 @@
 			</dependency>
 
 		      
-			<dependency>
-			  <groupId>net.openhft</groupId>
-			  <artifactId>chronicle-queue</artifactId>
-			</dependency>
-
-	      <dependency>
-	        <groupId>net.openhft</groupId>
-	        <artifactId>zero-allocation-hashing</artifactId>
-	      </dependency>
-			
-			<dependency>
-			  <groupId>net.openhft</groupId>
-			  <artifactId>chronicle-map</artifactId>
-			</dependency>
-
-			<dependency>
-			  <groupId>net.openhft</groupId>
-			  <artifactId>chronicle-values</artifactId>
-			</dependency>
 
 			<dependency>
 			  <groupId>io.netty</groupId>

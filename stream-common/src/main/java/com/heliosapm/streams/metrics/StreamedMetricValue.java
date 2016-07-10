@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.metrics;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import com.heliosapm.streams.buffers.BufferManager;
@@ -272,6 +273,8 @@ public class StreamedMetricValue extends StreamedMetric {
 		return buff.writerIndex() - offset;
 	}
 	
+	
+	
 	/**
 	 * Extracts the timestamp from a byte buff
 	 * @param buff the buff to extract from
@@ -291,6 +294,32 @@ public class StreamedMetricValue extends StreamedMetric {
 	}
 	
 	/**
+	 * Reads a StreamedMetricValue from the passed buffer
+	 * @param buff The buffer to read from
+	 * @return the StreamedMetricValue
+	 */
+	public static StreamedMetricValue from(final ByteBuf buff) {
+		buff.readByte();
+		final byte vt = buff.readByte();
+		final ValueType valueType = vt==0 ? null : ValueType.ordinal(vt);
+		final long ts = buff.readLong();
+		final String mn = BufferManager.readUTF(buff);
+		final int tagCount = buff.readByte();
+		final Map<String, String> tags = new HashMap<String, String>(tagCount);
+		for(int i = 0; i < tagCount; i++) {
+			tags.put(BufferManager.readUTF(buff), BufferManager.readUTF(buff));			
+		}
+		final byte lord = buff.readByte();
+		if(lord==0) {
+			return new StreamedMetricValue(ts, buff.readDouble(), mn, tags).setValueType(valueType);
+		}
+		return new StreamedMetricValue(ts, buff.readLong(), mn, tags).setValueType(valueType);
+		
+	}
+	
+	
+	
+	/**
 	 * Writes a metric to the passed buffer
 	 * @param buff The buffer to write to
 	 * @param valueType The value type
@@ -302,8 +331,9 @@ public class StreamedMetricValue extends StreamedMetric {
 	 */
 	public static int write(final ByteBuf buff, final ValueType valueType, final String metricName, final long timestamp, final long value, final Map<String, String> tags) {
 		final int defSize = write(buff, valueType, metricName, timestamp, tags);
+		buff.writeByte(1);
 		buff.writeLong(value);
-		return defSize + 8;
+		return defSize + 9;
 	}
 	
 	/**
@@ -318,8 +348,9 @@ public class StreamedMetricValue extends StreamedMetric {
 	 */
 	public static int write(final ByteBuf buff, final ValueType valueType, final String metricName, final long timestamp, final double value, final Map<String, String> tags) {
 		final int defSize = write(buff, valueType, metricName, timestamp, tags);
+		buff.writeByte(0);
 		buff.writeDouble(value);
-		return defSize + 8;
+		return defSize + 9;
 	}
 	
 	

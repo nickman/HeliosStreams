@@ -70,6 +70,7 @@ public class KafkaProducerService<K, V> implements Producer<K, V> {
 	/** The producer configuration */
 	private final Properties producerProperties;
 	
+	
 	/** Indicates if the producer is open */
 	private final AtomicBoolean open = new AtomicBoolean(false);
 	

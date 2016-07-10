@@ -34,7 +34,7 @@
 			  <artifactId>disruptor</artifactId>
 			  <version>${disruptor.version}</version>
 			</dependency>
-		
+
 		
 			<dependency>
 			  <groupId>org.apache.kafka</groupId>
@@ -52,6 +52,18 @@
 			<dependency>
 			    <groupId>net.opentsdb</groupId>
 			    <artifactId>opentsdb</artifactId>
+			    <scope>provided</scope>
+			    <exclusions>
+			    	<exclusion>
+          				<groupId>org.slf4j</groupId>
+          				<artifactId>log4j-over-slf4j</artifactId>
+        			</exclusion>
+			    </exclusions>
+			</dependency>
+
+			<dependency>
+			  <groupId>net.openhft</groupId>
+			  <artifactId>chronicle-queue</artifactId>
 			</dependency>
 
 
@@ -71,21 +83,6 @@
 		    <artifactId>log4j-api</artifactId>
 		  </dependency>
 
-		  <dependency>
-		    <groupId>org.apache.logging.log4j</groupId>
-		    <artifactId>log4j-core</artifactId>
-		  </dependency>
-	
-	
-		  <dependency>
-		    <groupId>org.apache.logging.log4j</groupId>
-		    <artifactId>log4j-slf4j-impl</artifactId>
-		  </dependency>
-
-		  <dependency>
-		    <groupId>org.apache.logging.log4j</groupId>
-		    <artifactId>log4j-1.2-api</artifactId>
-		  </dependency>
 		  
 		  
 	
@@ -101,8 +98,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${compiler-plugin.version}</version>
                 <configuration>
-                    <source>1.6</source>
-                    <target>1.6</target>
+                    <source>1.8</source>
+                    <target>1.8</target>
                 </configuration>
             </plugin>
             <plugin>
