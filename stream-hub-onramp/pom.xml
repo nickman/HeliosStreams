@@ -78,7 +78,7 @@
 
 			<dependency>
 			    <groupId>com.heliosapm.streams</groupId>
-			    <artifactId>stream-metrics</artifactId>
+			    <artifactId>stream-common</artifactId>
 			    <version>${project.version}</version>				
 			</dependency>
 
