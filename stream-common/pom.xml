@@ -146,17 +146,6 @@
 		</dependency>
 
 
-	    <!--
-	      ========================================
-	      Async HTTP Artifacts
-	      ========================================
-	      -->
-
-			<dependency>
-			    <groupId>org.asynchttpclient</groupId>
-			    <artifactId>async-http-client</artifactId>
-			</dependency>
-
 		
     
     </dependencies>

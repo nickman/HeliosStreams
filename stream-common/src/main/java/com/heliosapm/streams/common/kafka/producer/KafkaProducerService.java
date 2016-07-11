@@ -34,11 +34,15 @@ import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Timer;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.utils.collections.Props;
+
+import jsr166e.AccumulatingLongAdder;
+import jsr166e.LongAdder;
 
 
 
@@ -61,6 +65,9 @@ public class KafkaProducerService<K, V> implements Producer<K, V> {
 	/** The prefix on config items marking them as applicable to this service */
 	public static final String CONFIG_PREFIX = "kafka.producer.";
 	
+	/** Placeholder long adder */
+	private static final LongAdder PLACEHOLDER = new LongAdder();
+	
 	
 	/** The wrapped Kafka producer */
 	private final Producer<K,V> producer;
@@ -69,6 +76,11 @@ public class KafkaProducerService<K, V> implements Producer<K, V> {
 
 	/** The producer configuration */
 	private final Properties producerProperties;
+	
+	/** Counters for the number of messages sent to each topic, keyed by the topic name */
+	protected final NonBlockingHashMap<String, LongAdder> sentMessageCounter = new NonBlockingHashMap<String, LongAdder>();
+	/** A counter for the total number of messages sent to all topics */
+	protected final LongAdder totalSentMessages = new LongAdder();
 	
 	
 	/** Indicates if the producer is open */
@@ -140,6 +152,20 @@ public class KafkaProducerService<K, V> implements Producer<K, V> {
 	
 	
 	/**
+	 * Returns the counter for the passed topic
+	 * @param topicName The name of the topic to get a counter for
+	 * @return the counter
+	 */
+	protected LongAdder getTopicCounter(final String topicName) {
+		LongAdder la = sentMessageCounter.putIfAbsent(topicName, PLACEHOLDER);
+		if(la==null || la==PLACEHOLDER) {
+			la = new AccumulatingLongAdder(totalSentMessages);
+			sentMessageCounter.replace(topicName, la);
+		}
+		return la;
+	}
+	
+	/**
 	 * {@inheritDoc}
 	 * @see org.apache.kafka.clients.producer.Producer#send(org.apache.kafka.clients.producer.ProducerRecord)
 	 */
@@ -167,6 +193,7 @@ public class KafkaProducerService<K, V> implements Producer<K, V> {
 			});
 			sendCounter.inc();
 			sendMessage.update(System.nanoTime()-startTime, TimeUnit.NANOSECONDS);
+			getTopicCounter(record.topic()).increment();
 			return f;
 		} catch (Exception ex) {
 			droppedMessages.inc();

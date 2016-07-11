@@ -319,22 +319,32 @@ public class NodeConfigurationServer implements InitializingBean {
 		if(!appDir.isDirectory()) throw new IllegalArgumentException("The app directory [" + appDirName + "] is invalid");
 		log.info("Configuration Directory: [{}]", configDir);
 		if(!cacheSpec.contains("recordStats")) cacheSpec = cacheSpec + ",recordStats";
-		cacheLoader = loader();
-		configCache = CacheBuilder.from(cacheSpec).build(cacheLoader);
-		configCacheStats = new CachedGauge<configCacheStats>(5, TimeUnit.SECONDS) {
+		
+		configCache = CacheBuilder.from(cacheSpec).build(configCacheLoader);
+		configCacheStats = new CachedGauge<CacheStats>(5, TimeUnit.SECONDS) {
 			@Override
-			protected configCacheStats loadValue() {				
+			protected CacheStats loadValue() {				
 				return configCache.stats();
 			}
 		};
-		reloadCache();
-		log.info("Loaded [{}] KeyedFileContents", configCache.size());
+		appJarCache = CacheBuilder.from(cacheSpec).build(appJarCacheLoader);
+		appJarCacheStats = new CachedGauge<CacheStats>(5, TimeUnit.SECONDS) {
+			@Override
+			protected CacheStats loadValue() {				
+				return appJarCache.stats();
+			}
+		};
+		
+		reloadConfigCache();
+		log.info("Loaded [{}] App Configurations", configCache.size());
+		reloadAppJarCache();
+		log.info("Loaded [{}] App Jar Sets", appJarCache.size());
 	}
 	
 	/**
-	 * Reloads the cache
+	 * Reloads the config cache
 	 */
-	protected void reloadCache() {
+	protected void reloadConfigCache() {
 		for(File f : Files.fileTreeTraverser().preOrderTraversal(configDir)) {
 			if(!f.getName().endsWith(".properties"))  continue;
 			final String key = new StringBuilder(f.getParentFile().getName()).append("/").append(f.getName()).toString();			
@@ -342,6 +352,22 @@ public class NodeConfigurationServer implements InitializingBean {
 		}		
 	}
 	
+	/**
+	 * Reloads the app jar cache
+	 */
+	protected void reloadAppJarCache() {
+		for(File app : appDir.listFiles()) {
+			if(!app.isDirectory()) continue;
+			final String appName = app.getName();
+			final File[] jars = app.listFiles(new FileFilter(){
+				@Override
+				public boolean accept(final File fx) {				
+					return fx.isFile() && fx.getName().endsWith(".jar");
+				}
+			});
+			appJarCache.put(appName, KeyedFileContent.forFiles(jars));
+		}		
+	}
 	
 	/**
 	 * Returns the average time spent loading new values.
@@ -442,7 +468,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	})	
 	public long reloadconfigCache(final boolean clearFirst) {
 		if(clearFirst) configCache.invalidateAll();
-		reloadCache();
+		reloadConfigCache();
 		log.info("Loaded [{}] KeyedFileContents", configCache.size());
 		return configCache.size();
 	}

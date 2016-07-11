@@ -36,45 +36,6 @@
 			  <artifactId>kafka-clients</artifactId>
 			</dependency>
 
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>kafka-tools</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-api</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-runtime</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-json</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>connect-file</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>			
-
-			<dependency>
-			  <groupId>org.apache.kafka</groupId>
-			  <artifactId>kafka-log4j-appender</artifactId>
-			  <version>${kafka.version}</version>
-			</dependency>
-
-
 
 			<dependency>
 			    <groupId>com.heliosapm.streams</groupId>

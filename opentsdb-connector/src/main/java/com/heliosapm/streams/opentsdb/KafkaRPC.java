@@ -42,6 +42,7 @@ import com.heliosapm.streams.metrics.Blacklist;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricDeserializer;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
@@ -102,10 +103,13 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	/** A counter tracking the number of pending data point adds */
 	protected final LongAdder pendingDataPointAdds = new LongAdder();
 	
+	/** The metric manager for this plugin */
+	protected final PluginMetricManager metricManager = new PluginMetricManager(getClass().getSimpleName());
+	
 	/** A meter to track the rate of points added */
-	protected final Meter pointsAddedMeter = SharedMetricsRegistry.getInstance().meter("KafkaRPC.pointsAddedMeter");
+	protected final Meter pointsAddedMeter = metricManager.meter("pointsAdded");
 	/** A timer to track the elapsed time per message ingested */
-	protected final Timer perMessageTimer = SharedMetricsRegistry.getInstance().timer("KafkaRPC.perMessageTimer");
+	protected final Timer perMessageTimer = metricManager.timer("perMessage");
 	
 	/** The per message timer snapshot */
 	protected final CachedGauge<Snapshot> perMessageTimerSnap = new CachedGauge<Snapshot>(5, TimeUnit.SECONDS) {
@@ -165,7 +169,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 				syncAdd = DEFAULT_SYNC_ADD;
 			}
 		}
-		
+		metricManager.addExtraTag("mode", syncAdd ? "sync" : "async");
 		log.info("Kafka TSDB Metric Topics: {}", Arrays.toString(topics));
 		log.info("Kafka TSDB Poll Size: {}", pollTimeout);
 		consumer = new KafkaConsumer<String, StreamedMetric>(consumerConfig, new StringDeserializer(), new StreamedMetricDeserializer());
@@ -473,29 +477,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	 */
 	@Override
 	public void collectStats(final StatsCollector collector) {
-		try {			
-			collector.addExtraTag("mode", syncAdd ? "sync" : "async");
-			collector.record("tsd.rpc.kafka.messages.rate.mean", perMessageTimer.getMeanRate());
-			collector.record("tsd.rpc.kafka.messages.count", perMessageTimer.getCount());
-			collector.record("tsd.rpc.kafka.messages.rate.15m", perMessageTimer.getFifteenMinuteRate());
-			collector.record("tsd.rpc.kafka.messages.rate.5m", perMessageTimer.getFiveMinuteRate());
-			collector.record("tsd.rpc.kafka.messages.rate.1m", perMessageTimer.getOneMinuteRate());
-			
-			final Snapshot snap = perMessageTimer.getSnapshot();
-			
-			collector.record("tsd.rpc.kafka.messages.time.mean", snap.getMean());
-			collector.record("tsd.rpc.kafka.messages.time.median", snap.getMedian());
-			collector.record("tsd.rpc.kafka.messages.time.p999", snap.get999thPercentile());
-			collector.record("tsd.rpc.kafka.messages.time.p99", snap.get99thPercentile());
-			collector.record("tsd.rpc.kafka.messages.time.p75", snap.get75thPercentile());
-			
-			collector.record("tsd.rpc.kafka.batches.rate.mean", pointsAddedMeter.getMeanRate());
-			collector.record("tsd.rpc.kafka.batches.rate.15m", pointsAddedMeter.getFifteenMinuteRate());
-			collector.record("tsd.rpc.kafka.batches.rate.5m", pointsAddedMeter.getFiveMinuteRate());
-			collector.record("tsd.rpc.kafka.batches.rate.1m", pointsAddedMeter.getOneMinuteRate());
-		} finally {
-			collector.clearExtraTag("mode");
-		}
+		metricManager.collectStats(collector);
 	}
 
 }
