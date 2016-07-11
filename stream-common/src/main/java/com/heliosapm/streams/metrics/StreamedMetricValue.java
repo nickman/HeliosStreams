@@ -25,6 +25,7 @@ import com.heliosapm.streams.buffers.BufferManager;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
+import net.openhft.chronicle.bytes.BytesMarshallable;
 
 /**
  * <p>Title: StreamedMetricValue</p>
@@ -33,7 +34,7 @@ import io.netty.buffer.ByteBufUtil;
  * <p><code>com.heliosapm.streams.metrics.StreamedMetricValue</code></p>
  */
 
-public class StreamedMetricValue extends StreamedMetric {
+public class StreamedMetricValue extends StreamedMetric implements BytesMarshallable {
 	/** Indicates if the value is a double (true) or a long (false)  */
 	protected boolean isDoubleValue = true;
 	/** The long typed value */

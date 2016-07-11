@@ -18,25 +18,20 @@ under the License.
  */
 package com.heliosapm.streams.buffers;
 
+import java.io.UTFDataFormatException;
+import java.lang.management.ManagementFactory;
+
+import javax.management.ObjectName;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.PoolArenaMetric;
 import io.netty.buffer.PooledByteBufAllocator;
 import io.netty.buffer.UnpooledByteBufAllocator;
-
-import java.io.DataInput;
-import java.io.DataInputStream;
-import java.io.DataOutput;
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.UTFDataFormatException;
-import java.lang.management.ManagementFactory;
-
-import javax.management.ObjectName;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * <p>Title: BufferManager</p>
@@ -93,7 +88,7 @@ public class BufferManager implements BufferManagerMBean, ByteBufAllocator {
 	/** The pooled buffer cache size for normal allocations */
 	protected final int normalCacheSize;	
 	/** Instance logger */
-	private final Logger log = LoggerFactory.getLogger(getClass());
+	private final Logger log = LogManager.getLogger(getClass());
 	/** The pooled buffer allocator */
 	protected final PooledByteBufAllocator pooledBufferAllocator;
 	/** The unpooled buffer allocator */

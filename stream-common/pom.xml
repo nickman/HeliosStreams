@@ -24,6 +24,18 @@
 		    <artifactId>junit</artifactId>
 		</dependency>
 
+
+		<!-- ==========================================================
+		    Chronicle Dependencies
+		    ========================================================== -->
+
+
+			<dependency>
+			  <groupId>net.openhft</groupId>
+			  <artifactId>chronicle-queue</artifactId>
+			</dependency>
+
+
 		<!-- ==========================================================
 		    ZooKeep Dependencies
 		    ========================================================== -->

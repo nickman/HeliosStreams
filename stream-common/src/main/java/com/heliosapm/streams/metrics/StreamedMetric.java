@@ -38,6 +38,10 @@ import com.heliosapm.streams.buffers.BufferManager;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
+import net.openhft.chronicle.bytes.BytesIn;
+import net.openhft.chronicle.bytes.BytesMarshallable;
+import net.openhft.chronicle.bytes.BytesOut;
+import net.openhft.chronicle.core.io.IORuntimeException;
 
 /**
  * <p>Title: StreamedMetric</p>
@@ -47,7 +51,7 @@ import io.netty.buffer.ByteBufUtil;
  * <p><code>com.heliosapm.streams.metrics.StreamedMetric</code></p>
  */
 
-public class StreamedMetric {
+public class StreamedMetric implements BytesMarshallable {
 	/** The metric timestamp in ms. since the epoch */
 	protected long timestamp = -1L;
 	/** The metric name */
@@ -222,6 +226,43 @@ public class StreamedMetric {
 		}
 	}
 	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see net.openhft.chronicle.bytes.BytesMarshallable#writeMarshallable(net.openhft.chronicle.bytes.BytesOut)
+	 */
+	@SuppressWarnings("rawtypes")
+	@Override
+	public void writeMarshallable(final BytesOut bytes) {
+		bytes.writePosition();
+		bytes.writeByte(TYPE_CODE);
+		writeByteArray(bytes);		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see net.openhft.chronicle.bytes.BytesMarshallable#readMarshallable(net.openhft.chronicle.bytes.BytesIn)
+	 */
+	@SuppressWarnings("rawtypes")
+	@Override
+	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
+		final byte v = bytes.readByte();
+		if(v==0) {
+			valueType = null;
+		} else {
+			valueType = ValueType.ordinal(v-1);
+		}
+		timestamp = bytes.readLong();		
+		metricName = bytes.readUtf8();		
+		final int tsize = bytes.readByte();			
+		for(int i = 0; i < tsize; i++) {
+			final String key = bytes.readUtf8();
+			final String val = bytes.readUtf8();			
+			tags.put(key, val);
+		}				
+	}
+	
+	
 	/**
 	 * Returns a byte array containing the serialized streammetric
 	 * @param buff The buffer to write into
@@ -235,7 +276,19 @@ public class StreamedMetric {
 			BufferManager.writeUTF(entry.getKey(), buff);
 			BufferManager.writeUTF(entry.getValue(), buff);
 		}
+	}
+	
+	void writeByteArray(final BytesOut buff) {
+		buff.writeByte((byte)(valueType==null ? 0 : valueType.ordinal()+1));
+		buff.writeLong(timestamp);
+		buff.writeUtf8(metricName);			
+		buff.writeByte((byte)tags.size());
+		for(Map.Entry<String, String> entry: tags.entrySet()) {
+			buff.writeUtf8(entry.getKey());
+			buff.writeUtf8(entry.getValue());
+		}
 	}	
+	
 	
 	/**
 	 * Reads a streamed metric from the passed byte array
