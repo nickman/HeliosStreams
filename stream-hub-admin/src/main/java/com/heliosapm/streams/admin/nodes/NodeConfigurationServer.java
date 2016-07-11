@@ -17,8 +17,14 @@ package com.heliosapm.streams.admin.nodes;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.nio.charset.Charset;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.LogManager;
@@ -93,18 +99,39 @@ public class NodeConfigurationServer implements InitializingBean {
 	protected File appDir = null;
 	
 	
-	/** The content cache */
-	protected LoadingCache<String, KeyedFileContent> contentCache;
-	/** The cache loader */
-	protected CacheLoader<String, KeyedFileContent> cacheLoader;
+	/** The config cache */
+	protected LoadingCache<String, KeyedFileContent> configCache;
+	/** The app jar cache */
+	protected LoadingCache<String, Map<String, KeyedFileContent>> appJarCache;
+
 	
-	/** Timed gauge to cache the cache stats */
-	protected CachedGauge<CacheStats> cacheStats = null;
+	/** Timed gauge to cache the config cache stats */
+	protected CachedGauge<CacheStats> configCacheStats = null;
+	/** Timed gauge to cache the app jar cache stats */
+	protected CachedGauge<CacheStats> appJarCacheStats = null;
 	
 	/** The shared json node factory */
 	protected final JsonNodeFactory nodeFactory = JsonNodeFactory.instance;
 	/** The shared json object mapper */
 	protected final ObjectMapper jsonMapper = new ObjectMapper();
+	
+	/** The config cache loader */
+	protected CacheLoader<String, KeyedFileContent> configCacheLoader = new CacheLoader<String, KeyedFileContent>() {
+		@Override
+		public KeyedFileContent load(final String key) throws Exception {
+			return new KeyedFileContent(getConfigFileForKey(key));
+		}		
+	};
+	/** The app jar cache loader */
+	protected CacheLoader<String, Map<String, KeyedFileContent>> appJarCacheLoader = new CacheLoader<String, Map<String, KeyedFileContent>>() {
+		@Override
+		public Map<String, KeyedFileContent> load(final String key) throws Exception {
+			return KeyedFileContent.forFiles(
+					getAppJarForKey(key)
+			);
+		}		
+	};
+	
 	
 	/**
 	 * Retrieves the configuration for the passed host and app
@@ -118,7 +145,7 @@ public class NodeConfigurationServer implements InitializingBean {
 		final String _appname = appname.toLowerCase().trim()  + ".properties";
 		final String key = _host + "/" + _appname;
 		log.info("Fetching config for [{}]", key);
-		return getContent(key);
+		return getConfigContent(key);
 	}
 	
 	/**
@@ -130,25 +157,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	public String getRequiredResources(@PathVariable final String appname) {
 		final String _appname = appname.toLowerCase().trim();
 		log.info("Fetching resources for [{}]", _appname);
-		final File d = new File(appDir, _appname);
-		final File[] resources = d.listFiles(new FileFilter(){
-			@Override
-			public boolean accept(final File pathname) {
-				return pathname.getName().endsWith(".jar");
-			}
-		});
-		final ArrayNode arrNode = nodeFactory.arrayNode();
-		for(File f: resources) {
-			final ObjectNode on = nodeFactory.objectNode();
-			on.put("resource", f.getName());
-			on.put("sha", URLHelper.hashSHA(f.getAbsolutePath()));
-			arrNode.add(on);
-		}
-		try {
-			return jsonMapper.writeValueAsString(arrNode);
-		} catch (JsonProcessingException jpe) {
-			throw new RuntimeException("Failed to render resource json for [" + appname + "]", jpe);
-		}
+		return getAppJarsMeta(_appname);
 	}
 	
 	/**
@@ -172,39 +181,62 @@ public class NodeConfigurationServer implements InitializingBean {
 	 * @param key the key to get content for
 	 * @return the content
 	 */
-	protected String getContent(final String key) {
+	protected String getConfigContent(final String key) {
 		try {
-			KeyedFileContent k = contentCache.get(key);
+			KeyedFileContent k = configCache.get(key);
 			if(k.isExpired()) {
-				contentCache.invalidate(key);
-				k = contentCache.get(key);
+				configCache.invalidate(key);
+				k = configCache.get(key);
 				log.info("Reloaded [{}]", key);
 			}
-			return k.getContent();
+			return k.getTextContent();
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to get content for [" + key + "]");
 		}
 	}
 	
+
 	/**
-	 * Creates the cache loader
-	 * @return the cache loader 
+	 * Returns the app jar meta json for the passed key, reloading if it has expired
+	 * @param key the app name to get content for
+	 * @return the app jar meta json
 	 */
-	protected CacheLoader<String, KeyedFileContent> loader() {  
-		return new CacheLoader<String, KeyedFileContent>() {
-			@Override
-			public KeyedFileContent load(final String key) throws Exception {
-				return new KeyedFileContent(getContentFileForKey(key));
+	protected String getAppJarsMeta(final String key) {
+		try {
+			Map<String, KeyedFileContent> kfs = appJarCache.get(key);
+			for(KeyedFileContent k: kfs.values()) {
+				if(k.isExpired()) {
+					appJarCache.invalidate(key);
+					kfs = appJarCache.get(key);
+					log.info("Reloaded App Jar Cache for [{}]", key);
+					break;
+				}
 			}
-		};
+			final ArrayNode arrNode = nodeFactory.arrayNode();
+			for(KeyedFileContent k: kfs.values()) {
+				final ObjectNode on = nodeFactory.objectNode();
+				on.put("resource", k.name());
+				on.put("sha", k.getContent());
+				arrNode.add(on);
+			}
+			try {
+				return jsonMapper.writeValueAsString(arrNode);
+			} catch (JsonProcessingException jpe) {
+				throw new RuntimeException("Failed to render resource json for [" + key + "]", jpe);
+			}
+			
+		} catch (ExecutionException ex) {
+			throw new RuntimeException("Failed to get content for [" + key + "]");
+		}
 	}
 	
 	/**
 	 * Finds the file for the passed host/app key
+	 * @param contentType The content type
 	 * @param key The key to find the file for
 	 * @return the file
 	 */
-	protected File getContentFileForKey(final String key) {
+	protected File getContentFileForKey(final ContentType contentType, final String key) {
 		final String[] segments = StringHelper.splitString(key, '/', true);
 		final String _host = segments[0];
 		final String _appname = segments[1];
@@ -227,8 +259,53 @@ public class NodeConfigurationServer implements InitializingBean {
 			}
 		}
 		return appFile;
-		
 	}
+	
+	/**
+	 * Finds the app jars for the passed app key
+	 * @param key The app to find the files for
+	 * @return the files
+	 */
+	protected File[] getAppJarForKey(final String key) {
+		final File dir = new File(appDir, key);
+		return dir.listFiles(new FileFilter(){
+			@Override
+			public boolean accept(final File f) {
+				return f.isFile() && f.getName().endsWith(".jar");
+			}
+		});
+	}
+	
+	/**
+	 * Finds the config file for the passed host/app key
+	 * @param key The key to find the file for
+	 * @return the file
+	 */
+	protected File getConfigFileForKey(final String key) {		
+		final String[] segments = StringHelper.splitString(key, '/', true);
+		final String _host = segments[0];
+		final String _appname = segments[1];
+		File hostDir = new File(configDir, _host);
+		if(!hostDir.isDirectory()) {
+			hostDir = new File(configDir, "default");
+			if(!hostDir.isDirectory()) {
+				final String msg = "Failed to find host directory for [" + _host + "] or default";
+				log.error(msg);
+				throw new RuntimeException(msg);
+			}
+		}
+		File appFile = new File(hostDir, _appname);
+		if(!appFile.isFile()) {
+			appFile = new File(hostDir, "default.properties");
+			if(!appFile.isFile()) {
+				final String msg = "Failed to find app config in [" + hostDir + "] for [" + _appname + "] or default.properties";
+				log.error(msg);
+				throw new RuntimeException(msg);
+			}
+		}
+		return appFile;
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -243,15 +320,15 @@ public class NodeConfigurationServer implements InitializingBean {
 		log.info("Configuration Directory: [{}]", configDir);
 		if(!cacheSpec.contains("recordStats")) cacheSpec = cacheSpec + ",recordStats";
 		cacheLoader = loader();
-		contentCache = CacheBuilder.from(cacheSpec).build(cacheLoader);
-		cacheStats = new CachedGauge<CacheStats>(5, TimeUnit.SECONDS) {
+		configCache = CacheBuilder.from(cacheSpec).build(cacheLoader);
+		configCacheStats = new CachedGauge<configCacheStats>(5, TimeUnit.SECONDS) {
 			@Override
-			protected CacheStats loadValue() {				
-				return contentCache.stats();
+			protected configCacheStats loadValue() {				
+				return configCache.stats();
 			}
 		};
 		reloadCache();
-		log.info("Loaded [{}] KeyedFileContents", contentCache.size());
+		log.info("Loaded [{}] KeyedFileContents", configCache.size());
 	}
 	
 	/**
@@ -261,7 +338,7 @@ public class NodeConfigurationServer implements InitializingBean {
 		for(File f : Files.fileTreeTraverser().preOrderTraversal(configDir)) {
 			if(!f.getName().endsWith(".properties"))  continue;
 			final String key = new StringBuilder(f.getParentFile().getName()).append("/").append(f.getName()).toString();			
-			contentCache.put(key, new KeyedFileContent(f));
+			configCache.put(key, new KeyedFileContent(f));
 		}		
 	}
 	
@@ -272,7 +349,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedMetric(category="NodeConfiguration", description="The average time spent loading new values", metricType=MetricType.GAUGE, unit="ns.")
 	public double getAverageLoadPenalty() {
-		return cacheStats.getValue().averageLoadPenalty();
+		return configCacheStats.getValue().averageLoadPenalty();
 	}
 	
 	/**
@@ -281,7 +358,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedMetric(category="NodeConfiguration", description="The cache hit count", metricType=MetricType.COUNTER, unit="cache-hits")
 	public long getHitCount() {
-		return cacheStats.getValue().hitCount();
+		return configCacheStats.getValue().hitCount();
 	}
 	
 	/**
@@ -290,7 +367,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedMetric(category="NodeConfiguration", description="The cache miss count", metricType=MetricType.COUNTER, unit="cache-misses")
 	public long getMissCount() {
-		return cacheStats.getValue().missCount();
+		return configCacheStats.getValue().missCount();
 	}
 	
 	/**
@@ -299,7 +376,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedMetric(category="NodeConfiguration", description="The cache size", metricType=MetricType.GAUGE, unit="cache-entries")
 	public long getCacheSize() {
-		return contentCache.size();
+		return configCache.size();
 	}
 	
 	/**
@@ -308,7 +385,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedMetric(category="NodeConfiguration", description="The cache load exception count", metricType=MetricType.COUNTER, unit="cache-load exceptions")
 	public long getLoadExceptionCount() {
-		return cacheStats.getValue().loadExceptionCount();
+		return configCacheStats.getValue().loadExceptionCount();
 	}
 	
 	/**
@@ -317,7 +394,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedMetric(category="NodeConfiguration", description="The cache request count", metricType=MetricType.COUNTER, unit="cache-requests")
 	public long getRequestCount() {
-		return cacheStats.getValue().requestCount();
+		return configCacheStats.getValue().requestCount();
 	}
 	
 	
@@ -327,7 +404,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedOperation(description="Returns the cache keys")
 	public Set<String> cacheKeys() {
-		return new HashSet<String>(contentCache.asMap().keySet());		
+		return new HashSet<String>(configCache.asMap().keySet());		
 	}
 	
 	/**
@@ -335,7 +412,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	 */
 	@ManagedOperation(description="Invalidates the whole cache")
 	public void invalidateCache() {
-		contentCache.invalidateAll();
+		configCache.invalidateAll();
 	}
 	
 	/**
@@ -350,7 +427,7 @@ public class NodeConfigurationServer implements InitializingBean {
 	})
 	public void invalidate(final String host, final String app) {
 		final String key = host.trim().toLowerCase() + "/" + app.trim().toLowerCase();
-		contentCache.invalidate(key);
+		configCache.invalidate(key);
 	}
 	
 	
@@ -363,11 +440,11 @@ public class NodeConfigurationServer implements InitializingBean {
 	@ManagedOperationParameters({
 		@ManagedOperationParameter(name="clearFirst", description="If true, the cache will be invalidated first")
 	})	
-	public long reloadContentCache(final boolean clearFirst) {
-		if(clearFirst) contentCache.invalidateAll();
+	public long reloadconfigCache(final boolean clearFirst) {
+		if(clearFirst) configCache.invalidateAll();
 		reloadCache();
-		log.info("Loaded [{}] KeyedFileContents", contentCache.size());
-		return contentCache.size();
+		log.info("Loaded [{}] KeyedFileContents", configCache.size());
+		return configCache.size();
 	}
 	
 	/**
@@ -389,12 +466,14 @@ public class NodeConfigurationServer implements InitializingBean {
 	}
 	
 	
-	class KeyedFileContent {
+	static class KeyedFileContent {
 		final long timestamp;
-		final String content;
+		final byte[] content;
 		final File file;
 		final byte[] sha;
 		
+		private static final Map<String, KeyedFileContent> EMPTY_MAP = Collections.unmodifiableMap(new HashMap<String, KeyedFileContent>(0));
+		private static final Charset UTF8 = Charset.forName("UTF8");
 		/**
 		 * Creates a new KeyedFileContent
 		 * @param f The file the text came from
@@ -402,20 +481,76 @@ public class NodeConfigurationServer implements InitializingBean {
 		public KeyedFileContent(final File f) {
 			this.file = f;
 			this.timestamp = f.lastModified();
-			this.content = URLHelper.getTextFromFile(f);
+			this.content = URLHelper.getBytesFromURL(URLHelper.toURL(this.file));
 			this.sha = URLHelper.hashSHA(f.getAbsolutePath());
+		}
+		
+		public static Map<String, KeyedFileContent> forFiles(final File...files) {
+			if(files==null || files.length==0) return EMPTY_MAP;
+			final Map<String, KeyedFileContent> map = new LinkedHashMap<String, KeyedFileContent>(files.length);
+			for(File f: files) {
+				if(f==null || !f.exists() || !f.isFile()) continue;
+				map.put(f.getName(), new KeyedFileContent(f));
+			}
+			return map;
+		}
+		
+		public File file() {
+			return file;
+		}
+		
+		public String name() {
+			return file.getName();
 		}
 		
 		public boolean isExpired() {
 			return file.lastModified() > timestamp;
 		}
 		
-		public String getContent() {
+		public String getTextContent() {
+			return new String(content, UTF8);
+		}
+		
+		public byte[] getContent() {
 			return content;
 		}
 		
+		
 		public byte[] getSHA() {
 			return sha.clone();
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#hashCode()
+		 */
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + ((file == null) ? 0 : file.hashCode());
+			return result;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#equals(java.lang.Object)
+		 */
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			KeyedFileContent other = (KeyedFileContent) obj;
+			if (file == null) {
+				if (other.file != null)
+					return false;
+			} else if (!file.equals(other.file))
+				return false;
+			return true;
 		}
 	}
 

@@ -9,10 +9,10 @@
   	</parent>
     
     <groupId>com.heliosapm.streams</groupId>
-    <artifactId>stream-common</artifactId>
+    <artifactId>bosun-connector</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Helios Streams :: Common</name>
-    <description>Helios Streams Common Classes</description>
+    <name>Helios Streams :: BosunConnector</name>
+    <description>Helios Streams Bosun Metrics Forwarder</description>
     <packaging>jar</packaging>
     <url>https://github.com/nickman</url>
 	
