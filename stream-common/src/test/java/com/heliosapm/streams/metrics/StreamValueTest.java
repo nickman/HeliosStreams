@@ -24,9 +24,14 @@
  */
 package com.heliosapm.streams.metrics;
 
+import org.junit.Assert;
 import org.junit.Test;
 
 import com.heliosapm.utils.jmx.JMXHelper;
+
+import net.openhft.chronicle.bytes.Bytes;
+import net.openhft.chronicle.bytes.ReadBytesMarshallable;
+import net.openhft.chronicle.bytes.WriteBytesMarshallable;
 
 /**
  * <p>Title: StreamValueTest</p>
@@ -128,7 +133,38 @@ public class StreamValueTest extends BaseTest {
 		assertEquals(new StreamedMetricValue(now, value, metricName, StreamedMetric.tagsFromArray(tags)), StreamedMetric.fromString(uv));
 		
 	}
+
 	
+	@Test
+	public void testStreamedMetricMarshallable() {
+		final long now = System.currentTimeMillis();
+		final String metricName = "sys.cpu.total";
+		final String host = "webserver05";
+		final String app = "login-sso";
+		final String[] tags = {"dc=us-west1", "colo=false", "host=" + host, "app=" + app};
+		final double value = nextPosDouble();
+		log("Starting BytesMarshallable Test");
+		Bytes bytes = Bytes.elasticByteBuffer(128);
+		StreamedMetric sm1 = new StreamedMetric(now, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.ACCUMULATOR);
+		sm1.writeMarshallable(bytes);
+		log("Bytes For Read:" + bytes.length());
+		StreamedMetric sm2 = StreamedMetric.fromBytes(bytes);
+		assertEquals(sm1, sm2);
+		bytes.release();
+		
+		bytes = Bytes.elasticByteBuffer(128);
+		
+		StreamedMetricValue smv1 = new StreamedMetricValue(now, value, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.STRAIGHTTHROUGH);
+		smv1.writeMarshallable(bytes);
+		StreamedMetricValue smv2 = StreamedMetric.fromBytes(bytes).forValue(0);
+		assertEquals(smv1, smv2);
+		bytes.release();
+		Assert.assertTrue("StreamedMetric not WriteBytesMarshallable", (sm1 instanceof WriteBytesMarshallable));
+		Assert.assertTrue("StreamedMetricValue not WriteBytesMarshallable", (smv1 instanceof WriteBytesMarshallable));
+		Assert.assertTrue("StreamedMetric not ReadBytesMarshallable", (sm1 instanceof ReadBytesMarshallable));
+		Assert.assertTrue("StreamedMetricValue not ReadBytesMarshallable", (smv1 instanceof ReadBytesMarshallable));
+		
+	}
 	
 
 }

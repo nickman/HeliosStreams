@@ -65,6 +65,12 @@ public class StreamedMetric implements BytesMarshallable {
 	/** The estimated byte size */
 	protected int byteSize = BASE_SIZE;
 	
+	/** A zero value byte const */
+	public static final byte ZERO_BYTE = 0;
+	/** A one value byte const */
+	public static final byte ONE_BYTE = 1;
+	
+	
 	static final int BASE_SIZE = 11;
 	
 	/** The type code for this metric type */
@@ -150,6 +156,25 @@ public class StreamedMetric implements BytesMarshallable {
 	}
 	
 	/**
+	 * Unmarshalls StreamedMetric from the passed bytestream
+	 * @param in the bytestream to read from 
+	 * @return the read StreamedMetric
+	 */
+	@SuppressWarnings("rawtypes")
+	public static StreamedMetric fromBytes(final BytesIn in) {
+		final byte type = in.readByte();
+		if(type==ZERO_BYTE) {
+			StreamedMetric sm = new StreamedMetric();
+			sm.readMarshallable(in);
+			return sm;
+		} else {
+			StreamedMetricValue sm = new StreamedMetricValue();
+			sm.readMarshallable(in);
+			return sm;			
+		}
+	}
+	
+	/**
 	 * Creates a new StreamedMetric with an auto assigned timestamp
 	 * @param metricName The metric name
 	 * @param tags The metric tags
@@ -230,20 +255,17 @@ public class StreamedMetric implements BytesMarshallable {
 	/**
 	 * {@inheritDoc}
 	 * @see net.openhft.chronicle.bytes.BytesMarshallable#writeMarshallable(net.openhft.chronicle.bytes.BytesOut)
-	 */
-	@SuppressWarnings("rawtypes")
+	 */	
 	@Override
-	public void writeMarshallable(final BytesOut bytes) {
-		bytes.writePosition();
+	public void writeMarshallable(final BytesOut bytes) {		
 		bytes.writeByte(TYPE_CODE);
-		writeByteArray(bytes);		
+		writeBytes(bytes);		
 	}
 	
 	/**
 	 * {@inheritDoc}
 	 * @see net.openhft.chronicle.bytes.BytesMarshallable#readMarshallable(net.openhft.chronicle.bytes.BytesIn)
-	 */
-	@SuppressWarnings("rawtypes")
+	 */	
 	@Override
 	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
 		final byte v = bytes.readByte();
@@ -278,7 +300,12 @@ public class StreamedMetric implements BytesMarshallable {
 		}
 	}
 	
-	void writeByteArray(final BytesOut buff) {
+	/**
+	 * Writes the metric definition to the passed buffer
+	 * @param buff the buffer
+	 */
+	@SuppressWarnings("rawtypes")
+	void writeBytes(final BytesOut buff) {
 		buff.writeByte((byte)(valueType==null ? 0 : valueType.ordinal()+1));
 		buff.writeLong(timestamp);
 		buff.writeUtf8(metricName);			

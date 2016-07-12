@@ -293,8 +293,7 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 			log.info("Deleted RollFile [{}], size:[{}] bytes", name, size);
 		} else {
 			log.warn("Failed to Delete RollFile [{}], size:[{}] bytes", name, size);
-		}
-		
+		}		
 	}
 	
 	/**

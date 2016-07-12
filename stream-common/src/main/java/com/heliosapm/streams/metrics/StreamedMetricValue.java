@@ -25,7 +25,10 @@ import com.heliosapm.streams.buffers.BufferManager;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
+import net.openhft.chronicle.bytes.BytesIn;
 import net.openhft.chronicle.bytes.BytesMarshallable;
+import net.openhft.chronicle.bytes.BytesOut;
+import net.openhft.chronicle.core.io.IORuntimeException;
 
 /**
  * <p>Title: StreamedMetricValue</p>
@@ -272,6 +275,41 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 			BufferManager.writeUTF(entry.getValue(), buff);
 		}		
 		return buff.writerIndex() - offset;
+	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.StreamedMetric#writeMarshallable(net.openhft.chronicle.bytes.BytesOut)
+	 */
+	@Override
+	public void writeMarshallable(final BytesOut bytes) {
+		bytes.writeByte(TYPE_CODE);
+		writeBytes(bytes);
+		if(isDoubleValue) {
+			bytes.writeByte(ZERO_BYTE);
+			bytes.writeDouble(doubleValue);
+			
+		} else {
+			bytes.writeByte(ONE_BYTE);
+			bytes.writeLong(longValue);
+		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.StreamedMetric#readMarshallable(net.openhft.chronicle.bytes.BytesIn)
+	 */
+	@Override
+	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
+		super.readMarshallable(bytes);
+		if(bytes.readByte()==ZERO_BYTE) {			
+			isDoubleValue = true;
+			doubleValue = bytes.readDouble();
+		} else {
+			isDoubleValue = false;
+			longValue = bytes.readLong();			
+		}
 	}
 	
 	
