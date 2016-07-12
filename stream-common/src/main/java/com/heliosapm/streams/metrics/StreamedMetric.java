@@ -276,10 +276,10 @@ public class StreamedMetric implements BytesMarshallable {
 		}
 		timestamp = bytes.readLong();		
 		metricName = bytes.readUtf8();		
-		final int tsize = bytes.readByte();			
+		final int tsize = bytes.readByte();	
 		for(int i = 0; i < tsize; i++) {
 			final String key = bytes.readUtf8();
-			final String val = bytes.readUtf8();			
+			final String val = bytes.readUtf8();				
 			tags.put(key, val);
 		}				
 	}

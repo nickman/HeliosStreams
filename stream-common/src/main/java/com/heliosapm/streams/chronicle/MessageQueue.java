@@ -25,6 +25,7 @@ import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -33,7 +34,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
+import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Counter;
+import com.codahale.metrics.Meter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.Timer;
+import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.metrics.StreamedMetric;
@@ -44,14 +50,13 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 
 import net.openhft.chronicle.bytes.BytesRingBufferStats;
-import net.openhft.chronicle.bytes.WriteBytesMarshallable;
 import net.openhft.chronicle.core.Jvm;
+import net.openhft.chronicle.core.io.IOTools;
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.RollCycles;
 import net.openhft.chronicle.queue.impl.StoreFileListener;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
-import net.openhft.chronicle.wire.DocumentContext;
 import net.openhft.chronicle.wire.WireType;
 
 /**
@@ -96,6 +101,8 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	protected final Counter chronicleWrites = SharedMetricsRegistry.getInstance().counter("chronicle.writes");
 	/** A cummulative counter of read errors */
 	protected final Counter chronicleReadErrs = SharedMetricsRegistry.getInstance().counter("chronicle.read.errors");
+	
+	
 
 	
 	private static final ThreadLocal<StreamedMetricMarshallable> container = new ThreadLocal<StreamedMetricMarshallable>() {
@@ -161,12 +168,15 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 //		for(File f : baseQueueDirectory.listFiles()) {
 //			IOTools.shallowDeleteDirWithFiles(f);
 //		}
+		IOTools.deleteDirWithFiles(baseQueueDirectory, 2);
 		queue = SingleChronicleQueueBuilder.binary(baseQueueDirectory)
+//			.blockSize(8096)
 			.onRingBufferStats(this)
-			.rollCycle(RollCycles.HOURLY)
+			.rollCycle(RollCycles.MINUTELY)
 			.storeFileListener(this)
 			.wireType(WireType.BINARY)
 			.build();
+		queue.firstIndex();
 		readerThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
 		startLatch = new CountDownLatch(readerThreads);
 		threadPool = Executors.newFixedThreadPool(readerThreads, JMXManagedThreadFactory.newThreadFactory(name + "ReaderThread", true));
@@ -199,6 +209,18 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	
 	
 	public static void main(String[] args) {
+		final ThreadLocalRandom tlr = ThreadLocalRandom.current();
+		
+		final MetricRegistry mr = new MetricRegistry();
+		final Meter listenerEvents = mr.meter("listener.events");
+		final Timer writerTime = mr.timer("writer.time");
+		final ConsoleReporter cr = ConsoleReporter
+			.forRegistry(mr)
+			.convertDurationsTo(TimeUnit.MICROSECONDS)
+			.convertRatesTo(TimeUnit.SECONDS)
+			.outputTo(System.err)
+			.build();
+		cr.start(5, TimeUnit.SECONDS);
 		final MessageListener listener = new MessageListener() {
 			/**
 			 * {@inheritDoc}
@@ -206,12 +228,15 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 			 */
 			@Override
 			public void onMetric(final StreamedMetric streamedMetric) {
-				log("SM:" + streamedMetric);
+				listenerEvents.mark();
 			}
 		};
+		
 		final MessageQueue mq = MessageQueue.getInstance("Test", listener, null);
-		for(int i = 0; i < 10; i++) {
-			mq.writeEntry(new StreamedMetricValue(37.4D, "foo.bar", AgentName.getInstance().getGlobalTags()));
+		for(int i = 0; i < Integer.MAX_VALUE; i++) {
+			final Context ctx = writerTime.time();
+			mq.writeEntry(new StreamedMetricValue(System.currentTimeMillis(), tlr.nextDouble(), "foo.bar", AgentName.getInstance().getGlobalTags()));
+			ctx.stop();
 		}
 		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
 			public void run() {
@@ -232,38 +257,29 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	 */
 	public void run() {
 		final ExcerptTailer tailer = queue.createTailer();
+
 		final StreamedMetricMarshallable smm = container.get();
 		startLatch.countDown();
 		while(keepRunning.get()) {
 			long processed = 0L;
-			while(true) {
-				try {
-					final long index = tailer.index();
-					if(tailer.readBytes(smm)) {
-						StreamedMetric sm = smm.getAndNullStreamedMetric();
-						if(sm != null) {
-							listener.onMetric(sm);
-							final long lastIndex = tailer.index();
-							tailer.moveToIndex(index);
-							tailer.readingDocument().wire().bytes().writeByte(0, StreamedMetric.ZERO_BYTE);
-							tailer.moveToIndex(lastIndex);
-							processed++;
-							if(processed%1000==0) {				// FIXME: config
-								if(!keepRunning.get()) break;
-							}
-						}	
+			long reads = 0L;
+			while(tailer.readBytes(smm)) {
+				if(tailer.readBytes(smm)) {
+					reads++;
+					final StreamedMetric sm = smm.getAndNullStreamedMetric();
+					if(sm!=null) {
+						listener.onMetric(sm);
+						processed++;
+						if(processed==1000) break;
 					}
-					
-				} catch (Exception ex) {
-					log.error("Failed to read next", ex);
 				}
 			}
-			log.info("Processed [{}]", processed);
-			if(processed==0L) {
-				Jvm.pause(10);		// FIXME: config
+			if(reads==0) {
+				Jvm.pause(100);
 			}
 		}
 	}
+	
 	
 	
 	/**
@@ -271,9 +287,8 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	 * @param sm the streamed metric to write
 	 */
 	public void writeEntry(final StreamedMetric sm) {
-//		writer.write(container.get().setStreamedMetric(sm));
-		queue.acquireAppender().writeBytes(container.get().setStreamedMetric(sm));
-		log.info("Wrote entry");
+		queue.acquireAppender().writeBytes(sm);
+//		log.info("Wrote entry");
 	}
 
 

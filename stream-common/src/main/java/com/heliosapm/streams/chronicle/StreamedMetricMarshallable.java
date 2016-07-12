@@ -94,12 +94,7 @@ public class StreamedMetricMarshallable implements WriteBytesMarshallable, ReadB
 	 */
 	@Override
 	public void readMarshallable(final BytesIn b) throws IORuntimeException {
-		final byte status = b.readByte();
-		if(status==StreamedMetric.ZERO_BYTE) {
-			streamedMetric = null;
-		} else {
-			streamedMetric = StreamedMetric.fromBytes(b);
-		}
+		streamedMetric = StreamedMetric.fromBytes(b);
 	}
 
 }
