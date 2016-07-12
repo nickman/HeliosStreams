@@ -25,6 +25,7 @@ import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -89,6 +90,8 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	protected final int readerThreads;
 	/** The reader thread thread pool */
 	protected final ExecutorService threadPool;
+	/** The thread pool's thread group */
+	protected final ThreadGroup threadGroup;
 	
 	/** The keep running flag for reader threads */
 	protected final AtomicBoolean keepRunning = new AtomicBoolean(true);
@@ -179,7 +182,9 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 		queue.firstIndex();
 		readerThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
 		startLatch = new CountDownLatch(readerThreads);
-		threadPool = Executors.newFixedThreadPool(readerThreads, JMXManagedThreadFactory.newThreadFactory(name + "ReaderThread", true));
+		final JMXManagedThreadFactory threadFactory = (JMXManagedThreadFactory)JMXManagedThreadFactory.newThreadFactory(name + "ReaderThread", true);
+		threadPool = Executors.newFixedThreadPool(readerThreads, threadFactory);
+		threadGroup = threadFactory.getThreadGroup();
 		for(int i = 0; i < readerThreads; i++) {
 			threadPool.execute(this);
 		}
@@ -202,9 +207,16 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	 */
 	@Override
 	public void close() throws IOException {
-		keepRunning.set(false);
-		try { threadPool.shutdownNow(); } catch (Exception x) {/* No Op */}
-		try { queue.close(); } catch (Exception x) {/* No Op */}
+		if(instances.remove(queueName)!=null) {
+			keepRunning.set(false);
+			try { threadPool.shutdown(); } catch (Exception x) {/* No Op */}
+			try { threadPool.awaitTermination(10, TimeUnit.SECONDS); } catch (Exception x) {/* No Op */}
+			if(!threadPool.isTerminated()) {
+				threadGroup.interrupt();
+				try { threadPool.shutdownNow(); } catch (Exception x) {/* No Op */}
+			}
+			try { queue.close(); } catch (Exception x) {/* No Op */}
+		}
 	}
 	
 	
@@ -261,21 +273,32 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 		final StreamedMetricMarshallable smm = container.get();
 		startLatch.countDown();
 		while(keepRunning.get()) {
-			long processed = 0L;
-			long reads = 0L;
-			while(tailer.readBytes(smm)) {
-				if(tailer.readBytes(smm)) {
-					reads++;
-					final StreamedMetric sm = smm.getAndNullStreamedMetric();
-					if(sm!=null) {
-						listener.onMetric(sm);
-						processed++;
-						if(processed==1000) break;
+			try {
+				long processed = 0L;
+				long reads = 0L;
+				while(tailer.readBytes(smm)) {
+					if(tailer.readBytes(smm)) {
+						reads++;
+						final StreamedMetric sm = smm.getAndNullStreamedMetric();
+						if(sm!=null) {
+							listener.onMetric(sm);
+							processed++;
+							if(processed==1000) break;
+						}
 					}
 				}
-			}
-			if(reads==0) {
-				Jvm.pause(100);
+				if(reads==0) {
+					Jvm.pause(100);
+				}
+			} catch (Exception ex) {
+				if(ex instanceof InterruptedException) {
+					if(keepRunning.get()) {
+						if(Thread.interrupted()) Thread.interrupted();
+					}
+					log.info("Reader Thread [{}] shutting down", Thread.currentThread());
+				} else {
+					log.warn("Unexpected exception in reader thread",  ex);
+				}
 			}
 		}
 	}
