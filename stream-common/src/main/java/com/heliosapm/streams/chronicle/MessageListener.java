@@ -18,7 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.chronicle;
 
-import com.heliosapm.streams.metrics.StreamedMetric;
+import io.netty.buffer.ByteBuf;
 
 /**
  * <p>Title: MessageListener</p>
@@ -28,5 +28,5 @@ import com.heliosapm.streams.metrics.StreamedMetric;
  */
 
 public interface MessageListener {
-	public void onMetric(StreamedMetric streamedMetric);
+	public void onMetric(ByteBuf buf);
 }

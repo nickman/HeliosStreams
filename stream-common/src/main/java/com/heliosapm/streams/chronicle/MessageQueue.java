@@ -21,14 +21,17 @@ package com.heliosapm.streams.chronicle;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -36,6 +39,7 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
@@ -51,7 +55,6 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 
 import io.netty.buffer.ByteBuf;
-import net.openhft.chronicle.bytes.BytesRingBufferStats;
 import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.io.IOTools;
 import net.openhft.chronicle.queue.ChronicleQueue;
@@ -68,9 +71,11 @@ import net.openhft.chronicle.wire.WireType;
  * <p><code>com.heliosapm.streams.chronicle.MessageQueue</code></p>
  */
 
-public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, StoreFileListener, Runnable {
+public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	/** A map of MessageQueues keyed by the name */
 	private static final NonBlockingHashMap<String, MessageQueue> instances = new NonBlockingHashMap<String, MessageQueue>(16); 
+	
+	private static final boolean IS_WIN = System.getProperty("os.name").toLowerCase().contains("windows");
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -94,17 +99,36 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	/** The thread pool's thread group */
 	protected final ThreadGroup threadGroup;
 	
+	/** The idle pause time in ms. */
+	protected final long idlePauseTime;
+	/** The stop check count which is the number of records read before the reader checks to see if a stop has been called */
+	protected final int stopCheckCount;
+	/** The block size for the chronicle queue */
+	protected final int blockSize;
+	
+	/** The roll cycle for the chronicle queue */
+	protected final RollCycles rollCycle;
+	
+	/** A map to queue the windows rolled files so we can keep trying to delete them */
+	protected final Map<String, File> pendingDeletes = IS_WIN ? new ConcurrentHashMap<String, File>() : null;
+	/** The thread that periodically attempts to delete rolled windows files */
+	protected final Thread pendingDeleteThread;
+	
 	/** The keep running flag for reader threads */
 	protected final AtomicBoolean keepRunning = new AtomicBoolean(true);
 	
 	/** A counter of deleted roll files */
-	protected final Counter deletedRollFiles = SharedMetricsRegistry.getInstance().counter("chronicle.rollfile.deleted");
+	protected final Counter deletedRollFiles;
 	/** A periodic counter of chronicle reads */
-	protected final Counter chronicleReads = SharedMetricsRegistry.getInstance().counter("chronicle.reads");
+	protected final Counter chronicleReads;
 	/** A periodic counter of chronicle writes */
-	protected final Counter chronicleWrites = SharedMetricsRegistry.getInstance().counter("chronicle.writes");
+	protected final Counter chronicleWrites;
 	/** A cummulative counter of read errors */
-	protected final Counter chronicleReadErrs = SharedMetricsRegistry.getInstance().counter("chronicle.read.errors");
+	protected final Counter chronicleReadErrs;
+	/** A gauge of the backlog in the queue */
+	protected final Gauge<Long> queueBacklog;
+	
+	
 	
 	
 
@@ -126,6 +150,28 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	public static final String CONFIG_BASE_DIR = "chronicle.dir";
 	/** The default number of reader threads */
 	public static final String DEFAULT_BASE_DIR = System.getProperty("user.home") + File.separator + ".messageQueue";
+	
+	/** The config key name for the reader idle pause time  in ms. */
+	public static final String CONFIG_IDLE_PAUSE = "reader.idle.pause";
+	/** The default reader idle pause time in ms. */
+	public static final long DEFAULT_IDLE_PAUSE = 500L;
+	
+	/** The config key name for the queue's block size */
+	public static final String CONFIG_BLOCK_SIZE = "chronicle.blocksize";
+	/** The default queue block size */
+	public static final int DEFAULT_BLOCK_SIZE = 1296 * 1024;
+	
+	/** The config key name for the queue roll cycle */
+	public static final String CONFIG_ROLL_CYCLE = "chronicle.rollcycle";
+	/** The default queue roll cycle */
+	public static final RollCycles DEFAULT_ROLL_CYCLE = RollCycles.HOURLY;
+	
+	
+	
+	/** The config key name for the reader stop check count */
+	public static final String CONFIG_STOPCHECK_COUNT = "reader.stopcheck";
+	/** The default reader stop check count. */
+	public static final int DEFAULT_STOPCHECK_COUNT = 500;
 	
 	/**
 	 * Acquires the named MessageQueue
@@ -159,9 +205,24 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	private MessageQueue(final String name, final MessageListener listener, final Properties config) {
 		if(listener==null) throw new IllegalArgumentException("The passed listener was null");
 		queueName = name.trim();
+		deletedRollFiles = SharedMetricsRegistry.getInstance().counter("chronicle.rollfile.deleted.queue=" + queueName);
+		chronicleReads = SharedMetricsRegistry.getInstance().counter("chronicle.reads.queue=" + queueName);
+		chronicleWrites = SharedMetricsRegistry.getInstance().counter("chronicle.writes.queue=" + queueName);
+		chronicleReadErrs = SharedMetricsRegistry.getInstance().counter("chronicle.read.errors.queue=" + queueName);
+		queueBacklog = SharedMetricsRegistry.getInstance().gauge("chronicle.backlog.queue=" + queueName, new Callable<Long>(){
+			@Override
+			public Long call() throws Exception {				
+				return chronicleWrites.getCount() - chronicleReads.getCount();
+			}
+		});
 		queueConfig = Props.extract(name, config, true, false);
 		this.listener = listener;
-		final String dirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_BASE_DIR, DEFAULT_BASE_DIR, queueConfig);
+		blockSize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BLOCK_SIZE, DEFAULT_BLOCK_SIZE, queueConfig);
+		readerThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
+		idlePauseTime = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_IDLE_PAUSE, DEFAULT_IDLE_PAUSE, queueConfig);
+		stopCheckCount = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_STOPCHECK_COUNT, DEFAULT_STOPCHECK_COUNT, queueConfig);
+		rollCycle = ConfigurationHelper.getEnumSystemThenEnvProperty(RollCycles.class, CONFIG_ROLL_CYCLE, DEFAULT_ROLL_CYCLE, queueConfig);
+		final String dirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_BASE_DIR, DEFAULT_BASE_DIR, queueConfig);		
 		final File parentDir = new File(dirName);
 		baseQueueDirectory = new File(parentDir, name);
 		if(!baseQueueDirectory.exists()) {
@@ -170,19 +231,43 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 		if(!baseQueueDirectory.isDirectory()) {
 			throw new IllegalArgumentException("Cannot create configured baseQueueDirectory: [" + baseQueueDirectory + "]");
 		}
-//		for(File f : baseQueueDirectory.listFiles()) {
-//			IOTools.shallowDeleteDirWithFiles(f);
-//		}
+		if(IS_WIN) {
+			pendingDeleteThread = new Thread(queueName + "RolledFileDeleter") {
+				public void run() {
+					while(keepRunning.get()) {
+						try { Thread.currentThread().join(60000); } catch (Exception x) {/* No Op */}
+						if(!pendingDeletes.isEmpty()) {
+							final Map<String, File> tmp = new HashMap<String, File>(pendingDeletes);
+							for(Map.Entry<String, File> entry: tmp.entrySet()) {
+								final File f = entry.getValue();
+								if(!f.exists()) {
+									pendingDeletes.remove(entry.getKey());
+									continue;
+								}
+								final long size = f.length();
+								if(entry.getValue().delete()) {
+									deletedRollFiles.inc();
+									log.info("Deleted pending roll file [{}], size [{}} bytes", entry.getKey(), size);
+									pendingDeletes.remove(entry.getKey());
+								}
+							}
+						}
+					}
+				}
+			};
+			pendingDeleteThread.setDaemon(true);
+			pendingDeleteThread.start();
+		} else {
+			pendingDeleteThread = null;
+		}
 		IOTools.deleteDirWithFiles(baseQueueDirectory, 2);
 		queue = SingleChronicleQueueBuilder.binary(baseQueueDirectory)
-			.blockSize(1296 * 1024 * 1024)
-			.onRingBufferStats(this)
-			.rollCycle(RollCycles.MINUTELY)
+			.blockSize(blockSize)
+			.rollCycle(rollCycle)
 			.storeFileListener(this)
 			.wireType(WireType.BINARY)
 			.build();
 		queue.firstIndex();
-		readerThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
 		startLatch = new CountDownLatch(readerThreads);
 		final JMXManagedThreadFactory threadFactory = (JMXManagedThreadFactory)JMXManagedThreadFactory.newThreadFactory(name + "ReaderThread", true);
 		threadPool = Executors.newFixedThreadPool(readerThreads, threadFactory);
@@ -242,8 +327,10 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 			 * @see com.heliosapm.streams.chronicle.MessageListener#onMetric(com.heliosapm.streams.metrics.StreamedMetric)
 			 */
 			@Override
-			public void onMetric(final StreamedMetric streamedMetric) {
+			public void onMetric(final ByteBuf streamedMetric) {
+				streamedMetric.release();
 				listenerEvents.mark();
+				
 			}
 		};
 		final MessageQueue mq = MessageQueue.getInstance("Test", listener, null);
@@ -288,8 +375,6 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	 */
 	public void run() {
 		final ExcerptTailer tailer = queue.createTailer();
-
-		//final StreamedMetricMarshallable smm = container.get();
 		final ByteBufMarshallable smm = new ByteBufMarshallable(); 
 		startLatch.countDown();
 		while(keepRunning.get()) {
@@ -300,14 +385,20 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 					reads++;
 					final ByteBuf sm = smm.getAndNullByteBuf();
 					if(sm!=null) {
-						listener.onMetric(StreamedMetricValue.from(sm));
-						sm.release();
+						listener.onMetric(sm);
+//						sm.release();
 						processed++;
-						if(processed==1000) break;
+						if(processed==stopCheckCount) {
+							processed = 0;
+							if(!keepRunning.get()) break;
+						}
 					}
 				}
 				if(reads==0) {
-					Jvm.pause(100);
+					Jvm.pause(idlePauseTime);
+				} else {
+					chronicleReads.inc(reads);
+					reads = 0;
 				}
 			} catch (Exception ex) {
 				if(ex instanceof InterruptedException) {
@@ -330,19 +421,12 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	 */
 	public void writeEntry(final StreamedMetric sm) {
 		queue.acquireAppender().writeBytes(container.get().setByteBuff(sm.toByteBuff()));
+		chronicleWrites.inc();
 	}
 
 
-	/**
-	 * {@inheritDoc}
-	 * @see java.util.function.Consumer#accept(java.lang.Object)
-	 */
-	@Override
-	public void accept(final BytesRingBufferStats t) {
-		chronicleReads.inc(t.getAndClearReadCount());
-		chronicleWrites.inc(t.getAndClearWriteCount());		
-		log.info("Reads: [{}], Writes: [{}]", chronicleReads.getCount(), chronicleWrites.getCount());
-	}
+	
+	
 
 
 	/**
@@ -353,12 +437,17 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	public void onReleased(final int cycle, final File file) {
 		final long size = file.length();
 		final String name = file.getAbsolutePath();
-		if(file.delete()) {
-			deletedRollFiles.inc();
-			log.info("Deleted RollFile [{}], size:[{}] bytes", name, size);
+		if(IS_WIN) {
+			pendingDeletes.put(name, file);
+			log.info("Added RollFile [{}], size:[{}] bytes to pending delete queue", name, size);
 		} else {
-			log.warn("Failed to Delete RollFile [{}], size:[{}] bytes", name, size);
-		}		
+			if(file.delete()) {
+				deletedRollFiles.inc();
+				log.info("Deleted RollFile [{}], size:[{}] bytes", name, size);
+			} else {
+				log.warn("Failed to Delete RollFile [{}], size:[{}] bytes", name, size);
+			}					
+		}
 	}
 
 }
