@@ -184,8 +184,10 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 	 * @return this metric
 	 */
 	public StreamedMetricValue setValueType(final ValueType vt) {
-		if(vt.valueless) throw new IllegalArgumentException("Invalid value type for StreamedMetric. Type is valueless [" + vt.name + "]");
-		this.valueType = vt;
+		if(vt!=null) {
+			if(vt.valueless) throw new IllegalArgumentException("Invalid value type for StreamedMetric. Type is valueless [" + vt.name + "]");
+			this.valueType = vt;
+		}
 		return this;
 	}
 	
@@ -414,6 +416,25 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 			try { buff.release(); } catch (Exception x) {/* No Op */}
 		}
 	}
+	
+	/**
+	 * Returns this streamed metric serialized into a byte buf
+	 * @return
+	 */
+	public ByteBuf toByteBuff() {
+		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
+		buff.writeByte(TYPE_CODE);
+		writeByteArray(buff);
+		if(isDoubleValue) {
+			buff.writeByte(0);
+			buff.writeDouble(doubleValue);
+		} else {
+			buff.writeByte(1);
+			buff.writeLong(longValue);
+		}		
+		return buff;
+	}
+	
 	
 	/**
 	 * Creates a StreamedMetricValue from the passed buffer

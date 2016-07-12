@@ -25,7 +25,6 @@ import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -41,6 +40,7 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
+import com.heliosapm.streams.buffers.ByteBufMarshallable;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.metrics.StreamedMetric;
@@ -50,6 +50,7 @@ import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 
+import io.netty.buffer.ByteBuf;
 import net.openhft.chronicle.bytes.BytesRingBufferStats;
 import net.openhft.chronicle.core.Jvm;
 import net.openhft.chronicle.core.io.IOTools;
@@ -108,10 +109,10 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	
 
 	
-	private static final ThreadLocal<StreamedMetricMarshallable> container = new ThreadLocal<StreamedMetricMarshallable>() {
+	private static final ThreadLocal<ByteBufMarshallable> container = new ThreadLocal<ByteBufMarshallable>() {
 		@Override
-		protected StreamedMetricMarshallable initialValue() {
-			return new StreamedMetricMarshallable();
+		protected ByteBufMarshallable initialValue() {
+			return new ByteBufMarshallable();
 		}
 	};
 	
@@ -119,7 +120,7 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	/** The config key name for the number of reader threads */
 	public static final String CONFIG_READER_THREADS = "reader.threads";
 	/** The default number of reader threads */
-	public static final int DEFAULT_READER_THREADS = 1;
+	public static final int DEFAULT_READER_THREADS = 2;
 	
 	/** The config key name for the chronicle parent directory */
 	public static final String CONFIG_BASE_DIR = "chronicle.dir";
@@ -142,6 +143,7 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 				q = instances.get(key);
 				if(q==null) {
 					q = new MessageQueue(key, listener, config);
+					instances.put(key, q);
 				}
 			}
 		}
@@ -173,7 +175,7 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 //		}
 		IOTools.deleteDirWithFiles(baseQueueDirectory, 2);
 		queue = SingleChronicleQueueBuilder.binary(baseQueueDirectory)
-//			.blockSize(8096)
+			.blockSize(1296 * 1024 * 1024)
 			.onRingBufferStats(this)
 			.rollCycle(RollCycles.MINUTELY)
 			.storeFileListener(this)
@@ -221,6 +223,7 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	
 	
 	public static void main(String[] args) {
+		System.setProperty("io.netty.leakDetection.level", "advanced");
 		final ThreadLocalRandom tlr = ThreadLocalRandom.current();
 		
 		final MetricRegistry mr = new MetricRegistry();
@@ -243,18 +246,34 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 				listenerEvents.mark();
 			}
 		};
-		
 		final MessageQueue mq = MessageQueue.getInstance("Test", listener, null);
-		for(int i = 0; i < Integer.MAX_VALUE; i++) {
-			final Context ctx = writerTime.time();
-			mq.writeEntry(new StreamedMetricValue(System.currentTimeMillis(), tlr.nextDouble(), "foo.bar", AgentName.getInstance().getGlobalTags()));
-			ctx.stop();
-		}
+		final Thread producer = new Thread() {
+			public void run() {
+				try {
+					for(int i = 0; i < Integer.MAX_VALUE; i++) {
+						final Context ctx = writerTime.time();
+						mq.writeEntry(new StreamedMetricValue(System.currentTimeMillis(), tlr.nextDouble(), "foo.bar", AgentName.getInstance().getGlobalTags()));
+						ctx.stop();
+					}
+				} catch (Exception ex) {
+					if(ex instanceof InterruptedException) {
+						mq.log.info("Producer Thread is stopping");
+					}
+				}
+			}
+		};
+		producer.setDaemon(true);
+		producer.start();
+		final AtomicBoolean closed = new AtomicBoolean(false);
 		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
 			public void run() {
-				mq.log.info(">>>>> Stopping MessageQueue...");
-				try { mq.close(); } catch (Exception x) {/* No Op */}
-				mq.log.info("<<<<< MessageQueue Stopped");
+				if(closed.compareAndSet(false, true)) {
+					mq.log.info(">>>>> Stopping MessageQueue...");
+					producer.interrupt();
+					try { mq.close(); } catch (Exception x) {/* No Op */}
+					mq.log.info("<<<<< MessageQueue Stopped");
+					System.exit(1);
+				}
 			}
 		}).shutdownHook("shutdown").run();
 	}
@@ -270,21 +289,21 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	public void run() {
 		final ExcerptTailer tailer = queue.createTailer();
 
-		final StreamedMetricMarshallable smm = container.get();
+		//final StreamedMetricMarshallable smm = container.get();
+		final ByteBufMarshallable smm = new ByteBufMarshallable(); 
 		startLatch.countDown();
 		while(keepRunning.get()) {
 			try {
 				long processed = 0L;
 				long reads = 0L;
 				while(tailer.readBytes(smm)) {
-					if(tailer.readBytes(smm)) {
-						reads++;
-						final StreamedMetric sm = smm.getAndNullStreamedMetric();
-						if(sm!=null) {
-							listener.onMetric(sm);
-							processed++;
-							if(processed==1000) break;
-						}
+					reads++;
+					final ByteBuf sm = smm.getAndNullByteBuf();
+					if(sm!=null) {
+						listener.onMetric(StreamedMetricValue.from(sm));
+						sm.release();
+						processed++;
+						if(processed==1000) break;
 					}
 				}
 				if(reads==0) {
@@ -310,8 +329,7 @@ public class MessageQueue implements Closeable, Consumer<BytesRingBufferStats>, 
 	 * @param sm the streamed metric to write
 	 */
 	public void writeEntry(final StreamedMetric sm) {
-		queue.acquireAppender().writeBytes(sm);
-//		log.info("Wrote entry");
+		queue.acquireAppender().writeBytes(container.get().setByteBuff(sm.toByteBuff()));
 	}
 
 

@@ -251,6 +251,17 @@ public class StreamedMetric implements BytesMarshallable {
 		}
 	}
 	
+	/**
+	 * Returns this streamed metric serialized into a byte buf
+	 * @return
+	 */
+	public ByteBuf toByteBuff() {
+		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
+		buff.writeByte(TYPE_CODE);
+		writeByteArray(buff);
+		return buff;
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
