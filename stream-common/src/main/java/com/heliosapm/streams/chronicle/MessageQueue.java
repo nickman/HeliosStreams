@@ -144,7 +144,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	/** The config key name for the number of reader threads */
 	public static final String CONFIG_READER_THREADS = "reader.threads";
 	/** The default number of reader threads */
-	public static final int DEFAULT_READER_THREADS = 2;
+	public static final int DEFAULT_READER_THREADS = 1;
 	
 	/** The config key name for the chronicle parent directory */
 	public static final String CONFIG_BASE_DIR = "chronicle.dir";
@@ -215,7 +215,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 				return chronicleWrites.getCount() - chronicleReads.getCount();
 			}
 		});
-		queueConfig = Props.extract(name, config, true, false);
+		queueConfig = Props.extract(queueName, config, true, false);
 		this.listener = listener;
 		blockSize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BLOCK_SIZE, DEFAULT_BLOCK_SIZE, queueConfig);
 		readerThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
@@ -308,7 +308,9 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	
 	
 	public static void main(String[] args) {
-		System.setProperty("io.netty.leakDetection.level", "advanced");
+//		System.setProperty("io.netty.leakDetection.level", "advanced");
+		System.setProperty("Test.chronicle.rollcycle", RollCycles.MINUTELY.name());
+		
 		final ThreadLocalRandom tlr = ThreadLocalRandom.current();
 		
 		final MetricRegistry mr = new MetricRegistry();
@@ -328,12 +330,13 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 			 */
 			@Override
 			public void onMetric(final ByteBuf streamedMetric) {
-				streamedMetric.release();
 				listenerEvents.mark();
+				streamedMetric.release();
+				
 				
 			}
 		};
-		final MessageQueue mq = MessageQueue.getInstance("Test", listener, null);
+		final MessageQueue mq = MessageQueue.getInstance("Test", listener, System.getProperties());
 		final Thread producer = new Thread() {
 			public void run() {
 				try {
@@ -377,11 +380,12 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		final ExcerptTailer tailer = queue.createTailer();
 		final ByteBufMarshallable smm = new ByteBufMarshallable(); 
 		startLatch.countDown();
-		while(keepRunning.get()) {
+		while(keepRunning.get()) {			
 			try {
 				long processed = 0L;
 				long reads = 0L;
 				while(tailer.readBytes(smm)) {
+					chronicleReads.inc();
 					reads++;
 					final ByteBuf sm = smm.getAndNullByteBuf();
 					if(sm!=null) {
@@ -396,10 +400,8 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 				}
 				if(reads==0) {
 					Jvm.pause(idlePauseTime);
-				} else {
-					chronicleReads.inc(reads);
-					reads = 0;
 				}
+				reads = 0;
 			} catch (Exception ex) {
 				if(ex instanceof InterruptedException) {
 					if(keepRunning.get()) {
