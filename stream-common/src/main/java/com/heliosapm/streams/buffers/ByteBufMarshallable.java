@@ -18,7 +18,11 @@ under the License.
  */
 package com.heliosapm.streams.buffers;
 
-import com.heliosapm.streams.metrics.StreamedMetric;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import io.netty.buffer.ByteBuf;
 import net.openhft.chronicle.bytes.BytesIn;
@@ -36,33 +40,83 @@ import net.openhft.chronicle.core.io.IORuntimeException;
 
 public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMarshallable {
 	/** The byte buff being acted on */
-	protected ByteBuf byteBuf = null;
-	
+	protected ByteBuf byteBuf = null;	
+	/** A ref to the BufferManager */
 	private static final BufferManager bufferManager = BufferManager.getInstance(); 
 	
-
-	@SuppressWarnings("rawtypes")
+	/** Indicates if compression is enabled */
+	protected final boolean useGzip;
+	private static byte NOT_COMPRESSED = 0;
+	private static byte COMPRESSED = 1;
+	
+	
+	/**
+	 * Creates a new ByteBufMarshallable
+	 * @param gzip true to gzip payloads
+	 */
+	public ByteBufMarshallable(final boolean gzip) {
+		useGzip = gzip;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see net.openhft.chronicle.bytes.ReadBytesMarshallable#readMarshallable(net.openhft.chronicle.bytes.BytesIn)
+	 */
 	@Override
 	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
+		final byte compressed = bytes.readByte();
 		final int size = bytes.readInt();
 		byteBuf = bufferManager.buffer(size);
+		InputStream is = null;
 		try {
-			byteBuf.writeBytes(bytes.inputStream(), size);
+			is = compressed==COMPRESSED ? wrap(bytes.inputStream(), 1024) : bytes.inputStream(); 
+			byteBuf.writeBytes(is, size);
 		} catch (Exception ex) {
-			byteBuf.release();
-			byteBuf = null;
 			throw new RuntimeException("Failed to read buffer bytes", ex);
+		} finally {
+			if(useGzip && is != null) try { is.close(); } catch (Exception x) {/* No Op */}
 		}
 	}
+	
+	/**
+	 * Wraps the passed input stream in a gzip input stream
+	 * @param is the input stream to wrap
+	 * @param size The buffer size
+	 * @return the gzip input stream
+	 * @throws IOException if an I/O error has occurred
+	 */
+	public static InputStream wrap(final InputStream is, final int size) throws IOException {
+		return new GZIPInputStream(is, size);
+	}
+	
+	/**
+	 * Wraps the passed output stream in a gzip output stream
+	 * @param is the output stream to wrap
+	 * @param size The buffer size
+	 * @return the gzip output stream
+	 * @throws IOException if an I/O error has occurred
+	 */
+	public static OutputStream wrap(final OutputStream is, final int size) throws IOException {
+		return new GZIPOutputStream(is, size);
+	}
+	
 
-	@SuppressWarnings("rawtypes")
+
 	@Override
 	public void writeMarshallable(final BytesOut bytes) {
+		bytes.writeByte(useGzip ? COMPRESSED : NOT_COMPRESSED);		
 		bytes.writeInt(byteBuf.readableBytes());
-		bytes.writeSome(byteBuf.nioBuffer());
-		byteBuf.release();
-		byteBuf = null;
-		
+		OutputStream os = null;
+		try {
+			os = useGzip ? wrap(bytes.outputStream(), 1024) : bytes.outputStream();
+			byteBuf.readBytes(os, byteBuf.readableBytes());			
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to write buffer bytes", ex);
+		} finally {
+			if(useGzip && os != null) try { os.close(); } catch (Exception x) {/* No Op */}
+			byteBuf.release();
+			byteBuf = null;
+		}
 	}
 	
 	/**
@@ -75,7 +129,7 @@ public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMar
 
 	/**
 	 * Sets the current ByteBuf
-	 * @param byteBuff the buffer to set
+	 * @param byteBuf the buffer to set
 	 * @return this marshallable
 	 */
 	public ByteBufMarshallable setByteBuff(final ByteBuf byteBuf) {

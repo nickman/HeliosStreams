@@ -44,6 +44,7 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
+import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.buffers.ByteBufMarshallable;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
@@ -108,6 +109,19 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	
 	/** The roll cycle for the chronicle queue */
 	protected final RollCycles rollCycle;
+	/** Indicates if compression is enabled for direct buffer writes to the chronicle queue */
+	protected final boolean compression;
+	
+	/** A thread local to provide a non-compressing marshallable per thread */
+	protected final ThreadLocal<ByteBufMarshallable> uncompressedMarshallable = new ThreadLocal<ByteBufMarshallable>() {
+		@Override
+		protected ByteBufMarshallable initialValue() {
+			return new ByteBufMarshallable(false);
+		}
+	};
+	
+	/** A thread local to provide a possibly compressing marshallable per thread */
+	protected final ThreadLocal<ByteBufMarshallable> compressedMarshallable;
 	
 	/** A map to queue the windows rolled files so we can keep trying to delete them */
 	protected final Map<String, File> pendingDeletes = IS_WIN ? new ConcurrentHashMap<String, File>() : null;
@@ -127,19 +141,6 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	protected final Counter chronicleReadErrs;
 	/** A gauge of the backlog in the queue */
 	protected final Gauge<Long> queueBacklog;
-	
-	
-	
-	
-
-	
-	private static final ThreadLocal<ByteBufMarshallable> container = new ThreadLocal<ByteBufMarshallable>() {
-		@Override
-		protected ByteBufMarshallable initialValue() {
-			return new ByteBufMarshallable();
-		}
-	};
-	
 	
 	/** The config key name for the number of reader threads */
 	public static final String CONFIG_READER_THREADS = "reader.threads";
@@ -166,12 +167,16 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	/** The default queue roll cycle */
 	public static final RollCycles DEFAULT_ROLL_CYCLE = RollCycles.HOURLY;
 	
-	
-	
 	/** The config key name for the reader stop check count */
 	public static final String CONFIG_STOPCHECK_COUNT = "reader.stopcheck";
 	/** The default reader stop check count. */
 	public static final int DEFAULT_STOPCHECK_COUNT = 500;
+	
+	/** The config key name for buffer write compression */
+	public static final String CONFIG_COMPRESS_QWRITES = "writer.compression";
+	/** The default buffer write compression. */
+	public static final boolean DEFAULT_COMPRESS_QWRITES = false;
+	
 	
 	/**
 	 * Acquires the named MessageQueue
@@ -217,12 +222,19 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		});
 		queueConfig = Props.extract(queueName, config, true, false);
 		this.listener = listener;
+		compression = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_COMPRESS_QWRITES, DEFAULT_COMPRESS_QWRITES, queueConfig);
 		blockSize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BLOCK_SIZE, DEFAULT_BLOCK_SIZE, queueConfig);
 		readerThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
 		idlePauseTime = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_IDLE_PAUSE, DEFAULT_IDLE_PAUSE, queueConfig);
 		stopCheckCount = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_STOPCHECK_COUNT, DEFAULT_STOPCHECK_COUNT, queueConfig);
 		rollCycle = ConfigurationHelper.getEnumSystemThenEnvProperty(RollCycles.class, CONFIG_ROLL_CYCLE, DEFAULT_ROLL_CYCLE, queueConfig);
-		final String dirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_BASE_DIR, DEFAULT_BASE_DIR, queueConfig);		
+		final String dirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_BASE_DIR, DEFAULT_BASE_DIR, queueConfig);
+		compressedMarshallable = new ThreadLocal<ByteBufMarshallable>() {
+			@Override
+			protected ByteBufMarshallable initialValue() {
+				return new ByteBufMarshallable(true);
+			}
+		};		
 		final File parentDir = new File(dirName);
 		baseQueueDirectory = new File(parentDir, name);
 		if(!baseQueueDirectory.exists()) {
@@ -231,7 +243,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		if(!baseQueueDirectory.isDirectory()) {
 			throw new IllegalArgumentException("Cannot create configured baseQueueDirectory: [" + baseQueueDirectory + "]");
 		}
-		if(IS_WIN) {
+		if(IS_WIN) {  // FIXME: pull this out of ctor
 			pendingDeleteThread = new Thread(queueName + "RolledFileDeleter") {
 				public void run() {
 					while(keepRunning.get()) {
@@ -308,6 +320,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	
 	
 	public static void main(String[] args) {
+		log("MessageQueue Test");
 //		System.setProperty("io.netty.leakDetection.level", "advanced");
 		System.setProperty("Test.chronicle.rollcycle", RollCycles.MINUTELY.name());
 		
@@ -316,6 +329,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		final MetricRegistry mr = new MetricRegistry();
 		final Meter listenerEvents = mr.meter("listener.events");
 		final Timer writerTime = mr.timer("writer.time");
+		final Counter deserErrors = mr.counter("deser.errors");
 		final ConsoleReporter cr = ConsoleReporter
 			.forRegistry(mr)
 			.convertDurationsTo(TimeUnit.MICROSECONDS)
@@ -324,25 +338,43 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 			.build();
 		cr.start(5, TimeUnit.SECONDS);
 		final MessageListener listener = new MessageListener() {
-			/**
-			 * {@inheritDoc}
-			 * @see com.heliosapm.streams.chronicle.MessageListener#onMetric(com.heliosapm.streams.metrics.StreamedMetric)
-			 */
 			@Override
-			public void onMetric(final ByteBuf streamedMetric) {
-				listenerEvents.mark();
-				streamedMetric.release();
-				
-				
+			public void onMetric(final ByteBuf buf) {
+				listenerEvents.mark();				
+				try {
+					while(buf.isReadable(20)) {
+						StreamedMetric.read(buf);
+						listenerEvents.mark();
+					}
+				} catch (Exception ex) {
+					deserErrors.inc();
+				} finally {
+					buf.release();
+				}				
 			}
 		};
 		final MessageQueue mq = MessageQueue.getInstance("Test", listener, System.getProperties());
+		log("Acquired MessageQueue Instance:" + mq);
+		final int batchSize = 100;
+		final boolean compressed = mq.compression;
 		final Thread producer = new Thread() {
 			public void run() {
+				log("Producer Thread Started");
 				try {
 					for(int i = 0; i < Integer.MAX_VALUE; i++) {
 						final Context ctx = writerTime.time();
-						mq.writeEntry(new StreamedMetricValue(System.currentTimeMillis(), tlr.nextDouble(), "foo.bar", AgentName.getInstance().getGlobalTags()));
+						if(compressed) {
+							for(int x = 0; x < batchSize; x++) {
+								mq.writeEntry(new StreamedMetricValue(System.currentTimeMillis(), tlr.nextDouble(), "foo.bar", AgentName.getInstance().getGlobalTags()));
+							}
+						} else {
+							final ByteBuf buffer = BufferManager.getInstance().directBuffer(batchSize * 128);
+							for(int x = 0; x < batchSize; x++) {
+								new StreamedMetricValue(System.currentTimeMillis(), tlr.nextDouble(), "foo.bar", AgentName.getInstance().getGlobalTags())
+									.intoByteBuf(buffer);
+							}
+							mq.writeEntry(buffer);
+						}
 						ctx.stop();
 					}
 				} catch (Exception ex) {
@@ -374,11 +406,20 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	
 	/**
 	 * {@inheritDoc}
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return new StringBuilder("MessageQueue [").append(queueName).append(", dir:").append(this.baseQueueDirectory).append(", readers:").append(this.readerThreads).append("]").toString();
+	}
+	
+	/**
+	 * {@inheritDoc}
 	 * @see java.lang.Runnable#run()
 	 */
 	public void run() {
 		final ExcerptTailer tailer = queue.createTailer();
-		final ByteBufMarshallable smm = new ByteBufMarshallable(); 
+		final ByteBufMarshallable smm = new ByteBufMarshallable(compression); 
 		startLatch.countDown();
 		while(keepRunning.get()) {			
 			try {
@@ -422,7 +463,19 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	 * @param sm the streamed metric to write
 	 */
 	public void writeEntry(final StreamedMetric sm) {
-		queue.acquireAppender().writeBytes(container.get().setByteBuff(sm.toByteBuff()));
+		queue.acquireAppender()
+		.writeBytes(
+			uncompressedMarshallable.get().setByteBuff(sm.toByteBuff())
+		);
+		chronicleWrites.inc();
+	}
+	
+	/**
+	 * Writes a bytes marshallable ByteBuf to the queue
+	 * @param buff the ByteBuff to write
+	 */
+	public void writeEntry(final ByteBuf buff) {
+		queue.acquireAppender().writeBytes(compressedMarshallable.get().setByteBuff(buff));
 		chronicleWrites.inc();
 	}
 

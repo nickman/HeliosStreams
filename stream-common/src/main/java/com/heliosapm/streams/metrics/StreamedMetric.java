@@ -253,13 +253,22 @@ public class StreamedMetric implements BytesMarshallable {
 	
 	/**
 	 * Returns this streamed metric serialized into a byte buf
-	 * @return
+	 * @return the byte buff
 	 */
 	public ByteBuf toByteBuff() {
 		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
 		buff.writeByte(TYPE_CODE);
 		writeByteArray(buff);
 		return buff;
+	}
+	
+	/**
+	 * Writes this metric into the passed buffer
+	 * @param buf The buffer to write this metric into
+	 */
+	public void intoByteBuf(final ByteBuf buf) {
+		buf.writeByte(TYPE_CODE);
+		writeByteArray(buf);		
 	}
 	
 	
@@ -348,12 +357,29 @@ public class StreamedMetric implements BytesMarshallable {
 		} finally {
 			try { buff.release(); } catch (Exception x) {/* No Op */}
 		}
-			
 	}
 	
 	/**
+	 * Reads a streamed metric from the passed buffer
+	 * @param buff the buffer to read the streamed metric from
+	 * @return the appropriate type of StreamedMetric
+	 */
+	public static StreamedMetric read(final ByteBuf buff) {
+		final byte type = buff.readByte();
+		switch(type) {
+			case 0:
+				return StreamedMetric.fromBuff(buff);
+			case 1:
+				return StreamedMetricValue.fromBuff(buff);
+			default:
+				throw new RuntimeException("Unrecognized metric type code [" + type + "]");
+		}		
+	}
+	
+	
+	/**
 	 * Creates a StreamedMetric from the passed buffer
-	 * @param bytes The bytes to read the StreamedMetric from
+	 * @param buff The buffer to read the StreamedMetric from
 	 * @return the created StreamedMetric
 	 */
 	static StreamedMetric fromBuff(final ByteBuf buff) {

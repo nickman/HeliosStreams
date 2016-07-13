@@ -419,7 +419,7 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 	
 	/**
 	 * Returns this streamed metric serialized into a byte buf
-	 * @return
+	 * @return the byte buf
 	 */
 	public ByteBuf toByteBuff() {
 		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
@@ -434,6 +434,23 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 		}		
 		return buff;
 	}
+	
+	/**
+	 * Writes this metric into the passed buffer
+	 * @param buff The buffer to write this metric into
+	 */
+	public void intoByteBuf(final ByteBuf buff) {
+		buff.writeByte(TYPE_CODE);
+		writeByteArray(buff);
+		if(isDoubleValue) {
+			buff.writeByte(0);
+			buff.writeDouble(doubleValue);
+		} else {
+			buff.writeByte(1);
+			buff.writeLong(longValue);
+		}		
+	}
+	
 	
 	
 	/**

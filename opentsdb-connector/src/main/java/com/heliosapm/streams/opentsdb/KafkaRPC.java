@@ -37,16 +37,21 @@ import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
-import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
+import com.heliosapm.streams.chronicle.MessageListener;
+import com.heliosapm.streams.chronicle.MessageQueue;
 import com.heliosapm.streams.metrics.Blacklist;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricDeserializer;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
+import com.heliosapm.utils.collections.Props;
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.lang.StringHelper;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
+import io.netty.buffer.ByteBuf;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.stats.StatsCollector;
 import net.opentsdb.tsd.RpcPlugin;
@@ -59,7 +64,7 @@ import net.opentsdb.tsd.RpcPlugin;
  * <p><code>com.heliosapm.streams.opentsdb.KafkaRPC</code></p>
  */
 
-public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
+public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, MessageListener {
 	/** The TSDB instance */
 	static TSDB tsdb = null;
 	/** The prefix on TSDB config items marking them as applicable to this service */
@@ -69,7 +74,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	/** The TSDB config key for the names of topics to subscribe to */
 	public static final String CONFIG_TOPICS = CONFIG_PREFIX + "tsdbtopics";
 	/** The default topic name to listen on */
-	public static final String DEFAULT_TOPIC = "tsdb-metrics";
+	public static final String[] DEFAULT_TOPIC = {"tsdb-metrics"};
 	/** The TSDB config key for sync processing of add data points */
 	public static final String CONFIG_SYNC_ADD = CONFIG_PREFIX + "syncadd";
 	/** The default sync add */
@@ -85,7 +90,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	/** The kafka consumer client configuration */
 	protected final Properties consumerConfig = new Properties();
 	/** The kafka consumer */
-	protected KafkaConsumer<String, StreamedMetric> consumer = null;
+	protected KafkaConsumer<String, ByteBuf> consumer = null;
 	/** The topics to subscribe to */
 	protected String[] topics = null;
 	/** Indicates if the consumer is closed */
@@ -96,6 +101,9 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	protected boolean syncAdd = DEFAULT_SYNC_ADD;
 	/** The subscriber thread */
 	protected Thread subThread = null;
+	
+	/** The chronicle message queue */
+	protected MessageQueue messageQueue;
 	
 	/** The blacklisted metric key manager */
 	protected final Blacklist blacklist = Blacklist.getInstance();
@@ -136,39 +144,14 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	@Override
 	public void initialize(final TSDB tsdb) {	
 		KafkaRPC.tsdb = tsdb;
-		final Map<String, String> config = tsdb.getConfig().getMap();
-		final StringBuilder b = new StringBuilder("\n\tKafkaRPC Configuration\n\t======================");
-		for(Map.Entry<String, String> entry: config.entrySet()) {
-			final String tsdbKey = entry.getKey();
-			if(tsdbKey.indexOf(CONFIG_PREFIX)==0) {
-				final String key = tsdbKey.substring(CONFIG_PREFIX_LEN);
-				final String value = entry.getValue();
-				b.append("\n\t").append(key).append("=").append(value);
-				consumerConfig.setProperty(key, entry.getValue());
-			}
-		}
-		b.append("\n\t======================");
-		log.info(b.toString());
-		final String topicStr = config.get(CONFIG_TOPICS);
-		if(topicStr==null || topicStr.trim().isEmpty()) {
-			topics = new String[]{DEFAULT_TOPIC};
-		} else {
-			topics = topicStr.replace(" ", "").split(",");
-		}
-		if(tsdb.getConfig().hasProperty(CONFIG_POLLTIMEOUT)) {
-			try {
-				pollTimeout = tsdb.getConfig().getInt(CONFIG_POLLTIMEOUT);
-			} catch (Exception ex) {
-				pollTimeout = DEFAULT_POLLTIMEOUT;
-			}
-		}
-		if(tsdb.getConfig().hasProperty(CONFIG_SYNC_ADD)) {
-			try {
-				syncAdd = tsdb.getConfig().getBoolean(CONFIG_SYNC_ADD);
-			} catch (Exception ex) {
-				syncAdd = DEFAULT_SYNC_ADD;
-			}
-		}
+		
+		final Properties p = new Properties();
+		p.putAll(tsdb.getConfig().getMap());
+		final Properties rpcConfig = Props.extractOrEnv(CONFIG_PREFIX, p, true); 
+		topics = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_TOPICS, DEFAULT_TOPIC, rpcConfig);
+		pollTimeout = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_POLLTIMEOUT, DEFAULT_POLLTIMEOUT, rpcConfig);
+		syncAdd = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_SYNC_ADD, DEFAULT_SYNC_ADD, rpcConfig);
+		messageQueue = MessageQueue.getInstance(getClass().getSimpleName(), this, rpcConfig);
 		metricManager.addExtraTag("mode", syncAdd ? "sync" : "async");
 		log.info("Kafka TSDB Metric Topics: {}", Arrays.toString(topics));
 		log.info("Kafka TSDB Poll Size: {}", pollTimeout);
@@ -188,87 +171,96 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
             consumer.subscribe(Arrays.asList(topics));
             while (!closed.get()) {
             	try {
-	                final ConsumerRecords<String, StreamedMetric> records;
+	                final ConsumerRecords<String, ByteBuf> records;
 	                try {
 	                	records = consumer.poll(pollTimeout);
+	                	final int recordCount = records.count();
+	                	if(recordCount > 0) {
+	                		for(final Iterator<ConsumerRecord<String, ByteBuf>> iter = records.iterator(); iter.hasNext();) {
+	                			final ConsumerRecord<String, ByteBuf> record = iter.next();
+	                			messageQueue.writeEntry(record.value());
+	                		}
+	                	}
+	                	consumer.commitAsync();
 	                } catch (Exception ex) {
 	                	continue;  // FIXME: increment deser errors
 	                }
-	                final int recordCount = records.count();
-	                pendingDataPointAdds.add(recordCount);
-	                if(recordCount==0) continue;
-	                final long startTimeNanos = System.nanoTime();
-	                
-	                final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>(recordCount);
-	                		// We're going to wait for all the Deferreds to complete and then commit.
-	                		// We're just going to commit as soon as all the async add points are dispatched
-	                for(final Iterator<ConsumerRecord<String, StreamedMetric>> iter = records.iterator(); iter.hasNext();) {
-	                	StreamedMetric im = null;
-	                	StreamedMetricValue imv = null;
-	                	try {
-		                	final ConsumerRecord<String, StreamedMetric> record = iter.next();
-		                	
-		                	im = record.value();
-		                	if(!im.isValued()) continue; // increment non-value
-		                	imv = (StreamedMetricValue)im;
-		                	if(blacklist.isBlackListed(im.metricKey())) continue;
-		                	Deferred<Object> thisDeferred = null;
-		                	if(imv.isDoubleValue()) {
-		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), imv.getDoubleValue(), im.getTags());
-		                	} else {
-		                		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), imv.getLongValue(), im.getTags());
-		                	}
-		                	addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
-	                	} catch (Exception adpe) {
-	                		if(im!=null) {
-	                			log.error("Failed to add data point for invalid metric name: {}, cause: {}", im.metricKey(), adpe.getMessage());
-	                			blacklist.blackList(im.metricKey());
-	                		} else {
-	                			log.error("Failed to add data point", adpe);
-	                		}
-	                	}
-	                }
-	                
-                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
-                	 d.addCallback(new Callback<Void, ArrayList<Object>>() {
-							@Override
-							public Void call(final ArrayList<Object> arg) throws Exception {
-								if(syncAdd) consumer.commitSync();
-								pendingDataPointAdds.add(-1 * recordCount);
-								final long elapsed = System.nanoTime() - startTimeNanos; 
-								perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
-								pointsAddedMeter.mark(recordCount);
-								if(syncAdd) log.info("Sync Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
-								return null;
-							}                		 
-	                	 });
-                	 if(syncAdd) {
-                		 try {
-                			 d.joinUninterruptibly(30000);  // FIXME:  make configurable
-                		 } catch (Exception ex) {
-                			 log.warn("Datapoints Write Timed Out");  // FIXME: increment timeout err
-                		 }
-                	 } else {
- 	                	consumer.commitSync();
-						final long elapsed = System.nanoTime() - startTimeNanos; 
-						perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
-						pointsAddedMeter.mark(recordCount);
-						log.info("Async Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
-                	 }
-            	} catch (Exception exx) {
-            		log.error("Unexpected exception in processing loop", exx);
+            	} catch (Exception ex) {
+            		
             	}
-            }  // end of while loop
-        } catch (WakeupException e) {
-            // Ignore exception if closing
-            if (!closed.get()) throw e;
-        } catch (Exception ex) {
-        	log.error("Failed to start subscription", ex);
-        } finally {
-            try { consumer.close(); } catch (Exception x) {/* No Op */}
-            subThread = null;
-        }		
+            }
+		} catch (Exception ex) {
+			
+		}
 	}
+	
+	
+	
+//	im = record.value();
+//	if(!im.isValued()) continue; // increment non-value
+//	imv = (StreamedMetricValue)im;
+//	if(blacklist.isBlackListed(im.metricKey())) continue;
+//	Deferred<Object> thisDeferred = null;
+//	if(imv.isDoubleValue()) {
+//		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), imv.getDoubleValue(), im.getTags());
+//	} else {
+//		thisDeferred = tsdb.addPoint(im.getMetricName(), im.getTimestamp(), imv.getLongValue(), im.getTags());
+//	}
+//	addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
+//} catch (Exception adpe) {
+//	if(im!=null) {
+//		log.error("Failed to add data point for invalid metric name: {}, cause: {}", im.metricKey(), adpe.getMessage());
+//		blacklist.blackList(im.metricKey());
+//
+//	                	try {
+//		                	final ConsumerRecord<String, StreamedMetric> record = iter.next();
+//		                	
+//	                		} else {
+//	                			log.error("Failed to add data point", adpe);
+//	                		}
+//	                	}
+//	                }
+//	                
+//                	 Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
+//                	 d.addCallback(new Callback<Void, ArrayList<Object>>() {
+//							@Override
+//							public Void call(final ArrayList<Object> arg) throws Exception {
+//								if(syncAdd) consumer.commitSync();
+//								pendingDataPointAdds.add(-1 * recordCount);
+//								final long elapsed = System.nanoTime() - startTimeNanos; 
+//								perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
+//								pointsAddedMeter.mark(recordCount);
+//								if(syncAdd) log.info("Sync Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
+//								return null;
+//							}                		 
+//	                	 });
+//                	 if(syncAdd) {
+//                		 try {
+//                			 d.joinUninterruptibly(30000);  // FIXME:  make configurable
+//                		 } catch (Exception ex) {
+//                			 log.warn("Datapoints Write Timed Out");  // FIXME: increment timeout err
+//                		 }
+//                	 } else {
+// 	                	consumer.commitSync();
+//						final long elapsed = System.nanoTime() - startTimeNanos; 
+//						perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
+//						pointsAddedMeter.mark(recordCount);
+//						log.info("Async Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
+//                	 }
+//            	} catch (Exception exx) {
+//            		log.error("Unexpected exception in processing loop", exx);
+//            	}
+//            }  // end of while loop
+//        } catch (WakeupException e) {
+//            // Ignore exception if closing
+//            if (!closed.get()) throw e;
+//        } catch (Exception ex) {
+//        	log.error("Failed to start subscription", ex);
+//        } finally {
+//            try { consumer.close(); } catch (Exception x) {/* No Op */}
+//            subThread = null;
+//        }		
+//	}
 	
 	/**
 	 * Computes the nano time per message
@@ -478,6 +470,18 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable {
 	@Override
 	public void collectStats(final StatsCollector collector) {
 		metricManager.collectStats(collector);
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.chronicle.MessageListener#onMetric(io.netty.buffer.ByteBuf)
+	 */
+	@Override
+	public void onMetric(ByteBuf buf) {
+		// TODO Auto-generated method stub
+		
 	}
 
 }
