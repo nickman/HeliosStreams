@@ -27,7 +27,10 @@ package com.heliosapm.streams.metrics;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 
 import org.apache.kafka.common.serialization.Deserializer;
@@ -253,13 +256,22 @@ public class StreamedMetric implements BytesMarshallable {
 	
 	/**
 	 * Returns this streamed metric serialized into a byte buf
-	 * @return
+	 * @return the byte buff
 	 */
 	public ByteBuf toByteBuff() {
 		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
 		buff.writeByte(TYPE_CODE);
 		writeByteArray(buff);
 		return buff;
+	}
+	
+	/**
+	 * Writes this metric into the passed buffer
+	 * @param buf The buffer to write this metric into
+	 */
+	public void intoByteBuf(final ByteBuf buf) {
+		buf.writeByte(TYPE_CODE);
+		writeByteArray(buf);		
 	}
 	
 	
@@ -348,12 +360,73 @@ public class StreamedMetric implements BytesMarshallable {
 		} finally {
 			try { buff.release(); } catch (Exception x) {/* No Op */}
 		}
-			
 	}
 	
 	/**
+	 * Reads a streamed metric from the passed buffer
+	 * @param buff the buffer to read the streamed metric from
+	 * @return the appropriate type of StreamedMetric
+	 */
+	public static StreamedMetric read(final ByteBuf buff) {
+		final byte type = buff.readByte();
+		switch(type) {
+			case 0:
+				return StreamedMetric.fromBuff(buff);
+			case 1:
+				return StreamedMetricValue.fromBuff(buff);
+			default:
+				throw new RuntimeException("Unrecognized metric type code [" + type + "]");
+		}		
+	}
+	
+	/** An approximation of the minimum number of bytes that need to be available ina  buffer to realistically read a metric from it */
+	public static final int MIN_READABLE_BYTES = 20;
+	
+	/**
+	 * Reads a streamed metric from the passed buffer
+	 * @param buff the buffer to read the streamed metric from
+	 * @return the appropriate type of StreamedMetric
+	 */
+	public static StreamedMetric[] readAll(final ByteBuf buff) {
+		final Set<StreamedMetric> metrics = new HashSet<StreamedMetric>();
+		while(buff.isReadable(MIN_READABLE_BYTES)) {
+			metrics.add(read(buff));
+		}
+		return metrics.toArray(new StreamedMetric[metrics.size()]);
+	}
+	
+	/**
+	 * Returns an interator over the StreamMetrics in the passed buffer
+	 * @param buf The buffer to read from
+	 * @param releaseOnDone true to release the buffer on iterator end
+	 * @return the iterator
+	 */
+	public static Iterable<StreamedMetric> streamedMetrics(final ByteBuf buf, final boolean releaseOnDone) {
+		return new Iterable<StreamedMetric>() {
+			@Override
+			public Iterator<StreamedMetric> iterator() {
+				return new Iterator<StreamedMetric>() {
+					@Override
+					public boolean hasNext() {
+						final boolean hasNext = buf.isReadable(MIN_READABLE_BYTES);
+						if(releaseOnDone) buf.release();
+						return hasNext;
+					}
+
+					@Override
+					public StreamedMetric next() {
+						return read(buf);
+					}					
+				};
+			}			
+		};
+	}
+	
+	
+	
+	/**
 	 * Creates a StreamedMetric from the passed buffer
-	 * @param bytes The bytes to read the StreamedMetric from
+	 * @param buff The buffer to read the StreamedMetric from
 	 * @return the created StreamedMetric
 	 */
 	static StreamedMetric fromBuff(final ByteBuf buff) {

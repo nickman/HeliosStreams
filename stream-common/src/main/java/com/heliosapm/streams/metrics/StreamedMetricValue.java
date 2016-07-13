@@ -19,7 +19,10 @@ under the License.
 package com.heliosapm.streams.metrics;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 
 import com.heliosapm.streams.buffers.BufferManager;
 
@@ -290,8 +293,7 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 		writeBytes(bytes);
 		if(isDoubleValue) {
 			bytes.writeByte(ZERO_BYTE);
-			bytes.writeDouble(doubleValue);
-			
+			bytes.writeDouble(doubleValue);			
 		} else {
 			bytes.writeByte(ONE_BYTE);
 			bytes.writeLong(longValue);
@@ -313,6 +315,46 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 			longValue = bytes.readLong();			
 		}
 	}
+	
+	/**
+	 * Reads a streamed metric from the passed buffer
+	 * @param buff the buffer to read the streamed metric from
+	 * @return the appropriate type of StreamedMetric
+	 */
+	public static StreamedMetricValue[] readAll(final ByteBuf buff) {
+		final Set<StreamedMetricValue> metrics = new HashSet<StreamedMetricValue>();
+		while(buff.isReadable(MIN_READABLE_BYTES)) {
+			metrics.add(read(buff).forValue(1L));
+		}
+		return metrics.toArray(new StreamedMetricValue[metrics.size()]);
+	}
+	
+	/**
+	 * Returns an interator over the StreamMetricValues in the passed buffer
+	 * @param buf The buffer to read from
+	 * @param releaseOnDone true to release the buffer on iterator end
+	 * @return the iterator
+	 */
+	public static Iterable<StreamedMetricValue> streamedMetricValues(final ByteBuf buf, final boolean releaseOnDone) {
+		return new Iterable<StreamedMetricValue>() {
+			@Override
+			public Iterator<StreamedMetricValue> iterator() {
+				return new Iterator<StreamedMetricValue>() {
+					@Override
+					public boolean hasNext() {
+						final boolean hasNext = buf.isReadable(MIN_READABLE_BYTES);
+						if(releaseOnDone) buf.release();
+						return hasNext;
+					}
+					@Override
+					public StreamedMetricValue next() {
+						return read(buf).forValue(1L);
+					}					
+				};
+			}			
+		};
+	}
+	
 	
 	
 	
@@ -419,7 +461,7 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 	
 	/**
 	 * Returns this streamed metric serialized into a byte buf
-	 * @return
+	 * @return the byte buf
 	 */
 	public ByteBuf toByteBuff() {
 		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
@@ -434,6 +476,23 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 		}		
 		return buff;
 	}
+	
+	/**
+	 * Writes this metric into the passed buffer
+	 * @param buff The buffer to write this metric into
+	 */
+	public void intoByteBuf(final ByteBuf buff) {
+		buff.writeByte(TYPE_CODE);
+		writeByteArray(buff);
+		if(isDoubleValue) {
+			buff.writeByte(0);
+			buff.writeDouble(doubleValue);
+		} else {
+			buff.writeByte(1);
+			buff.writeLong(longValue);
+		}		
+	}
+	
 	
 	
 	/**
