@@ -17,15 +17,21 @@ package com.heliosapm.streams.opentsdb;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.hbase.async.jsr166e.LongAdder;
 import org.slf4j.Logger;
@@ -63,7 +69,7 @@ import net.opentsdb.tsd.RpcPlugin;
  * <p><code>com.heliosapm.streams.opentsdb.KafkaRPC</code></p>
  */
 
-public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, MessageListener {
+public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, MessageListener, ConsumerRebalanceListener  {
 	/** The TSDB instance */
 	static TSDB tsdb = null;
 	/** The prefix on TSDB config items marking them as applicable to this service */
@@ -71,11 +77,11 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	/** The prefix length */
 	public static final int CONFIG_PREFIX_LEN = CONFIG_PREFIX.length();
 	/** The TSDB config key for the names of topics to subscribe to */
-	public static final String CONFIG_TOPICS = CONFIG_PREFIX + "tsdbtopics";
+	public static final String CONFIG_TOPICS = "tsdbtopics";
 	/** The default topic name to listen on */
 	public static final String[] DEFAULT_TOPIC = {"tsdb-metrics"};
 	/** The TSDB config key for sync processing of add data points */
-	public static final String CONFIG_SYNC_ADD = CONFIG_PREFIX + "syncadd";
+	public static final String CONFIG_SYNC_ADD = "syncadd";
 	/** The default sync add */
 	public static final boolean DEFAULT_SYNC_ADD = true;
 	
@@ -90,7 +96,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	public static final boolean DEFAULT_KAFKA_MONITOR = true;
 	
 	/** The TSDB config key for the polling timeout in ms. */
-	public static final String CONFIG_POLLTIMEOUT = CONFIG_PREFIX + "polltime";
+	public static final String CONFIG_POLLTIMEOUT = "polltime";
 	/** The default polling timeout in ms. */
 	public static final long DEFAULT_POLLTIMEOUT = 10000;
 	
@@ -122,6 +128,12 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	/** The chronicle message queue */
 	protected MessageQueue messageQueue;
 	
+	/** The currently assigned topic partitions */
+	protected final Set<String> assignedPartitions = new CopyOnWriteArraySet<String>();
+	
+
+
+
 	/** The blacklisted metric key manager */
 	protected final Blacklist blacklist = Blacklist.getInstance();
 	
@@ -174,9 +186,10 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		if(monitoringInterceptor) {
 			Props.appendToValue("interceptor.classes", MonitoringConsumerInterceptor.class.getName(), ",", rpcConfig);
 		}
-		consumerConfig.putAll(Props.extractOrEnv(CONFIG_PREFIX, rpcConfig, true));
+//		consumerConfig.putAll(Props.extractOrEnv(CONFIG_PREFIX, rpcConfig, true));
 		metricManager.addExtraTag("mode", syncAdd ? "sync" : "async");		
-		consumer = new KafkaConsumer<String, ByteBuf>(consumerConfig, new StringDeserializer(), new ByteBufDeserializer());
+		printConfig();
+		consumer = new KafkaConsumer<String, ByteBuf>(rpcConfig, new StringDeserializer(), new ByteBufDeserializer());		
 		subThread = new Thread(this, "KafkaSubscriptionThread");
 		subThread.start();
 		JMXHelper.registerMBean(this, OBJECT_NAME);
@@ -203,7 +216,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	public void run() {
 		log.info("Kafka Subscription Thread Started");
 		try {
-            consumer.subscribe(Arrays.asList(topics));
+            consumer.subscribe(Arrays.asList(topics), this);
             while (!closed.get()) {
             	try {
 	                final ConsumerRecords<String, ByteBuf> records;
@@ -377,6 +390,16 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	
 	/**
 	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getAssignedPartitions()
+	 */
+	@Override
+	public Set<String> getAssignedPartitions() {
+		return Collections.unmodifiableSet(assignedPartitions);
+	}
+
+	
+	/**
+	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDataPointsMeanRate()
 	 */
 	@Override
@@ -510,6 +533,44 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	@Override
 	public void collectStats(final StatsCollector collector) {
 		metricManager.collectStats(collector);
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.kafka.clients.consumer.ConsumerRebalanceListener#onPartitionsRevoked(java.util.Collection)
+	 */
+	@Override
+	public void onPartitionsRevoked(final Collection<TopicPartition> partitions) {
+		if(!partitions.isEmpty()) {
+			final StringBuilder b = new StringBuilder("\n\t===========================\n\tPARTITIONS REVOKED !!\n\t===========================");
+			for(TopicPartition tp: partitions) {
+				b.append(tp);
+				assignedPartitions.remove(tp.toString());
+			}
+			b.append("\n\t===========================\n");
+			log.warn(b.toString());
+		}
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.kafka.clients.consumer.ConsumerRebalanceListener#onPartitionsAssigned(java.util.Collection)
+	 */
+	@Override
+	public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
+		final StringBuilder b = new StringBuilder("\n\t===========================\n\tPARTITIONS ASSIGNED\n\t===========================");
+		for(TopicPartition tp: partitions) {
+			b.append("\n\t").append(tp);
+			assignedPartitions.add(tp.toString());
+		}
+		b.append("\n\t===========================\n");
+		log.info(b.toString());
+
+		
 	}
 
 

@@ -24,6 +24,8 @@
  */
 package com.heliosapm.streams.opentsdb;
 
+import java.util.Set;
+
 import javax.management.ObjectName;
 
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -137,5 +139,11 @@ public interface KafkaRPCMBean {
 	 * @return the number of data points pending write confirmation
 	 */
 	public long getPendingDataPointAdds();
+	
+	/**
+	 * Returns the currently assigned topic partitions
+	 * @return the currently assigned topic partitions
+	 */
+	public Set<String> getAssignedPartitions();
 
 }

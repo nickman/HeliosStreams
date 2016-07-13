@@ -21,6 +21,7 @@ package com.heliosapm.streams.chronicle;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -175,7 +176,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	/** The config key name for buffer write compression */
 	public static final String CONFIG_COMPRESS_QWRITES = "writer.compression";
 	/** The default buffer write compression. */
-	public static final boolean DEFAULT_COMPRESS_QWRITES = false;
+	public static final boolean DEFAULT_COMPRESS_QWRITES = true;
 	
 	
 	/**
@@ -243,6 +244,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		if(!baseQueueDirectory.isDirectory()) {
 			throw new IllegalArgumentException("Cannot create configured baseQueueDirectory: [" + baseQueueDirectory + "]");
 		}
+		printConfig();
 		if(IS_WIN) {  // FIXME: pull this out of ctor
 			pendingDeleteThread = new Thread(queueName + "RolledFileDeleter") {
 				public void run() {
@@ -273,6 +275,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 			pendingDeleteThread = null;
 		}
 		IOTools.deleteDirWithFiles(baseQueueDirectory, 2);
+		
 		queue = SingleChronicleQueueBuilder.binary(baseQueueDirectory)
 			.blockSize(blockSize)
 			.rollCycle(rollCycle)
@@ -300,6 +303,25 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 //		}
 	}
 	
+	
+	/**
+	 * Prints the critical configuration
+	 */
+	protected void printConfig() {
+		final StringBuilder b = new StringBuilder("\n\t===================== ").append(getClass().getSimpleName()).append(" Configuration =====================");
+		b.append("\n\tMessageQueue Name:").append(queueName);
+		b.append("\n\tMessageQueue Directory:").append(baseQueueDirectory);
+		b.append("\n\tMessageQueue BlockSize:").append(blockSize);
+		b.append("\n\tMessageQueue Compressed:").append(compression);
+		b.append("\n\tMessageQueue Reader Threads:").append(readerThreads);
+		b.append("\n\tMessageQueue IdlePause Time:").append(idlePauseTime);
+		b.append("\n\tMessageQueue StopCheck Count:").append(idlePauseTime);
+		b.append("\n\tMessageQueue RollCycle:").append(rollCycle);
+		b.append("\n\t=====================\n");
+		log.info(b.toString());
+		System.out.println(b.toString());
+	}
+	
 	/**
 	 * Closes this message queue
 	 * @throws IOException will not be thrown
@@ -322,7 +344,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	public static void main(String[] args) {
 		log("MessageQueue Test");
 //		System.setProperty("io.netty.leakDetection.level", "advanced");
-		System.setProperty("Test.chronicle.rollcycle", RollCycles.MINUTELY.name());
+//		System.setProperty("Test.chronicle.rollcycle", RollCycles.MINUTELY.name());
 		
 		final ThreadLocalRandom tlr = ThreadLocalRandom.current();
 		
