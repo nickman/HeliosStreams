@@ -7,10 +7,10 @@
   </parent>
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.heliosapm.streams</groupId>
-  <artifactId>stream-common</artifactId>
-  <name>Helios Streams :: Common</name>
+  <artifactId>bosun-connector</artifactId>
+  <name>Helios Streams :: BosunConnector</name>
   <version>0.0.1-SNAPSHOT</version>
-  <description>Helios Streams Common Classes</description>
+  <description>Helios Streams Bosun Metrics Forwarder</description>
   <url>https://github.com/nickman</url>
   <build>
     <plugins>
@@ -18,8 +18,8 @@
         <artifactId>maven-compiler-plugin</artifactId>
         <version>${compiler-plugin.version}</version>
         <configuration>
-          <source>${compiler-source.version}</source>
-          <target>${compiler-target.version}</target>
+          <source>1.6</source>
+          <target>1.6</target>
         </configuration>
       </plugin>
       <plugin>

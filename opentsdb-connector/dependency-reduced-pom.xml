@@ -132,7 +132,7 @@
     <dependency>
       <groupId>net.opentsdb</groupId>
       <artifactId>opentsdb</artifactId>
-      <version>2.1.0</version>
+      <version>2.2.0</version>
       <scope>provided</scope>
       <exclusions>
         <exclusion>
@@ -172,6 +172,10 @@
           <groupId>org.hbase</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>commons-math3</artifactId>
+          <groupId>org.apache.commons</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>logback-core</artifactId>
           <groupId>ch.qos.logback</groupId>
         </exclusion>
@@ -182,6 +186,10 @@
         <exclusion>
           <artifactId>gwt-user</artifactId>
           <groupId>com.google.gwt</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>opentsdb_gwt_theme</artifactId>
+          <groupId>net.opentsdb</groupId>
         </exclusion>
       </exclusions>
     </dependency>
