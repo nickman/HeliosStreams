@@ -25,12 +25,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.cliffc.high_scale_lib.NonBlockingHashMap;
-import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
-
-import com.codahale.metrics.Meter;
-import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
-import com.heliosapm.streams.common.naming.AgentName;
 
 /**
  * <p>Title: MonitoringConsumerInterceptor</p>
@@ -39,41 +33,14 @@ import com.heliosapm.streams.common.naming.AgentName;
  * <p><code>com.heliosapm.streams.common.kafka.interceptor.MonitoringConsumerInterceptor</code></p>
  */
 
-public class MonitoringConsumerInterceptor<K, V> implements ConsumerInterceptor<K, V> {
-	/** The app name we're monitoring in */
-	protected final String appName;
-	/** The host name the app is running on */
-	protected final String hostName;
-	/** The service tags for shared metrics */
-	protected String serviceTag;
-	/** The group id for the consumer */
-	protected String groupId = "";
-	/** The client id for the consumer */
-	protected String clientId = "";
-	
-	protected String commitKey = null;
-	
-	/** The metrics registry */
-	protected final SharedMetricsRegistry mr = SharedMetricsRegistry.getInstance();
-	
-	/** A map of counters keyed by the topic name + partition id */
-	protected final NonBlockingHashMap<String, NonBlockingHashMapLong<Meter>> meters = new NonBlockingHashMap<String, NonBlockingHashMapLong<Meter>>(16); 
-	
-	protected final Meter totalMeter;
-
+public class MonitoringConsumerInterceptor<K, V> extends MonitoringInterceptorBase<K, V> implements ConsumerInterceptor<K, V> {
 	/**
 	 * Creates a new MonitoringConsumerInterceptor
 	 */
 	public MonitoringConsumerInterceptor() {
-		appName = AgentName.appName();
-		hostName = AgentName.hostName();
-		totalMeter = SharedMetricsRegistry.getInstance().meter("messages.consumed.service=KafkaConsumer" + ".host=" + hostName + ".app=" + appName);
+		super(false);
 	}
 	
-	protected Meter meter(final String topicName, final int partitionId) {
-		return meters.getOrDefault(topicName, new NonBlockingHashMapLong<Meter>(16, false))
-				.getOrDefault(partitionId, SharedMetricsRegistry.getInstance().meter(String.format(serviceTag, topicName, partitionId, groupId, clientId)));		
-	}
 	
 	
 	/**
@@ -89,15 +56,6 @@ public class MonitoringConsumerInterceptor<K, V> implements ConsumerInterceptor<
 		return records;
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see org.apache.kafka.clients.consumer.ConsumerInterceptor#close()
-	 */
-	@Override
-	public void close() {
-		meters.clear();
-
-	}
 	
 
 	/**
@@ -112,37 +70,5 @@ public class MonitoringConsumerInterceptor<K, V> implements ConsumerInterceptor<
 		}
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see org.apache.kafka.common.Configurable#configure(java.util.Map)
-	 */
-	@Override
-	public void configure(final Map<String, ?> configs) {
-		groupId = configs.get("group.id").toString();
-		clientId = configs.get("client.id").toString();
-		final StringBuilder serviceBuilder = new StringBuilder("messages.consumed.service=KafkaConsumer" + ".host=" + hostName + ".app=" + appName + ".topic=%s.partition=%s");
-		final StringBuilder commitKeyBuilder = new StringBuilder();
-		if(clientId!=null && !clientId.trim().isEmpty()) {
-			serviceBuilder.append(".client=%s");
-			clientId = clientId.trim();
-			commitKeyBuilder.append(clientId);
-		} else {
-			serviceBuilder.append("%s");
-			clientId = "";
-		}
-		if(groupId!=null && !groupId.trim().isEmpty()) {
-			serviceBuilder.append(".group=%s");
-			groupId = groupId.trim();
-			if(commitKeyBuilder.length()>0) commitKeyBuilder.append("."); 
-			commitKeyBuilder.append(groupId);
-		} else {
-			serviceBuilder.append("%s");
-			groupId = "";
-		}
-		commitKey = commitKeyBuilder.append("@").append(appName).append(".").append(hostName).toString();
-		serviceTag = serviceBuilder.toString();		
-	}
-	
-
 
 }
