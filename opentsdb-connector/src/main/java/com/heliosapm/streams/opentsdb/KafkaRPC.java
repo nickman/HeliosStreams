@@ -162,6 +162,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	 * Creates a new KafkaRPC
 	 */
 	public KafkaRPC() {
+		log.info("Insantiated KafkaRPC Plugin");
 	}
 	
 	

@@ -1,0 +1,28 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:util="http://www.springframework.org/schema/util"
+  xmlns:context="http://www.springframework.org/schema/context"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+  http://www.springframework.org/schema/beans/spring-beans.xsd
+  http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd
+  http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd">
+
+  <context:mbean-export server="MBeanServer"/>
+  <context:mbean-server id="MBeanServer" />
+  <context:annotation-config/>
+
+
+  <bean id="AppCtxName" name="H2" class="java.lang.Void"/>
+ 
+
+  <bean id="extClassLoader" class="java.net.URLClassLoader">
+    <constructor-arg value="file:/home/nwhitehead/.m2/repository/com/h2database/h2/1.3.174/h2-1.3.174.jar" />
+  </bean>
+  
+  <bean id="com.heliosapm.tsdbex.test.plugin.JMXBroadcastingSearchListener" class="com.heliosapm.tsdbex.test.plugin.JMXBroadcastingSearchListener" >
+    <property name="eventSubscription" ref="ALL_EVENTS_S" />
+    <property name="eventBus" ref="eventBus"/>
+  </bean>
+  
+  
+</beans>  

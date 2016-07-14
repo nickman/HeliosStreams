@@ -1,0 +1,30 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:util="http://www.springframework.org/schema/util"
+  xmlns:context="http://www.springframework.org/schema/context"
+  xsi:schemaLocation="http://www.springframework.org/schema/beans
+  http://www.springframework.org/schema/beans/spring-beans.xsd
+  http://www.springframework.org/schema/util http://www.springframework.org/schema/util/spring-util.xsd
+  http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context.xsd">
+
+  <!-- 
+  <bean name="CommonAnnotationBeanPostProcessor" class="org.springframework.context.annotation.CommonAnnotationBeanPostProcessor" />  
+  <util:constant static-field="com.heliosapm.tsdbex.core.TSDBEXCore.ExistingObjectBeanDef.tsdb" id="tsdb"/>
+  <util:constant static-field="com.heliosapm.tsdbex.core.TSDBEXCore.ExistingObjectBeanDef.reactor" id="reactor"/>
+  <util:constant static-field="com.heliosapm.tsdbex.core.TSDBEXCore.ExistingObjectBeanDef.core" id="core"/>
+  <util:constant static-field="com.heliosapm.tsdbex.core.TSDBEXCore.ExistingObjectBeanDef.config" id="config"/>
+  <util:constant static-field="com.heliosapm.tsdbex.core.TSDBEXCore.ExistingObjectBeanDef.eventDispatcher" id="eventDispatcher"/>
+  <util:constant static-field="com.heliosapm.tsdbex.core.TSDBEXCore.ExistingObjectBeanDef.eventBus" id="eventBus"/>
+  -->
+  
+  
+    
+  <bean id="MBeanServer" class="com.heliosapm.utils.jmx.JMXHelper"
+    lazy-init="false" factory-method="getHeliosMBeanServer">
+  </bean>
+  
+  <context:mbean-export server="MBeanServer"/>
+  <context:mbean-server id="MBeanServer" />
+  <context:annotation-config/>
+  
+</beans>  
