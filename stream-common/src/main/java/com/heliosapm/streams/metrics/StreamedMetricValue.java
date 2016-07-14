@@ -365,11 +365,10 @@ public class StreamedMetricValue extends StreamedMetric {
 				return new Iterator<StreamedMetricValue>() {
 					@Override
 					public boolean hasNext() {
-						final boolean hasNext = buf.isReadable(MIN_READABLE_BYTES);
-						if(releaseOnDone) buf.release();
+						final boolean hasNext = buf.readableBytes() > MIN_READABLE_BYTES;
+						if(!hasNext && releaseOnDone) buf.release();
 						return hasNext;
 					}
-					@SuppressWarnings("null")
 					@Override
 					public StreamedMetricValue next() {
 						if(singleInstance) {

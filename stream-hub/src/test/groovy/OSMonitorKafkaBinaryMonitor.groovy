@@ -12,8 +12,8 @@ import com.heliosapm.streams.buffers.BufferManager;
 bmgr = BufferManager.getInstance();
 
 Properties props = new Properties();
-props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-//props.put("bootstrap.servers", "localhost:9092");
+//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+props.put("bootstrap.servers", "localhost:9092");
 props.put("acks", "all");
 props.put("retries", 0);
 props.put("batch.size", 16384);
@@ -71,6 +71,7 @@ flush = {
     if(readable > 20) {
         //println "Flushing....";
         futures = [];
+        parts = new HashSet();
         int mod = 0;
         pr = new ProducerRecord<String, ByteBuf>("tsdb.metrics.binary", pendingBuffer);
         futures.add(producer.send(pr));
@@ -86,7 +87,7 @@ flush = {
              pendingBuffer = bmgr.buffer(readable);
         }
         long sentElapsed = System.currentTimeMillis() - start;
-        println "Sent $mod messages. Total Size: $totalSize, Per Message: ${totalSize/mod} Partitions: $parts";
+        println "Sent $mod messages. Total Size: $totalSize, Per Message: ${totalSize/mod} Partitions: ${parts.size()}";
         futures.clear();
 
     }

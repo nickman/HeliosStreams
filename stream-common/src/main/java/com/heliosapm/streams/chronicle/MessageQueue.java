@@ -282,7 +282,13 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 			.storeFileListener(this)
 			.wireType(WireType.BINARY)
 			.build();
-		queue.firstIndex();
+		log.info("ChronicleQueue built. [{}] : [{}]", queue.getClass().getName(), queue);
+		queue.acquireAppender().writeText("This is a test");
+		ExcerptTailer tailer = queue.createTailer();
+		String test = tailer.readText();
+		log.info("ChronicleQueue Test Result: [{}]", test);
+		
+//		queue.firstIndex();
 		startLatch = new CountDownLatch(readerThreads);
 		final JMXManagedThreadFactory threadFactory = (JMXManagedThreadFactory)JMXManagedThreadFactory.newThreadFactory(name + "ReaderThread", true);
 		threadPool = Executors.newFixedThreadPool(readerThreads, threadFactory);
@@ -319,7 +325,6 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		b.append("\n\tMessageQueue RollCycle:").append(rollCycle);
 		b.append("\n\t=====================\n");
 		log.info(b.toString());
-		System.out.println(b.toString());
 	}
 	
 	/**

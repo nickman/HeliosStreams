@@ -183,6 +183,7 @@ public class StreamedMetric implements BytesMarshallable {
 	 */
 	public StreamedMetric update(final ByteBuf buf) {
 		tags.clear();
+		metricKey = null;
 		readFromBuff(buf);
 		return this;
 	}
@@ -391,7 +392,7 @@ public class StreamedMetric implements BytesMarshallable {
 	}
 	
 	/** An approximation of the minimum number of bytes that need to be available ina  buffer to realistically read a metric from it */
-	public static final int MIN_READABLE_BYTES = 20;
+	public static final int MIN_READABLE_BYTES = 29;
 	
 	/**
 	 * Reads a streamed metric from the passed buffer

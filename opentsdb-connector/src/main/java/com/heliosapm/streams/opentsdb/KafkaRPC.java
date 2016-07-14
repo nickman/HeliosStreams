@@ -233,8 +233,9 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	                			buf.writeBytes(b);
 	                			b.release();
 	                		}
+	                		final long st = System.currentTimeMillis();
 	                		messageQueue.writeEntry(buf);
-	                		log.info("Wrote [{}] records to MessageQueue", recordCount);
+	                		log.info("Wrote [{}] records to MessageQueue in [{}] ms.", recordCount, System.currentTimeMillis()-st);
 	                	}
 	                	if(syncAdd) consumer.commitAsync();
 	                	else consumer.commitAsync();			// FIXME:  this will break at some point
@@ -261,25 +262,35 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 			final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>();
 			int recordCount = 0;
 			int totalCount = 0;
+			int totalBlacklisted = 0;
 			final long startTimeNanos = System.nanoTime();
-			for(final StreamedMetricValue smv : StreamedMetricValue.streamedMetricValues(true, buf, false)) {
-				totalCount++;
-				try {
-					if(blacklist.isBlackListed(smv.metricKey())) continue;
-					Deferred<Object> thisDeferred = null;
-					if(smv.isDoubleValue()) {
-						thisDeferred = tsdb.addPoint(smv.getMetricName(), smv.getTimestamp(), smv.getDoubleValue(), smv.getTags());
-					} else {
-						thisDeferred = tsdb.addPoint(smv.getMetricName(), smv.getTimestamp(), smv.getLongValue(), smv.getTags());
-					}
-					recordCount++;
-					addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
-				} catch (Exception adpe) {
-					if(smv != null) {
-						log.error("Failed to add data point for invalid metric name: {}, cause: {}", smv.metricKey(), adpe.getMessage());
-						blacklist.blackList(smv.metricKey());
+			try {
+				for(final StreamedMetricValue smv : StreamedMetricValue.streamedMetricValues(false, buf, false)) {
+					totalCount++;
+					try {
+						if(blacklist.isBlackListed(smv.metricKey())) {
+							totalBlacklisted++;
+							continue;
+						}
+						Deferred<Object> thisDeferred = null;
+						if(smv.isDoubleValue()) {
+							thisDeferred = tsdb.addPoint(smv.getMetricName(), smv.getTimestamp(), smv.getDoubleValue(), smv.getTags());
+						} else {
+							thisDeferred = tsdb.addPoint(smv.getMetricName(), smv.getTimestamp(), smv.getLongValue(), smv.getTags());
+						}
+						recordCount++;
+						addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
+					} catch (Exception adpe) {
+						if(smv != null) {
+							log.error("Failed to add data point for invalid metric name: {}, cause: {}", smv.metricKey(), adpe.getMessage());
+							blacklist.blackList(smv.metricKey());
+						}
+						log.error("Failed to process StreamedMetricValue", adpe);
 					}
 				}
+				log.info("Async Writes Complete. total-reads: {}, total-writes: {}, blacklisted: {}", totalCount, recordCount, totalBlacklisted);
+			} catch (Exception ex) {
+				log.error("BufferIteration Failure on read #" + totalCount, ex);
 			}
 			final long readAndWriteTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNanos);					
 			log.info("Read [{}] total metrics and wrote [{}] to OpenTSDB in [{}] ms.", totalCount, recordCount, readAndWriteTime);

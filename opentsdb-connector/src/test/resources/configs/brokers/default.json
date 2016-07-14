@@ -1,0 +1,9 @@
+{
+	"brokers": 1,
+	"controlled": true,
+	"partitions": 2,
+	"topicNames": [
+		"tsdb.metrics.st",
+		"tsdb.metrics.binary"
+	]
+}

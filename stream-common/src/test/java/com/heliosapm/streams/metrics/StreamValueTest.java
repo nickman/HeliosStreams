@@ -24,11 +24,18 @@
  */
 package com.heliosapm.streams.metrics;
 
+import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 import org.junit.Assert;
 import org.junit.Test;
 
+import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.utils.jmx.JMXHelper;
 
+import io.netty.buffer.ByteBuf;
 import net.openhft.chronicle.bytes.Bytes;
 import net.openhft.chronicle.bytes.ReadBytesMarshallable;
 import net.openhft.chronicle.bytes.WriteBytesMarshallable;
@@ -44,7 +51,7 @@ import net.openhft.chronicle.bytes.WriteBytesMarshallable;
 public class StreamValueTest extends BaseTest {
 	
 	static {
-		JMXHelper.fireUpJMXMPServer(1928);
+		JMXHelper.fireUpJMXMPServer(1290);
 	}
 
 	/**
@@ -166,5 +173,67 @@ public class StreamValueTest extends BaseTest {
 		
 	}
 	
+	@Test
+	public void testSMVIterMultiNoRelease() {
+		testStreamedMetricValueIterator(false, false);
+	}
+	
+	@Test
+	public void testSMVIterSingleNoRelease() {
+		testStreamedMetricValueIterator(true, false);
+	}
+	
+	@Test
+	public void testSMVIterMultiRelease() {
+		testStreamedMetricValueIterator(false, true);
+	}
+
+	@Test
+	public void testSMVIterSingleRelease() {
+		testStreamedMetricValueIterator(true, true);
+	}
+	
+	protected void testStreamedMetricValueIterator(final boolean single, final boolean release) {
+		ByteBuf inBuffer = null;
+		try {
+			final int metricCount = 10000;
+			inBuffer = BufferManager.getInstance().buffer(metricCount * 128);
+			final Set<StreamedMetricValue> originals = new LinkedHashSet<StreamedMetricValue>(metricCount);
+			for(int i = 0; i < metricCount; i++) {
+				StreamedMetricValue smv = new StreamedMetricValue(System.currentTimeMillis(), nextPosDouble(), getRandomFragment(), randomTags(3));
+				originals.add(smv);
+				smv.intoByteBuf(inBuffer);
+			}
+			Assert.assertEquals("Invalid number of samples", metricCount, originals.size());
+			final Iterator<StreamedMetricValue> originalsIter = originals.iterator();
+			final Iterator<StreamedMetricValue> iter = StreamedMetricValue.streamedMetricValues(single, inBuffer, release).iterator();
+			int loops = 0;
+			while(originalsIter.hasNext()) {
+				final StreamedMetricValue smv1 = originalsIter.next();
+				Assert.assertTrue("Buffered iterator had no next metric", iter.hasNext());
+				final StreamedMetricValue smv2 = iter.next();
+				assertEquals(smv1, smv2);
+//				log(smv1);
+				loops++;
+			}
+			Assert.assertFalse("Buffer iter should have no more metrics", iter.hasNext());
+			Assert.assertEquals("Invalid number of loops", metricCount, loops);
+			if(release) {
+				Assert.assertEquals("Invalid refCount on released buffer", 0, inBuffer.refCnt());
+			} else {
+				Assert.assertEquals("Invalid refCount on released buffer", 1, inBuffer.refCnt());
+			}
+		} finally {
+			if(!release) inBuffer.release();
+		}
+	}	
+	
+	@Test
+	public void getMinByteSize() {
+		final StreamedMetricValue smv = new StreamedMetricValue(System.currentTimeMillis(), nextPosDouble(), "a", Collections.singletonMap("b",  "c"));
+		final int len = smv.toByteArray().length;
+		log("Size:" + len);
+		Assert.assertEquals("Minimum Size For Metric Is Broken", StreamedMetricValue.MIN_READABLE_BYTES, len);
+	}
 
 }

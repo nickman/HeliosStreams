@@ -22,7 +22,6 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.heliosapm.aop.retransformer.Retransformer;
-import com.heliosapm.streams.opentsdb.mocks.TSDBTest;
 import com.heliosapm.streams.opentsdb.mocks.TSDBTestTemplate;
 import com.heliosapm.utils.time.SystemClock;
 
@@ -35,13 +34,14 @@ import net.opentsdb.core.TSDB;
  * <p><code>com.heliosapm.streams.opentsdb.KafkaRPCTest</code></p>
  */
 
-public class KafkaRPCTest extends TSDBTest {
+public class KafkaRPCTest extends BaseTest {
 	private static TSDB tsdb = null;
 	/**
 	 * Creates the TSDB instance and plugin jar
 	 */
 	@BeforeClass
 	public static void init() {
+		
 		createPluginJar(KafkaRPC.class);
 		Retransformer.getInstance().transform(TSDB.class, TSDBTestTemplate.class);
 		
