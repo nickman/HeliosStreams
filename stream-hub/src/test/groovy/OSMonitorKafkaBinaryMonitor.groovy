@@ -12,8 +12,8 @@ import com.heliosapm.streams.buffers.BufferManager;
 bmgr = BufferManager.getInstance();
 
 Properties props = new Properties();
-//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-props.put("bootstrap.servers", "localhost:9092");
+props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+//props.put("bootstrap.servers", "localhost:9092");
 props.put("acks", "all");
 props.put("retries", 0);
 props.put("batch.size", 16384);
@@ -67,7 +67,8 @@ trace = { metric, value, tags ->
 
 flush = {
     //println "FlushReady: ${pendingBuffer.isReadable(20)}";
-    if(pendingBuffer.isReadable(20)) {
+    int readable = pendingBuffer.readableBytes();
+    if(readable > 20) {
         //println "Flushing....";
         futures = [];
         int mod = 0;
@@ -82,7 +83,7 @@ flush = {
              totalSize += sent.serializedKeySize();
              totalSize += sent.serializedValueSize();
              parts.add(sent.partition());
-             pendingBuffer.clear();
+             pendingBuffer = bmgr.buffer(readable);
         }
         long sentElapsed = System.currentTimeMillis() - start;
         println "Sent $mod messages. Total Size: $totalSize, Per Message: ${totalSize/mod} Partitions: $parts";
@@ -113,7 +114,7 @@ try {
             trace("sys.cpu", cpu.getSys()*100, ['cpu':index, 'type':'sys']);
             trace("sys.cpu", cpu.getUser()*100, ['cpu':index, 'type':'user']);
             trace("sys.cpu", cpu.getWait()*100, ['cpu':index, 'type':'wait']);
-            flush();        
+            //flush();        
         }
         sigar.getFileSystemList().each() { fs ->
             //println "FS: dir:${fs.getDirName()},  dev:${fs.getDevName()}, type:${fs.getSysTypeName()}, opts:${fs.getOptions()}";
@@ -134,7 +135,7 @@ try {
             ctrace("sys.fs.ios", fsu.getDiskWrites(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'writes']);
 
             
-            flush();
+            //flush();
             //println "[$fs]: $fsu";
         }
         sigar.getNetInterfaceList().each() { iface ->
@@ -153,7 +154,7 @@ try {
             trace("sys.net.iface", ifs.getTxOverruns(), ['name':iface, 'dir':'tx', 'unit':'overruns']);
 
             //println ifs;
-            flush();
+            //flush();
         }
         
         tcp = sigar.getTcp();
@@ -268,7 +269,7 @@ try {
                 }
             }
         }        
-        flush();
+        //flush();
         // ===================================================================================================================================
         //        SYSTEM MEMORY
         // ===================================================================================================================================
@@ -300,7 +301,7 @@ try {
         trace("sys.swap.percent", swapFree/swapTotal*100, ['unit': 'free']);
         trace("sys.swap.page", swap.getPageIn(), ['dir': 'in']);
         trace("sys.swap.page", swap.getPageOut(), ['dir': 'out']);
-        flush();
+        //flush();
         // ===================================================================================================================================
         //    PROCESS STATS
         // ===================================================================================================================================
@@ -313,7 +314,7 @@ try {
         
         trace("sys.procs.threads", procStat.getThreads(), []);
         trace("sys.procs.count", procStat.getTotal(), []);
-        flush();
+        //flush();
         // ===================================================================================================================================
         //    LOAD AVERAGE
         // ===================================================================================================================================
@@ -321,7 +322,7 @@ try {
         trace("sys.load", load[0], ['period': '1m']);
         trace("sys.load", load[1], ['period': '5m']);
         trace("sys.load", load[2], ['period': '15m']);
-        flush();
+        //flush();
         
         // ===================================================================================================================================
         //    PROCESS GROUPS
@@ -340,7 +341,7 @@ try {
             trace("procs", mcpu.getPercent() * 100, ['exe':exe, 'unit':'percentcpu']);
             trace("procs", mcpu.getProcesses(), ['exe':exe, 'unit':'count']);            
         }
-        flush();
+        //flush();
         // ===================================================================================================================================
         //    PROCESS GROUP MEM STATS
         // ===================================================================================================================================
