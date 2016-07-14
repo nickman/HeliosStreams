@@ -6,6 +6,10 @@ import org.hyperic.sigar.ptql.*;
 import org.apache.kafka.clients.producer.*;
 import com.heliosapm.streams.metrics.*;
 import java.lang.management.*;
+import io.netty.buffer.ByteBuf;
+import com.heliosapm.streams.buffers.BufferManager;
+
+bmgr = BufferManager.getInstance();
 
 Properties props = new Properties();
 //props.put("bootstrap.servers", "localhost:9093,localhost:9094");
@@ -16,10 +20,10 @@ props.put("batch.size", 16384);
 props.put("linger.ms", 10);
 props.put("buffer.memory", 33554432);
 props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
-props.put("value.serializer", "com.heliosapm.streams.metrics.StreamedMetricValueSerializer");
+props.put("value.serializer", com.heliosapm.streams.buffers.ByteBufSerde.ByteBufSerializer.class.getName());
 
-Producer<String, StreamedMetricValue> producer = new KafkaProducer<String, StreamedMetricValue>(props);
-pendingBuffer = [];
+Producer<String, ByteBuf> producer = new KafkaProducer<String, ByteBuf>(props);
+pendingBuffer = bmgr.buffer(1024 * 10);
 
 
 sigar = HeliosSigar.getInstance();
@@ -56,19 +60,20 @@ trace = { metric, value, tags ->
         buff.append(",").append(clean(k)).append("=").append(clean(v));
     }
     sm = StreamedMetric.fromString(buff.toString());
-    pendingBuffer.add(sm);
+    sm.intoByteBuf(pendingBuffer);
+    //println pendingBuffer;
     buff.setLength(0);  
 }
 
 flush = {
-    if(!pendingBuffer.isEmpty()) {
+    //println "FlushReady: ${pendingBuffer.isReadable(20)}";
+    if(pendingBuffer.isReadable(20)) {
+        //println "Flushing....";
         futures = [];
         int mod = 0;
-        pendingBuffer.each() { sm ->
-            pr = new ProducerRecord<String, StreamedMetricValue>("tsdb.metrics.binary", sm.getMetricName(), sm);
-            futures.add(producer.send(pr));
-            mod++;
-        }
+        pr = new ProducerRecord<String, ByteBuf>("tsdb.metrics.binary", pendingBuffer);
+        futures.add(producer.send(pr));
+        mod++;
         long start = System.currentTimeMillis();
         totalSize = 0;
         parts = new HashSet();
@@ -77,11 +82,12 @@ flush = {
              totalSize += sent.serializedKeySize();
              totalSize += sent.serializedValueSize();
              parts.add(sent.partition());
+             pendingBuffer.clear();
         }
         long sentElapsed = System.currentTimeMillis() - start;
         println "Sent $mod messages. Total Size: $totalSize, Per Message: ${totalSize/mod} Partitions: $parts";
         futures.clear();
-        pendingBuffer.clear();
+
     }
 }
 
