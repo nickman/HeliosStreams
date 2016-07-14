@@ -242,7 +242,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	                	continue;  // FIXME: increment deser errors
 	                }
             	} catch (Exception ex) {
-            		
+            		log.error("Unexpected Exception", ex);
             	}
             }
 		} catch (Exception ex) {
@@ -261,7 +261,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 			int recordCount = 0;
 			int totalCount = 0;
 			final long startTimeNanos = System.nanoTime();
-			for(final StreamedMetricValue smv : StreamedMetricValue.streamedMetricValues(buf, false)) {
+			for(final StreamedMetricValue smv : StreamedMetricValue.streamedMetricValues(true, buf, false)) {
 				totalCount++;
 				try {
 					if(blacklist.isBlackListed(smv.metricKey())) continue;

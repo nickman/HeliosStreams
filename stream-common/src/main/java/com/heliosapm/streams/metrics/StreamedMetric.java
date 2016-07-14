@@ -170,12 +170,23 @@ public class StreamedMetric implements BytesMarshallable {
 			StreamedMetric sm = new StreamedMetric();
 			sm.readMarshallable(in);
 			return sm;
-		} else {
-			StreamedMetricValue sm = new StreamedMetricValue();
-			sm.readMarshallable(in);
-			return sm;			
 		}
+		StreamedMetricValue sm = new StreamedMetricValue();
+		sm.readMarshallable(in);
+		return sm;
 	}
+	
+	/**
+	 * Updates this StreamedMetric using the next serialized version in the passed ByteBuf. 
+	 * @param buf The buffer to update from
+	 * @return this StreamedMetricValue
+	 */
+	public StreamedMetric update(final ByteBuf buf) {
+		tags.clear();
+		readFromBuff(buf);
+		return this;
+	}
+
 	
 	/**
 	 * Creates a new StreamedMetric with an auto assigned timestamp

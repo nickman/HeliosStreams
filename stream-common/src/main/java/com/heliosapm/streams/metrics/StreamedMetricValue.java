@@ -40,7 +40,7 @@ import net.openhft.chronicle.core.io.IORuntimeException;
  * <p><code>com.heliosapm.streams.metrics.StreamedMetricValue</code></p>
  */
 
-public class StreamedMetricValue extends StreamedMetric implements BytesMarshallable {
+public class StreamedMetricValue extends StreamedMetric {
 	/** Indicates if the value is a double (true) or a long (false)  */
 	protected boolean isDoubleValue = true;
 	/** The long typed value */
@@ -210,6 +210,24 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 	}
 	
 	/**
+	 * Updates this StreamedMetricValue using the next serialized version in the passed ByteBuf. 
+	 * @param buf The buffer to update from
+	 * @return this StreamedMetricValue
+	 */
+	@Override
+	public StreamedMetricValue update(final ByteBuf buf) {
+		super.update(buf);
+		if(buf.readByte()==ZERO_BYTE) {			
+			isDoubleValue = true;
+			doubleValue = buf.readDouble();
+		} else {
+			isDoubleValue = false;
+			longValue = buf.readLong();			
+		}		
+		return this;
+	}
+	
+	/**
 	 * Updates this metric with a new value
 	 * @param newValue the new value
 	 * @return this metric instance
@@ -331,11 +349,16 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 	
 	/**
 	 * Returns an interator over the StreamMetricValues in the passed buffer
+	 * @param singleInstance If true, the StreamMetricValue returns from the iterator will be the same actual instance, updated on each loop of the iterator.
+	 * As such, the returned StreamMetricValue should be used before the next iterator loop since the values of that instance will change.
+	 * In other words, attempting to stash all the returned StreamMetricValues in a collection, or the like, will void the warranty. 
 	 * @param buf The buffer to read from
 	 * @param releaseOnDone true to release the buffer on iterator end
 	 * @return the iterator
+	 * FIXME: all this stuff needs to return SM or SMV
 	 */
-	public static Iterable<StreamedMetricValue> streamedMetricValues(final ByteBuf buf, final boolean releaseOnDone) {
+	public static Iterable<StreamedMetricValue> streamedMetricValues(final boolean singleInstance, final ByteBuf buf, final boolean releaseOnDone) {
+		final StreamedMetricValue single  = singleInstance ? new StreamedMetricValue() : null;
 		return new Iterable<StreamedMetricValue>() {
 			@Override
 			public Iterator<StreamedMetricValue> iterator() {
@@ -346,14 +369,20 @@ public class StreamedMetricValue extends StreamedMetric implements BytesMarshall
 						if(releaseOnDone) buf.release();
 						return hasNext;
 					}
+					@SuppressWarnings("null")
 					@Override
 					public StreamedMetricValue next() {
+						if(singleInstance) {
+							buf.readByte();
+							return single.update(buf);
+						} 
 						return read(buf).forValue(1L);
 					}					
 				};
 			}			
 		};
 	}
+	
 	
 	
 	
