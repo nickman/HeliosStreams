@@ -201,11 +201,13 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		JMXHelper.registerMBean(this, OBJECT_NAME);
 		try {
 			log.info("\n\t#########################\n\tWaiting on partition assignment\n\t#########################\n");
-			if(!startLatch.await(10, TimeUnit.SECONDS)) {
+			if(!startLatch.await(20, TimeUnit.SECONDS)) {  //FIXME: config
+				log.error("Timed out waiting on partition assignment");
 				throw new IllegalArgumentException();
 			}
 			log.info("\n\t#########################\n\tPartitions assigned\n\t#########################\n");
 		} catch (Exception x) {
+			log.error("Interrupted while waiting on partition assignment");
 			throw new IllegalArgumentException();
 		}
 	}

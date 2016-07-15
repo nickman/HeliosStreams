@@ -14,8 +14,8 @@ import com.heliosapm.streams.buffers.BufferManager;
 bmgr = BufferManager.getInstance();
 
 Properties props = new Properties();
-//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-props.put("bootstrap.servers", "localhost:9092");
+props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+//props.put("bootstrap.servers", "localhost:9092");
 props.put("acks", "all");
 props.put("retries", 0);
 props.put("client.id", "GroovySender");
@@ -375,7 +375,7 @@ try {
     
             //NetFlags.CONN_TCP | NetFlags.CONN_CLIENT
             sigar.getNetConnectionList(NetFlags.CONN_SERVER | NetFlags.CONN_UDP ).each() {
-                //println "SendQueue=${it.getSendQueue()}, ReceiveQueue=${it.getReceiveQueue()}, State=${it.getStateString()}, Type=${it.getTypeString()}, LocalPort=${it.getLocalPort()}, RemoteAddress=${it.getRemoteAddress()}, RemotePort=${it.getRemotePort()}";
+                println "SendQueue=${it.getSendQueue()}, ReceiveQueue=${it.getReceiveQueue()}, State=${it.getStateString()}, Type=${it.getTypeString()}, LocalPort=${it.getLocalPort()}, RemoteAddress=${it.getRemoteAddress()}, RemotePort=${it.getRemotePort()}";
             }
             
             long elapsed = System.currentTimeMillis() - start;
