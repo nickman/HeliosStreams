@@ -25,7 +25,7 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.springframework.kafka.test.rule.KafkaEmbedded;
+//import org.springframework.kafka.test.rule.KafkaEmbedded;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,19 +55,19 @@ public class EmbeddedKafkaDefinition {
 	protected String[] topicNames = {};
 	
 	/** The kafka cluster instance */
-	protected KafkaEmbedded cluster = null;
+//	protected KafkaEmbedded cluster = null;
 	/** Indicates if the kafka cluster instance  is started */
 	protected final AtomicBoolean started = new AtomicBoolean(false);
 	
-	private static final Method shutdownMethod;
-	private static final Method startMethod;
+//	private static final Method shutdownMethod;
+//	private static final Method startMethod;
 	
 	static {
 		try {
-			shutdownMethod = KafkaEmbedded.class.getDeclaredMethod("after");
-			shutdownMethod.setAccessible(true);
-			startMethod = KafkaEmbedded.class.getDeclaredMethod("before");
-			startMethod.setAccessible(true);
+//			shutdownMethod = KafkaEmbedded.class.getDeclaredMethod("after");
+//			shutdownMethod.setAccessible(true);
+//			startMethod = KafkaEmbedded.class.getDeclaredMethod("before");
+//			startMethod.setAccessible(true);
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
 		}
@@ -100,52 +100,52 @@ public class EmbeddedKafkaDefinition {
 		return started.get();
 	}
 	
-	protected void _stop() {
-		try {
-			shutdownMethod.invoke(cluster);
-		} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-			throw new RuntimeException(e);
-		}
-	}
-	
-	protected void _start() {
-		try {
-			startMethod.invoke(cluster);
-		} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-			throw new RuntimeException(e);
-		}
-	}
+//	protected void _stop() {
+//		try {
+//			shutdownMethod.invoke(cluster);
+//		} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+//			throw new RuntimeException(e);
+//		}
+//	}
+//	
+//	protected void _start() {
+//		try {
+//			startMethod.invoke(cluster);
+//		} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+//			throw new RuntimeException(e);
+//		}
+//	}
 	
 	
 	public void start() {
-		if(started.compareAndSet(false, true)) {
-			try {
-				cluster = new KafkaEmbedded(brokers, controlled, partitions, topicNames);
-				_start();
-				System.out.println("Kafka Cluster Started");
-			} catch (Exception ex) {
-				if(cluster!=null) {
-					try { _stop(); } catch (Exception x) {/* No Op */}
-					cluster = null;
-				}
-				started.set(false);
-				throw new RuntimeException(ex);
-			}
-		}
+//		if(started.compareAndSet(false, true)) {
+//			try {
+//				cluster = new KafkaEmbedded(brokers, controlled, partitions, topicNames);
+//				_start();
+//				System.out.println("Kafka Cluster Started");
+//			} catch (Exception ex) {
+//				if(cluster!=null) {
+//					try { _stop(); } catch (Exception x) {/* No Op */}
+//					cluster = null;
+//				}
+//				started.set(false);
+//				throw new RuntimeException(ex);
+//			}
+//		}
 	}
 	
 	public void stop() {
-		if(started.compareAndSet(true, false)) {
-			if(cluster!=null) {
-				try {
-					_stop();
-					cluster = null;
-					System.out.println("Kafka Cluster Stopped");
-				} catch (Exception ex) {
-					throw new RuntimeException(ex);
-				}
-			}
-		}
+//		if(started.compareAndSet(true, false)) {
+//			if(cluster!=null) {
+//				try {
+//					_stop();
+//					cluster = null;
+//					System.out.println("Kafka Cluster Stopped");
+//				} catch (Exception ex) {
+//					throw new RuntimeException(ex);
+//				}
+//			}
+//		}
 	}
 	
 	public static void main(String[] args) {		

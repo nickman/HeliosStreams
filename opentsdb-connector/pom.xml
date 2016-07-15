@@ -30,16 +30,14 @@
 			<version>1.0-SNAPSHOT</version>
 			<scope>test</scope>
 		</dependency>
-		
-		
+
+<!--
 
 		<dependency>
 		  <artifactId>spring-kafka-test</artifactId>
 		  <groupId>org.springframework.kafka</groupId>
 		  <scope>test</scope>
 		</dependency>
-
-<!--
 
 		<dependency>
 		  <groupId>com.goldmansachs</groupId>

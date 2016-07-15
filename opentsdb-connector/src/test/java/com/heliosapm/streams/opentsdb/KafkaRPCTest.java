@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -38,7 +39,6 @@ import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.opentsdb.mocks.TSDBTestTemplate;
 import com.heliosapm.utils.jmx.JMXHelper;
-import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.url.URLHelper;
 
 import io.netty.buffer.ByteBuf;
@@ -54,7 +54,7 @@ import net.opentsdb.tsd.RpcManager;
 
 public class KafkaRPCTest extends BaseTest {
 	private static TSDB tsdb = null;
-	
+	private static Producer<String, ByteBuf> producer = null;
 	class FakeRpcManager {
 		@SuppressWarnings("unused")
 		private void initializeBuiltinRpcs(final String mode, 
@@ -71,21 +71,35 @@ public class KafkaRPCTest extends BaseTest {
 	 */
 	@BeforeClass
 	public static void init() {		
+		System.setProperty("tsdb.id.host", "helioleopard");
 		createPluginJar(KafkaRPC.class);
 		Retransformer.getInstance().transform(TSDB.class, TSDBTestTemplate.class);		
-		Retransformer.getInstance().transform(RpcManager.class, FakeRpcManager.class);
-		
+		Retransformer.getInstance().transform(RpcManager.class, FakeRpcManager.class);		
 		tsdb = newTSDB("coretest");
 		RpcManager.instance(tsdb);
+		startProducer();
+	}
+	
+	@AfterClass
+	public static void close() {
+		stopProducer();
+	}
+	
+	static void startProducer() {
+		final Properties p = URLHelper.readProperties(KafkaRPCTest.class.getClassLoader().getResource("configs/brokers/default.properties"));
+		p.setProperty("value.serializer", com.heliosapm.streams.buffers.ByteBufSerde.ByteBufSerializer.class.getName());
+		producer = new KafkaProducer<String, ByteBuf>(p);
+	}
+	
+	static void stopProducer() {
+		if(producer!=null) try { producer.close(); } catch (Exception x) {/* No Op */}
 	}
 	
 	protected void send(final Set<StreamedMetricValue> metrics) {
-		final Properties p = URLHelper.readProperties(getClass().getClassLoader().getResource("configs/brokers/default.properties"));
-		p.setProperty("value.serializer", com.heliosapm.streams.buffers.ByteBufSerde.ByteBufSerializer.class.getName());
 		final ByteBuf buff = BufferManager.getInstance().buffer(metrics.size() * 128);
-		Producer<String, ByteBuf> producer = null;
+		
 		try {
-			producer = new KafkaProducer<String, ByteBuf>(p); 
+			 
 			for(StreamedMetricValue smv: metrics) {
 				smv.intoByteBuf(buff);
 			}
@@ -94,8 +108,7 @@ public class KafkaRPCTest extends BaseTest {
 			log("Sent Value Size:" + vsize);
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
-		} finally {
-			if(producer!=null) try { producer.close(); } catch (Exception x) {/* No Op */}
+		} finally {			
 			try { buff.release(); } catch (Exception x) {/* No Op */}
 		}
 	}
@@ -104,8 +117,8 @@ public class KafkaRPCTest extends BaseTest {
 	
 	@Test
 	public void go() {		
-		final int metricCount = 1000;
-		for(int x = 0; x < 1; x++) {
+		final int metricCount = 2000;
+		for(int x = 0; x < 500; x++) {
 			final CountDownLatch waitLatch = new CountDownLatch(metricCount);
 			latch.set(waitLatch);
 			final Set<StreamedMetricValue> originals = new LinkedHashSet<StreamedMetricValue>(metricCount);
@@ -117,7 +130,7 @@ public class KafkaRPCTest extends BaseTest {
 			
 			final long now = System.currentTimeMillis();
 			try {
-				if(!waitLatch.await(JMXHelper.isDebugAgentLoaded() ? 5000 : 5, TimeUnit.SECONDS)) {
+				if(!waitLatch.await(JMXHelper.isDebugAgentLoaded() ? 5000 : 500, TimeUnit.SECONDS)) {
 					Assert.fail("Timed out while waiting");
 				}
 			} catch (Exception ex) {

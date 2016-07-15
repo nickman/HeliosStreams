@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -140,6 +141,8 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	/** A counter tracking the number of pending data point adds */
 	protected final LongAdder pendingDataPointAdds = new LongAdder();
 	
+	protected CountDownLatch startLatch =new CountDownLatch(1);
+	
 	/** The metric manager for this plugin */
 	protected final PluginMetricManager metricManager = new PluginMetricManager(getClass().getSimpleName());
 	
@@ -191,10 +194,20 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 //		consumerConfig.putAll(Props.extractOrEnv(CONFIG_PREFIX, rpcConfig, true));
 		metricManager.addExtraTag("mode", syncAdd ? "sync" : "async");		
 		printConfig();
-		consumer = new KafkaConsumer<String, ByteBuf>(rpcConfig, new StringDeserializer(), new ByteBufDeserializer());		
+		consumer = new KafkaConsumer<String, ByteBuf>(rpcConfig, new StringDeserializer(), new ByteBufDeserializer());
+		
 		subThread = new Thread(this, "KafkaSubscriptionThread");
 		subThread.start();
 		JMXHelper.registerMBean(this, OBJECT_NAME);
+		try {
+			log.info("\n\t#########################\n\tWaiting on partition assignment\n\t#########################\n");
+			if(!startLatch.await(10, TimeUnit.SECONDS)) {
+				throw new IllegalArgumentException();
+			}
+			log.info("\n\t#########################\n\tPartitions assigned\n\t#########################\n");
+		} catch (Exception x) {
+			throw new IllegalArgumentException();
+		}
 	}
 	
 	/**
@@ -218,7 +231,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	public void run() {
 		log.info("Kafka Subscription Thread Started");
 		try {
-            consumer.subscribe(Arrays.asList(topics), this);
+            consumer.subscribe(Arrays.asList(topics), this);            
             while (!closed.get()) {
             	try {
 	                final ConsumerRecords<String, ByteBuf> records;
@@ -274,6 +287,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 				final Iterator<StreamedMetricValue> iter = StreamedMetricValue.streamedMetricValues(true, buf, true).iterator();
 				while(iter.hasNext()) {
 					final StreamedMetricValue smv = iter.next();
+					
 					totalCount++;
 					try {
 						if(blacklist.isBlackListed(smv.metricKey())) {
@@ -286,6 +300,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 						} else {
 							thisDeferred = tsdb.addPoint(smv.getMetricName(), smv.getTimestamp(), smv.getLongValue(), smv.getTags());
 						}
+						pendingDataPointAdds.increment();
 						recordCount++;
 						addPointDeferreds.add(thisDeferred);  // keep all the deferreds so we can wait on them
 					} catch (Exception adpe) {
@@ -586,6 +601,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	 */
 	@Override
 	public void onPartitionsAssigned(final Collection<TopicPartition> partitions) {
+		startLatch.countDown();
 		final StringBuilder b = new StringBuilder("\n\t===========================\n\tPARTITIONS ASSIGNED\n\t===========================");
 		for(TopicPartition tp: partitions) {
 			b.append("\n\t").append(tp);

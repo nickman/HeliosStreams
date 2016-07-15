@@ -75,7 +75,7 @@ public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMar
 		InputStream is = null;
 		try {			
 			is = compressed==COMPRESSED ? wrap(bytes.inputStream(), 1024) : bytes.inputStream();
-			final byte[] bb = new byte[1024 * 16];
+			final byte[] bb = new byte[1024 * 64];
 			int bytesRead = -1;			
 			while((bytesRead = is.read(bb))!=-1) {
 				byteBuf.writeBytes(bb, 0, bytesRead);
