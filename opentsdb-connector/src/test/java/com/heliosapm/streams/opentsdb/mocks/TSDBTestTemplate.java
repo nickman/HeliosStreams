@@ -21,6 +21,7 @@ package com.heliosapm.streams.opentsdb.mocks;
 import java.util.List;
 import java.util.Map;
 
+import com.heliosapm.streams.opentsdb.KafkaRPCTest;
 import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.meta.Annotation;
@@ -45,6 +46,8 @@ public class TSDBTestTemplate extends EmptyTSDB {
 	  
 	  /** List of activated RPC plugins */
 	  private List<RpcPlugin> rpc_plugins = null;
+	  
+	  
 	
    /**
 	 * {@inheritDoc}
@@ -53,6 +56,7 @@ public class TSDBTestTemplate extends EmptyTSDB {
 	@Override
 	public Deferred<Object> addPoint(String metric, long timestamp,
 			double value, Map<String, String> tags) {
+		KafkaRPCTest.latch.get().countDown();
 		if (rt_publisher != null) {
 			rt_publisher.publishDataPoint(metric, timestamp, value, tags, (metric + ":" + tags.toString()).getBytes());
 	    }
@@ -66,6 +70,7 @@ public class TSDBTestTemplate extends EmptyTSDB {
 	@Override
 	public Deferred<Object> addPoint(String metric, long timestamp,
 			long value, Map<String, String> tags) {
+		KafkaRPCTest.latch.get().countDown();
 		if (rt_publisher != null) {
 			rt_publisher.publishDataPoint(metric, timestamp, value, tags, (metric + ":" + tags.toString()).getBytes());
 	    }

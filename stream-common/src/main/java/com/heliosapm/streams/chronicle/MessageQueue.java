@@ -283,10 +283,10 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 			.wireType(WireType.BINARY)
 			.build();
 		log.info("ChronicleQueue built. [{}] : [{}]", queue.getClass().getName(), queue);
-		queue.acquireAppender().writeText("This is a test");
-		ExcerptTailer tailer = queue.createTailer();
-		String test = tailer.readText();
-		log.info("ChronicleQueue Test Result: [{}]", test);
+//		queue.acquireAppender().writeText("This is a test");
+//		ExcerptTailer tailer = queue.createTailer();
+//		String test = tailer.readText();
+//		log.info("ChronicleQueue Test Result: [{}]", test);
 		
 //		queue.firstIndex();
 		startLatch = new CountDownLatch(readerThreads);
@@ -456,6 +456,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 					chronicleReads.inc();
 					reads++;
 					final ByteBuf sm = smm.getAndNullByteBuf();
+					log.info("MessageQueue Read Buffer, size: {} bytes", sm.readableBytes());
 					if(sm!=null) {
 						listener.onMetric(sm);
 //						sm.release();

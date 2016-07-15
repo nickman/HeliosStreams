@@ -21,6 +21,9 @@ package com.heliosapm.streams.buffers;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -64,13 +67,27 @@ public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMar
 	 */
 	@Override
 	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
+		final long start = System.currentTimeMillis();
 		final byte compressed = bytes.readByte();
 		final int size = bytes.readInt();
+//		System.err.println("*** readMarshallable size:" + size);
 		byteBuf = bufferManager.buffer(size);
 		InputStream is = null;
-		try {
-			is = compressed==COMPRESSED ? wrap(bytes.inputStream(), 1024) : bytes.inputStream(); 
-			byteBuf.writeBytes(is, size);
+		try {			
+			is = compressed==COMPRESSED ? wrap(bytes.inputStream(), 1024) : bytes.inputStream();
+			final byte[] bb = new byte[1024 * 16];
+			int bytesRead = -1;			
+			while((bytesRead = is.read(bb))!=-1) {
+				byteBuf.writeBytes(bb, 0, bytesRead);
+			}
+//			int bytesRead = 0;
+//			while(bytesRead < size) {
+//				bytesRead += byteBuf.writeBytes(is, size-bytesRead);
+//			}
+			//			
+			final long elapsed = System.currentTimeMillis() - start;
+			System.err.println("*** readMarshallable complete size:" + byteBuf.readableBytes() + ", elapsed:" + elapsed);
+//			System.err.println("*** readMarshallable remaining:" + is.available());
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to read buffer bytes", ex);
 		} finally {
@@ -97,7 +114,7 @@ public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMar
 	 * @throws IOException if an I/O error has occurred
 	 */
 	public static OutputStream wrap(final OutputStream is, final int size) throws IOException {
-		return new GZIPOutputStream(is, size);
+		return new GZIPOutputStream(is, size, true);
 	}
 	
 
@@ -106,10 +123,20 @@ public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMar
 	public void writeMarshallable(final BytesOut bytes) {
 		bytes.writeByte(useGzip ? COMPRESSED : NOT_COMPRESSED);		
 		bytes.writeInt(byteBuf.readableBytes());
+		System.err.println("*** writeMarshallable size:" + byteBuf.readableBytes());
 		OutputStream os = null;
 		try {
 			os = useGzip ? wrap(bytes.outputStream(), 1024) : bytes.outputStream();
-			byteBuf.readBytes(os, byteBuf.readableBytes());			
+			final long pre = bytes.writePosition();
+			byteBuf.readBytes(os, byteBuf.readableBytes());
+//			if(useGzip) {
+//				os.flush();
+//				((GZIPOutputStream)os).finish();
+//			}
+//			bytes.outputStream().flush();
+			os.flush();
+			final long total = bytes.writePosition() - pre;
+			System.err.println("*** writeMarshallable complete size:" + total);
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to write buffer bytes", ex);
 		} finally {

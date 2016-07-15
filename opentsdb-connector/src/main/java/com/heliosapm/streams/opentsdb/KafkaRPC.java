@@ -101,7 +101,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	public static final long DEFAULT_POLLTIMEOUT = 10000;
 	
 	/** A ref to the buffer manager */
-	protected final BufferManager bufferManager = BufferManager.getInstance();
+	protected final BufferManager bufferManager;
 	
 	/** Instance logger */
 	protected final Logger log = LoggerFactory.getLogger(getClass());
@@ -161,8 +161,9 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	/**
 	 * Creates a new KafkaRPC
 	 */
-	public KafkaRPC() {
-		log.info("Insantiated KafkaRPC Plugin");
+	public KafkaRPC() {		
+		log.info("Insantiated KafkaRPC Plugin, cp:[{}]", getClass().getProtectionDomain().getCodeSource().getLocation());
+		bufferManager = BufferManager.getInstance();
 	}
 	
 	
@@ -223,18 +224,22 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	                final ConsumerRecords<String, ByteBuf> records;
 	                try {
 	                	records = consumer.poll(pollTimeout);
+	                	log.info("Polled {} messages:", records.count());
 	                	final Context ctx = perMessageTimer.time();
 	                	final int recordCount = records.count();	                	
 	                	if(recordCount > 0) {
-	                		final ByteBuf buf = bufferManager.buffer(128 * recordCount);
+	                		int i = 0;
+	                		
 	                		for(final Iterator<ConsumerRecord<String, ByteBuf>> iter = records.iterator(); iter.hasNext();) {
+	                			i++;
 	                			final ConsumerRecord<String, ByteBuf> record = iter.next();
 	                			final ByteBuf b = record.value();
-	                			buf.writeBytes(b);
-	                			b.release();
+	                			log.info("Polled Record #{}: {} bytes", i, b.readableBytes());
+	                			messageQueue.writeEntry(b);
+	                			
 	                		}
 	                		final long st = System.currentTimeMillis();
-	                		messageQueue.writeEntry(buf);
+	                		
 	                		log.info("Wrote [{}] records to MessageQueue in [{}] ms.", recordCount, System.currentTimeMillis()-st);
 	                	}
 	                	if(syncAdd) consumer.commitAsync();
@@ -258,6 +263,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	 */
 	@Override
 	public void onMetric(final ByteBuf buf) {
+		log.info("OnMetric Buffer: {} bytes", buf.readableBytes());
 		try {			
 			final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>();
 			int recordCount = 0;
@@ -560,11 +566,15 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		if(!partitions.isEmpty()) {
 			final StringBuilder b = new StringBuilder("\n\t===========================\n\tPARTITIONS REVOKED !!\n\t===========================");
 			for(TopicPartition tp: partitions) {
-				b.append(tp);
+				b.append("\n\t").append(tp);
 				assignedPartitions.remove(tp.toString());
 			}
 			b.append("\n\t===========================\n");
-			log.warn(b.toString());
+			if(assignedPartitions.isEmpty()) {
+				log.warn(b.toString());
+			} else {
+				log.info(b.toString());
+			}
 		}
 	}
 
