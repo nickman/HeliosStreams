@@ -28,6 +28,7 @@ import java.util.Set;
 
 import javax.management.ObjectName;
 
+import com.codahale.metrics.Counter;
 import com.heliosapm.utils.jmx.JMXHelper;
 
 /**
@@ -145,5 +146,39 @@ public interface KafkaRPCMBean {
 	 * @return the currently assigned topic partitions
 	 */
 	public Set<String> getAssignedPartitions();
+	
+	/**
+	 * Returns the sync add data points timeout in ms. 
+	 * @return the sync add data points timeout in ms.
+	 */
+	public long getSyncAddTimeout();
+
+	/**
+	 * Sets the sync add data points timeout in ms.
+	 * @param syncAddTimeout the sync add data points timeout in ms.
+	 */
+	public void setSyncAddTimeout(final long syncAddTimeout);
+	
+	/**
+	 * Returns the cummulative number of TSDB put timeout errors
+	 * @return the cummulative number of TSDB put timeout errors
+	 */
+	public Counter getPutTimeouts();
+
+
+
+	/**
+	 * Returns the cummulative number of metric deserialization errors
+	 * @return the cummulative number of metric deserialization errors
+	 */
+	public Counter getDeserErrors();
+	
+	/**
+	 * Returns the timeout on waiting for Kafka partition info on startup in secs.
+	 * @return the timeout on waiting for Kafka partition info on startup in secs.
+	 */
+	public int getKafkaStartupTimeout();
+	
 
 }
+

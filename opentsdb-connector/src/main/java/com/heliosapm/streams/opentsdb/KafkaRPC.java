@@ -39,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.CachedGauge;
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
@@ -85,6 +86,16 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	public static final String CONFIG_SYNC_ADD = "syncadd";
 	/** The default sync add */
 	public static final boolean DEFAULT_SYNC_ADD = true;
+
+	/** The config key name for the timeout on synchronous data point puts to the TSDB in ms. */
+	public static final String CONFIG_SYNCADD_TIMEOUT = "syncadd.timeout";
+	/** The default timeout on synchronous data point puts to the TSDB in ms. */
+	public static final long DEFAULT_SYNCADD_TIMEOUT = 10000;
+	
+	/** The config key name for the timeout on waiting for kafka partition data during startup in secs. */
+	public static final String CONFIG_KAFKAMETA_TIMEOUT = "syncadd.timeout";
+	/** The default timeout on waiting for kafka partition data during startup in secs. */
+	public static final int DEFAULT_KAFKAMETA_TIMEOUT = 120;
 	
 	/** The config key name for buffer write compression */
 	public static final String CONFIG_COMPRESS_QWRITES = "writer.compression";
@@ -120,6 +131,11 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	protected boolean syncAdd = DEFAULT_SYNC_ADD;
 	/** The subscriber thread */
 	protected Thread subThread = null;
+	/** The timeout for sync adds to TSDB in ms. */
+	protected long syncAddTimeout = DEFAULT_SYNCADD_TIMEOUT;
+	/** The timeout for waiting on kafka partition data at startup in sec. */
+	protected int kafkaStartupTimeout = DEFAULT_KAFKAMETA_TIMEOUT;
+	
 	
 	/** Indicates if message queue writes should be compressed */
 	protected boolean compression = false;
@@ -150,6 +166,11 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	protected final Meter pointsAddedMeter = metricManager.meter("pointsAdded");
 	/** A timer to track the elapsed time per message ingested */
 	protected final Timer perMessageTimer = metricManager.timer("perMessage");
+	/** A counter of tsdb data point put timeouts */
+	protected final Counter putTimeouts = metricManager.counter("putTimeouts");
+	/** A counter of metric deserialization errors */
+	protected final Counter deserErrors = metricManager.counter("deserErrors");
+	
 	
 	/** The per message timer snapshot */
 	protected final CachedGauge<Snapshot> perMessageTimerSnap = new CachedGauge<Snapshot>(5, TimeUnit.SECONDS) {
@@ -185,6 +206,8 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		topics = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_TOPICS, DEFAULT_TOPIC, rpcConfig);
 		pollTimeout = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_POLLTIMEOUT, DEFAULT_POLLTIMEOUT, rpcConfig);
 		syncAdd = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_SYNC_ADD, DEFAULT_SYNC_ADD, rpcConfig);
+		syncAddTimeout = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_SYNCADD_TIMEOUT, DEFAULT_SYNCADD_TIMEOUT, rpcConfig);
+		kafkaStartupTimeout = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_KAFKAMETA_TIMEOUT, DEFAULT_KAFKAMETA_TIMEOUT, rpcConfig);
 		monitoringInterceptor = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_KAFKA_MONITOR, DEFAULT_KAFKA_MONITOR, rpcConfig);
 		compression = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_COMPRESS_QWRITES, DEFAULT_COMPRESS_QWRITES, rpcConfig);
 		messageQueue = MessageQueue.getInstance(getClass().getSimpleName(), this, rpcConfig);
@@ -201,7 +224,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		JMXHelper.registerMBean(this, OBJECT_NAME);
 		try {
 			log.info("\n\t#########################\n\tWaiting on partition assignment\n\t#########################\n");
-			if(!startLatch.await(20, TimeUnit.SECONDS)) {  //FIXME: config
+			if(!startLatch.await(kafkaStartupTimeout, TimeUnit.SECONDS)) {  
 				log.error("Timed out waiting on partition assignment");
 				throw new IllegalArgumentException();
 			}
@@ -221,6 +244,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		b.append("\n\tKafka Poll Timeout:").append(pollTimeout);
 		b.append("\n\tKafka Async Commit:").append(syncAdd);
 		b.append("\n\tKafka Monitor Enabled:").append(syncAdd);
+		b.append("\n\tTSDB Put Timeout (ms):").append(syncAddTimeout);
 		b.append("\n\tCompressed MessageQueue Writes:").append(monitoringInterceptor);		
 		b.append("\n\t=====================\n");
 		log.info(b.toString());
@@ -230,6 +254,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	/**
 	 * Handles the kafka consumer
 	 */
+	@Override
 	public void run() {
 		log.info("Kafka Subscription Thread Started");
 		try {
@@ -257,11 +282,15 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	                		
 	                		log.info("Wrote [{}] records to MessageQueue in [{}] ms.", recordCount, System.currentTimeMillis()-st);
 	                	}
-	                	if(syncAdd) consumer.commitAsync();
-	                	else consumer.commitAsync();			// FIXME:  this will break at some point
+	                	if(syncAdd) {
+	                		consumer.commitAsync();
+	                	} else {
+	                		consumer.commitAsync();			// FIXME:  this will break at some point
+	                	}
 	                	ctx.stop();
 	                } catch (Exception ex) {
-	                	continue;  // FIXME: increment deser errors
+	                	deserErrors.inc();
+	                	continue;  
 	                }
             	} catch (Exception ex) {
             		log.error("Unexpected Exception1", ex);
@@ -334,9 +363,10 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 			});
 			if(syncAdd) {
 				try {
-					d.joinUninterruptibly(30000);  // FIXME:  make configurable
+					d.joinUninterruptibly(syncAddTimeout);
 				} catch (Exception ex) {
-					log.warn("Datapoints Write Timed Out");  // FIXME: increment timeout err
+					putTimeouts.inc(rcount);
+					log.warn("Datapoints Write Timed Out");
 				}
 			} else {
 				final long elapsed = System.nanoTime() - startTimeNanos; 
@@ -349,6 +379,8 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 			try { buf.release(); } catch (Exception ex) {/* No Op */}
 		}
 	}
+	
+
 	
 	
 	
@@ -372,6 +404,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		final Deferred<Object> d = new Deferred<Object>();
 		if(subThread!=null) {
 			final Thread t = new Thread(getClass().getSimpleName() + "ShutdownThread") {
+				@Override
 				public void run() {
 					try {
 						subThread.join();
@@ -613,6 +646,62 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		log.info(b.toString());
 
 		
+	}
+
+
+
+	/**
+	 * Returns the sync add data points timeout in ms. 
+	 * @return the sync add data points timeout in ms.
+	 */
+	@Override
+	public long getSyncAddTimeout() {
+		return syncAddTimeout;
+	}
+
+
+
+	/**
+	 * Sets the sync add data points timeout in ms.
+	 * @param syncAddTimeout the sync add data points timeout in ms.
+	 */
+	@Override
+	public void setSyncAddTimeout(final long syncAddTimeout) {
+		if(syncAddTimeout < 1) throw new IllegalArgumentException("Invalid sync add timeout [" + syncAddTimeout + "]");
+		this.syncAddTimeout = syncAddTimeout;
+	}
+
+
+
+	/**
+	 * Returns the cummulative number of TSDB put timeout errors
+	 * @return the cummulative number of TSDB put timeout errors
+	 */
+	@Override
+	public Counter getPutTimeouts() {
+		return putTimeouts;
+	}
+
+
+
+	/**
+	 * Returns the cummulative number of metric deserialization errors
+	 * @return the cummulative number of metric deserialization errors
+	 */
+	@Override
+	public Counter getDeserErrors() {
+		return deserErrors;
+	}
+
+
+
+	/**
+	 * Returns the timeout on waiting for Kafka partition info on startup in secs.
+	 * @return the timeout on waiting for Kafka partition info on startup in secs.
+	 */
+	@Override
+	public int getKafkaStartupTimeout() {
+		return kafkaStartupTimeout;
 	}
 
 
