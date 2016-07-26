@@ -23,6 +23,21 @@
 		    <groupId>junit</groupId>
 		    <artifactId>junit</artifactId>
 		</dependency>
+		
+		<!-- 
+		<dependency>
+		  <groupId>net.manub</groupId>
+		  <artifactId>scalatest-embedded-kafka_2.11</artifactId>
+		</dependency>
+		-->
+		
+		<dependency>
+		  <groupId>org.apache.kafka</groupId>
+		  <artifactId>kafka_2.11</artifactId>
+		  <scope>test</scope>
+		</dependency>
+		
+		
 
 
 		<!-- ==========================================================

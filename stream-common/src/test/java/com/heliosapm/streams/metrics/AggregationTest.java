@@ -27,6 +27,7 @@ import com.heliosapm.streams.metrics.aggregation.StreamedMetricAggregation;
 import com.heliosapm.streams.metrics.store.TestKeyValueStore;
 import com.heliosapm.utils.collections.FluentMap;
 import com.heliosapm.utils.collections.FluentMap.MapType;
+import com.heliosapm.utils.time.SystemClock;
 
 /**
  * <p>Title: AggregationTest</p>
@@ -47,16 +48,33 @@ public class AggregationTest extends BaseTest {
 		store.clear();
 	}
 	
+	protected double nextDecimal(final int max) {
+		return nextPosInt(max) + nextPosDouble();
+	}
+	
+	protected double nextDecimal() {
+		return nextDecimal(100);
+	}
 	
 	@Test
 	public void simpleTest() {
+		final boolean sticky = true;
+		final long period = 1L;
+		final TimeUnit periodUnit = TimeUnit.SECONDS;
 		final String metricName = "sys.cpu.total";
 		final Map<String, String> tags = Collections.unmodifiableSortedMap(FluentMap.newMap(MapType.TREE, String.class, String.class).fput("foo", "bar").fput("sna",  "foo").asMap(TreeMap.class));
-		final double initialValue = nextPosInt(100) + nextPosDouble();
+		final double initialValue = nextDecimal();
 		log("Initial Value: [%s]", initialValue);
 		final StreamedMetricValue smv = new StreamedMetricValue(initialValue, metricName, tags).setValueType(ValueType.PERIODAGG);
-		final StreamedMetricAggregation sma = StreamedMetricAggregation.get(smv, false, 500, TimeUnit.MILLISECONDS, store);
+		final StreamedMetricAggregation sma = StreamedMetricAggregation.get(smv, sticky, period, periodUnit, store);
 		log(sma);
-
+		for(int i = 0; i < 100; i++) {
+			smv.update(System.currentTimeMillis(), nextDecimal());
+			sma.apply(smv, sticky, store);
+			log(sma);
+			if(i%10==0) {
+				SystemClock.sleep(500);
+			}
+		}
 	}
 }

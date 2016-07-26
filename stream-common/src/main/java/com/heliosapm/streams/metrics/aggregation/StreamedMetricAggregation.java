@@ -206,12 +206,12 @@ public class StreamedMetricAggregation {
 		this.period = period;
 		this.periodUnit = unit;
 		if(doubleType) {
-			values.putDouble(MAX, Double.MAX_VALUE); // Double Min
-			values.putDouble(MIN, Double.MIN_VALUE); // Double Max
+			values.putDouble(MIN, Double.MAX_VALUE); // Double Min
+			values.putDouble(MAX, Double.MIN_VALUE); // Double Max
 			values.putDouble(PRIOR, 0D); 			// Prior Max
 		} else {
-			values.putLong(MAX, Long.MAX_VALUE); 	// Long Min
-			values.putLong(MIN, Long.MIN_VALUE); 	// Long Max	
+			values.putLong(MIN, Long.MAX_VALUE); 	// Long Min
+			values.putLong(MAX, Long.MIN_VALUE); 	// Long Max	
 			values.putLong(PRIOR, 0L); 				// Prior Max
 		}
 		values.putDouble(AVG, 0D); 					// Avg
@@ -268,16 +268,33 @@ public class StreamedMetricAggregation {
 				if(sma==null) {
 					sma = new StreamedMetricAggregation(streamedMetric.getMetricName(), sticky, streamedMetric.isValued() ? streamedMetric.forValue(-1L).isDoubleValue() : false, period, unit);
 					sma.tags.putAll(streamedMetric.getTags());
-					// FIXME:  add initial value here
-					store.put(key, sma);					
+					sma.apply(streamedMetric, sticky, store);
+//					store.put(key, sma);					
 				}
 			}
 		}
 		return sma;
 	}
+	
+	void reset(final long metricTimestamp) {
+		if(!sticky) {
+			if(doubleType) {
+				values.putDouble(MAX, Double.MAX_VALUE); // Double Min
+				values.putDouble(MAX, Double.MIN_VALUE); // Double Max
+			} else {
+				values.putLong(MIN, Long.MAX_VALUE); 	// Long Min
+				values.putLong(MIN, Long.MIN_VALUE); 	// Long Max			
+			}
+			values.putDouble(AVG, 0D); 					// Avg
+		}
+		values.putLong(COUNT, 0L); 						// Count
+		values.putLong(LAST_TS, metricTimestamp);		// Last Sample
+		setPeriods(metricTimestamp);
+	}
+	
 
 	public void apply(final StreamedMetric streamedMetric, final boolean sticky, final KeyValueStore<String, StreamedMetricAggregation> store) {
-		final StreamedMetricAggregation sma = get(streamedMetric, sticky, period, periodUnit, store);
+//		final StreamedMetricAggregation sma = get(streamedMetric, sticky, period, periodUnit, store);
 		final long[] currentPeriods = getPeriods();
 		final long metricTimestamp = streamedMetric.getTimestamp();
 		if(metricTimestamp < currentPeriods[0]) {
@@ -291,7 +308,7 @@ public class StreamedMetricAggregation {
 		final long preCount = values.getLong(COUNT);
 		if(doubleType) {			
 			final double newValue = smv.getValueAsDouble();
-			if(preCount==0L) {
+			if(preCount==0L && !sticky) {
 				values.putDouble(MIN, newValue);
 				values.putDouble(MAX, newValue);
 				values.putDouble(AVG, newValue);				
@@ -303,7 +320,7 @@ public class StreamedMetricAggregation {
 			values.putDouble(PRIOR, newValue);
 		} else {
 			final long newValue = smv.getValueAsLong();
-			if(preCount==0L) {
+			if(preCount==0L && !sticky) {
 				values.putLong(MIN, newValue);
 				values.putLong(MAX, newValue);
 				values.putLong(AVG, newValue);								
@@ -334,21 +351,6 @@ public class StreamedMetricAggregation {
 		return new long[]{start, start + periodInMillis};
 	}
 	
-	void reset(final long metricTimestamp) {
-		if(!sticky) {
-			if(doubleType) {
-				values.putDouble(MAX, Double.MAX_VALUE); // Double Min
-				values.putDouble(MAX, Double.MIN_VALUE); // Double Max
-			} else {
-				values.putLong(MIN, Long.MAX_VALUE); 	// Long Min
-				values.putLong(MIN, Long.MIN_VALUE); 	// Long Max			
-			}
-			values.putDouble(AVG, 0D); 					// Avg
-		}
-		values.putLong(COUNT, 0L); 						// Count
-		values.putLong(LAST_TS, metricTimestamp);		// Last Sample
-		setPeriods(metricTimestamp);
-	}
 	
 	/**
 	 * Updates and returns the EWMA average
@@ -382,7 +384,8 @@ public class StreamedMetricAggregation {
 		if(sampleCount==0) {
 			avg = value;
 		} else {
-			avg = prior + alpha(sampleCount) * (value - prior);
+			//avg = prior + alpha(sampleCount) * (value - prior);
+			avg = prior + 0.5D * (value - prior);
 		}
 		values.putDouble(AVG, avg);
 		return avg;
