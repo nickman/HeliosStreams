@@ -18,17 +18,26 @@ under the License.
  */
 package com.heliosapm.streams.kafka;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.zookeeper.server.ServerConfig;
+import org.apache.zookeeper.server.ZooKeeperServerMain;
+import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
+import org.apache.zookeeper.server.quorum.QuorumPeerMain;
 
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
-
 import kafka.utils.SystemTime$;
 
 /**
@@ -42,7 +51,7 @@ public class KafkaTestServer {
 	/** The config key for the embedded kafka log directory */
 	public static final String CONFIG_LOG_DIR = "test.kafka.logdir";	
 	/** The default embedded kafka log directory */
-	public static final String DEFAULT_LOG_DIR = System.getProperty("java.io.tmpdir") + "/embedded/kafka/";
+	public static final String DEFAULT_LOG_DIR = new File(new File(System.getProperty("java.io.tmpdir")) + "/embedded/kafka").getAbsolutePath(); 
 	/** The config key for the embedded kafka listening port */
 	public static final String CONFIG_PORT = "test.kafka.port";
 	/** The default embedded kafka listening port */
@@ -50,17 +59,48 @@ public class KafkaTestServer {
 	/** The config key for the embedded kafka broker id */
 	public static final String CONFIG_BROKERID = "test.kafka.brokerid";
 	/** The default embedded kafka broker id */
-	public static final int DEFAULT_BROKERID = 1;
-	
+	public static final int DEFAULT_BROKERID = 1;	
 	/** The config key for the embedded kafka zookeeper enablement */
 	public static final String CONFIG_ZOOKEEP = "test.kafka.zookeep.enabled";
 	/** The default embedded kafka zookeeper enablement */
 	public static final boolean DEFAULT_ZOOKEEP = true;
-
 	/** The config key for the embedded kafka zookeeper connect uri */
 	public static final String CONFIG_ZOOKEEP_URI = "test.kafka.zookeep.uri";
 	/** The default embedded kafka zookeeper connect uri */
 	public static final String DEFAULT_ZOOKEEP_URI = "localhost:2181";
+	
+	
+	/** The prefix for zookeeper config properties */
+	public static final String ZK_PREFIX = "test.kafka.zk.";
+
+	/** The config key for the embedded zookeeper data directory */
+	public static final String CONFIG_ZK_DATA_DIR = ZK_PREFIX  + "dataDir";	
+	/** The default embedded zookeeper data directory */
+	public static final String DEFAULT_ZK_DATA_DIR = new File(new File(System.getProperty("java.io.tmpdir")) + "/embedded/zookeeper/data").getAbsolutePath();
+	/** The config key for the embedded zookeeper log directory */
+	public static final String CONFIG_ZK_LOG_DIR = ZK_PREFIX  + "dataLogDir";	
+	/** The default embedded zookeeper log directory */
+	public static final String DEFAULT_ZK_LOG_DIR = new File(new File(System.getProperty("java.io.tmpdir")) + "/embedded/zookeeper/log").getAbsolutePath();	
+	/** The config key for the embedded zookeeper listening port */
+	public static final String CONFIG_ZK_PORT = ZK_PREFIX  + "clientPort";	
+	/** The default embedded zookeeper listening port */
+	public static final int DEFAULT_ZK_PORT = 2181;	
+	/** The config key for the embedded zookeeper listener binding interface */
+	public static final String CONFIG_ZK_IFACE = ZK_PREFIX  + "clientPortAddress";	
+	/** The default embedded zookeeper listener binding interface */
+	public static final String DEFAULT_ZK_IFACE = "0.0.0.0";
+	/** The config key for the embedded zookeeper maximum number of client connections */
+	public static final String CONFIG_ZK_MAXCONNS = ZK_PREFIX  + "maxClientCnxns";	
+	/** The default embedded zookeeper maximum number of client connections */
+	public static final int DEFAULT_ZK_MAXCONNS = 50;
+	/** The config key for the embedded zookeeper minimum session timeout */
+	public static final String CONFIG_ZK_MINTO = ZK_PREFIX  + "minSessionTimeout";	
+	/** The default embedded zookeeper minimum session timeout */
+	public static final int DEFAULT_ZK_MINTO = -1;
+	/** The config key for the embedded zookeeper maximum session timeout */
+	public static final String CONFIG_ZK_MAXTO = ZK_PREFIX  + "maxSessionTimeout";	
+	/** The default embedded zookeeper maximum session timeout */
+	public static final int DEFAULT_ZK_MAXTO = -1;
 	
 	
 	/** The default embedded kafka listening URI */
@@ -68,7 +108,7 @@ public class KafkaTestServer {
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
-	/** The embedded server  */
+	/** The embedded server config properties  */
 	protected final Properties configProperties = new Properties();
 	/** The kafka configuration */
 	protected KafkaConfig kafkaConfig = null;
@@ -77,26 +117,103 @@ public class KafkaTestServer {
 	/** The up and running flag */
 	protected final AtomicBoolean running = new AtomicBoolean(false);
 	
+	/** The embedded zookeeper config properties  */
+	protected final Properties zkConfigProperties = new Properties();
+	/** The embedded zookeeper configurator */
+	protected QuorumPeerConfig zkConfig = null;
+	/** The embedded zookeeper server */
+	protected QuorumPeerMain zkServer = null;
+	/** The standalone zookeeper config */
+	protected ServerConfig sc = null;
+	/** The standalone zookeeper server */
+	protected ZooKeeperServerMain zkSoServer = null;
+	/** The standalone flag */
+	protected final AtomicBoolean standalone = new AtomicBoolean(true);
+	
+	
+	
 	/**
 	 * Creates a new KafkaTestServer
 	 */
 	public KafkaTestServer() {
-		// TODO Auto-generated constructor stub
+		 System.setProperty("zookeeper.jmx.log4j.disable", "true");
 	}
 	
+	/**
+	 * Starts the test server
+	 * @throws Exception thrown on any error
+	 */
 	public void start() throws Exception {
 		if(running.compareAndSet(false, true)) {
 			try {
+				zkConfigProperties.clear();
+				zkConfigProperties.setProperty("tickTime", "2000");
+				zkConfigProperties.setProperty("syncEnabled", "false");
+				zkConfigProperties.setProperty("dataDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR));
+				zkConfigProperties.setProperty("dataLogDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR));
+				final int clientPort = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_PORT, DEFAULT_ZK_PORT);
+				zkConfigProperties.setProperty("clientPort", "" + clientPort);
+				zkConfigProperties.setProperty("clientPortAddress", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_IFACE, DEFAULT_ZK_IFACE));
+				zkConfigProperties.setProperty("maxClientCnxns", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXCONNS, DEFAULT_ZK_MAXCONNS));
+				zkConfigProperties.setProperty("minSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MINTO, DEFAULT_ZK_MINTO));
+				zkConfigProperties.setProperty("maxSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXTO, DEFAULT_ZK_MAXTO));
+//				zkConfigProperties.setProperty("server.0", "PP-DT-NWHI-01:" + clientPort + ":" + (clientPort+1)); //  + ":PARTICIPANT");
 				configProperties.clear();
+				
 				configProperties.setProperty("log.dir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOG_DIR, DEFAULT_LOG_DIR));
 				configProperties.setProperty("port", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_PORT, DEFAULT_PORT));
 				configProperties.setProperty("enable.zookeeper", "" + ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_ZOOKEEP, DEFAULT_ZOOKEEP));
 				configProperties.setProperty("zookeeper.connect", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZOOKEEP_URI, DEFAULT_ZOOKEEP_URI));
 				configProperties.setProperty("brokerid", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BROKERID, DEFAULT_BROKERID));
+				log.info("Embedded Kafka ZooKeeper Config: {}",  zkConfigProperties);
 				log.info("Embedded Kafka Broker Config: {}",  configProperties);
+				log.info(">>>>> Starting Embedded ZooKeeper...");
+				zkConfig = new QuorumPeerConfig();
+//				zkConfig.parse(System.getenv("ZOOKEEPER_HOME") + File.separator + "conf" + File.separator + "zoo.cfg");
+				zkConfig.parseProperties(zkConfigProperties);
+				final Thread zkRunThread;
+				final Throwable[] t = new Throwable[1];
+				if(zkConfig.getServers().size() > 1) {
+					standalone.set(false);
+					zkServer = new QuorumPeerMain();
+					zkRunThread = new Thread("ZooKeeperRunThread") {
+						public void run() {
+							try {
+								zkServer.runFromConfig(zkConfig);
+							} catch (IOException ex) {
+								log.error("Failed to start ZooKeeper", ex);
+								t[0] = ex;
+							}
+						}
+					};
+				} else {
+					standalone.set(true);
+					sc = new ServerConfig();
+					sc.readFrom(zkConfig);
+					zkSoServer = new ZooKeeperServerMain();					
+					zkRunThread = new Thread("ZooKeeperStandaloneRunThread") {
+						public void run() {
+							try {
+								zkSoServer.runFromConfig(sc);
+							} catch (IOException ex) {
+								log.error("Failed to start standalone ZooKeeper", ex);
+								t[0] = ex;
+							}
+						}
+					};
+				}
+				zkRunThread.setDaemon(true);
+				zkRunThread.start();
+				
+				
+//				ZooKeeperServer zkServer  = new ZooKeeperServer(new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR)), new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR)), 200);
+				
+				log.info("<<<<< Embedded ZooKeeper started.");
+				log.info(">>>>> Starting Embedded Kafka...");
 				kafkaConfig = new KafkaConfig(configProperties);
 				kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, null);
 				kafkaServer.startup();				
+				log.info("<<<<< Embedded Kafka started.");
 			} catch (Exception ex) {
 				running.set(false);
 				configProperties.clear();
@@ -110,14 +227,51 @@ public class KafkaTestServer {
 			log.warn("Embedded Kafka Broker already running");
 		}
 	}
+	
+	
+	
+	/**
+	 * Stops the server
+	 */
+	public void stop() {
+		if(running.compareAndSet(true, false)) {
+			kafkaServer.shutdown();
+			kafkaServer = null;
+			kafkaConfig = null;
+			configProperties.clear();
+			if(standalone.get()) {
+				PrivateAccessor.invoke(zkSoServer, "shutdown");
+			} else {
+				PrivateAccessor.invoke(zkServer, "shutdown");
+			}
+			zkSoServer = null;
+			zkServer = null;
+			sc = null;
+			zkConfig = null;
+			zkConfigProperties.clear();
+		} else {
+			log.warn("Embedded Kafka Broker is not running");
+		}
+	}
 
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		KafkaTestServer kts = new KafkaTestServer();
+		System.setProperty("java.net.preferIPv4Stack", "true");
+		JMXHelper.fireUpJMXMPServer(3339);
+		ExtendedThreadManager.install();
+		final KafkaTestServer kts = new KafkaTestServer();
 		try {
 			kts.start();
+			StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
+				public void run() {
+					if(kts.running.get()) {
+						kts.stop();
+					}
+					System.exit(-1);
+				}
+			}).run();
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			System.exit(-1);
@@ -126,3 +280,44 @@ public class KafkaTestServer {
 	}
 
 }
+
+
+//import org.I0Itec.zkclient.ZkClient;
+//import org.I0Itec.zkclient.ZkConnection;
+//
+//import java.util.Properties;
+//
+//import kafka.admin.AdminUtils;
+//import kafka.utils.ZKStringSerializer$;
+//import kafka.utils.ZkUtils;
+//
+//public class KafkaJavaExample {
+//
+//  public static void main(String[] args) {
+//    String zookeeperConnect = "zkserver1:2181,zkserver2:2181";
+//    int sessionTimeoutMs = 10 * 1000;
+//    int connectionTimeoutMs = 8 * 1000;
+//    // Note: You must initialize the ZkClient with ZKStringSerializer.  If you don't, then
+//    // createTopic() will only seem to work (it will return without error).  The topic will exist in
+//    // only ZooKeeper and will be returned when listing topics, but Kafka itself does not create the
+//    // topic.
+//    ZkClient zkClient = new ZkClient(
+//        zookeeperConnect,
+//        sessionTimeoutMs,
+//        connectionTimeoutMs,
+//        ZKStringSerializer$.MODULE$);
+//
+//    // Security for Kafka was added in Kafka 0.9.0.0
+//    boolean isSecureKafkaCluster = false;
+//    ZkUtils zkUtils = new ZkUtils(zkClient, new ZkConnection(zookeeperConnect), isSecureKafkaCluster);
+//
+//    String topic = "my-topic";
+//    int partitions = 2;
+//    int replication = 3;
+//    Properties topicConfig = new Properties(); // add per-topic configurations settings here
+//    AdminUtils.createTopic(zkUtils, topic, partitions, replication, topicConfig);
+//    zkClient.close();
+//  }
+//
+//}
+
