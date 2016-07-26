@@ -13,10 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.heliosapm.streams.metrics;
+package com.heliosapm.streams.metrics.aggregation;
 
 import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.Collections;
@@ -25,9 +24,18 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.kafka.common.serialization.Deserializer;
+import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.state.KeyValueStore;
 
+import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufUtil;
 
 /**
  * <p>Title: StreamedMetricAggregation</p>
@@ -54,6 +62,8 @@ public class StreamedMetricAggregation {
 	protected final String metricName;
 	/** The metric tags */
 	protected final Map<String, String> tags = new TreeMap<String, String>();
+	/** The size of a read instance */
+	protected volatile transient int size = -1;
 	
 	private static final TimeUnit[] TUNITS = TimeUnit.values();
 	
@@ -104,45 +114,51 @@ public class StreamedMetricAggregation {
 	 * @param bytes The bytes to read from
 	 */
 	private StreamedMetricAggregation(final byte[] bytes) {
-		final ByteBuffer b = ByteBuffer.wrap(bytes);
-		sticky = b.get(STICKY)==1;
-		doubleType = b.get(DOUBLE_TYPE)==1;
-		createTime = b.getLong(CREATE_TIME);
-		period = b.getLong(PERIOD);
-		periodUnit = TUNITS[b.get(PERIOD_UNIT)];
-		b.position(METRIC_VALUES);
-		values.put(bytes, METRIC_VALUES, VALUE_SIZE);
-		final byte tagCount = b.get(TAG_COUNT);
-		b.position(METRIC_NAME);
-		metricName = nextString(b);
-		for(int i = 0; i < tagCount; i++) {
-			tags.put(nextString(b), nextString(b));
-			i++;
-		}		
+		size = bytes.length;
+		final ByteBuf b = BufferManager.getInstance().buffer(size).writeBytes(bytes);
+		try {
+			sticky = b.getByte(STICKY)==1;				
+			doubleType = b.getByte(DOUBLE_TYPE)==1;
+			createTime = b.getLong(CREATE_TIME);
+			period = b.getLong(PERIOD);
+			periodUnit = TUNITS[b.getByte(PERIOD_UNIT)];
+			b.readerIndex(METRIC_VALUES);
+			values.put(bytes, METRIC_VALUES, VALUE_SIZE);
+			final byte tagCount = b.getByte(TAG_COUNT);
+			b.readerIndex(METRIC_NAME);
+			metricName = nextString(b);
+			for(int i = 0; i < tagCount; i++) {
+				tags.put(nextString(b), nextString(b));
+				i++;
+			}
+		} finally {
+			try { b.release(); } catch (Exception x) {/* No Op */}
+		}
 	}
 	
+	/**
+	 * Returns this aggregation as a byte array
+	 * @return a byte array
+	 */
 	public byte[] toByteArray() {
-		final ByteArrayOutputStream baos = new ByteArrayOutputStream(128);
-		final DataOutputStream daos = new DataOutputStream(baos);
+		final ByteBuf b = BufferManager.getInstance().buffer(size==-1 ? 128 : size);
 		try {
-			daos.write(sticky ? 1 : 0);
-			daos.write(doubleType ? 1 : 0);
-			daos.writeLong(createTime);
-			daos.writeLong(period);
-			daos.write(periodUnit.ordinal());
-			final byte[] bytes = new byte[VALUE_SIZE];
+			b.writeByte(sticky ? 1 : 0);
+			b.writeByte(doubleType ? 1 : 0);
+			b.writeLong(createTime);
+			b.writeLong(period);
+			b.writeByte(periodUnit.ordinal());
 			values.position(0);
-			values.get(bytes);
-			daos.write(bytes);
-			
-			
-			
-			return baos.toByteArray();
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to write to byte array", ex);
+			b.writeBytes(values);
+			b.writeByte(tags.size());
+			BufferManager.writeUTF(metricName, b);
+			for(Map.Entry<String, String> entry: tags.entrySet()) {
+				BufferManager.writeUTF(entry.getKey(), b);
+				BufferManager.writeUTF(entry.getValue(), b);
+			}
+			return ByteBufUtil.getBytes(b);
 		} finally {
-			try { daos.close(); } catch (Exception x) {/* No Op */}
-			try { baos.close(); } catch (Exception x) {/* No Op */}
+			try { b.release(); } catch (Exception x) {/* No Op */}
 		}
 	}
 	
@@ -170,11 +186,8 @@ public class StreamedMetricAggregation {
 		return b.append("\n]").toString();
 	}
 	
-	private static String nextString(final ByteBuffer b) {
-		final int strLen = b.getInt();
-		final byte[] strBytes = new byte[strLen];
-		b.get(strBytes);
-		return new String(strBytes, UTF8);		
+	private static String nextString(final ByteBuf b) {
+		return BufferManager.readUTF(b);		
 	}
 	
 	/**
@@ -591,13 +604,8 @@ public class StreamedMetricAggregation {
 		return Collections.unmodifiableMap(tags);
 	}
 	
-
-
-
-	
-	
-	
-	
-	
+	public static StreamedMetricAggregation fromBytes(final byte[] bytes) {
+		return new StreamedMetricAggregation(bytes);
+	}
 	
 }

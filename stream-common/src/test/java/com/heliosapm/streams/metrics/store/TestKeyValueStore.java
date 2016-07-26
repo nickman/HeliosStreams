@@ -38,6 +38,7 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
  */
 
 public class TestKeyValueStore<K, V> implements KeyValueStore<K, V> {
+	/** The store implementation */
 	protected final NonBlockingHashMap<K,V> map = new NonBlockingHashMap<K,V>();
 	
 	/**
@@ -47,6 +48,13 @@ public class TestKeyValueStore<K, V> implements KeyValueStore<K, V> {
 	@Override
 	public String name() {		
 		return "TestKeyValueStore";
+	}
+	
+	/**
+	 * Clears the store
+	 */
+	public void clear() {
+		map.clear();
 	}
 
 	/**
