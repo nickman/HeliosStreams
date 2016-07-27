@@ -1,0 +1,425 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+  	<parent>
+	    <groupId>com.heliosapm.streams</groupId>
+	    <artifactId>helios-streams-parent</artifactId>
+    	<version>0.0.1-SNAPSHOT</version>
+  	</parent>
+    
+    <groupId>com.heliosapm.streams</groupId>
+    <artifactId>collector-server</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>Helios Streams :: CollectorServer</name>
+    <description>Helios Streams Collector Server</description>
+    <packaging>jar</packaging>
+    <url>https://github.com/nickman</url>
+	
+    <dependencies>
+      
+      
+		<dependency>
+		    <groupId>junit</groupId>
+		    <artifactId>junit</artifactId>
+		</dependency>
+		
+		<!-- 
+		<dependency>
+		  <groupId>net.manub</groupId>
+		  <artifactId>scalatest-embedded-kafka_2.11</artifactId>
+		</dependency>
+		-->
+
+		<dependency>
+		    <groupId>com.heliosapm.streams</groupId>
+		    <artifactId>stream-common</artifactId>
+		    <version>${project.version}</version>
+		</dependency>
+
+		<dependency>				
+			<groupId>com.heliosapm.utils</groupId>
+			<artifactId>heliosutils</artifactId>
+		</dependency>
+
+		      <!--
+			========================================
+			Groovy Artifacts
+			========================================
+			-->
+		      <dependency>
+						<groupId>org.codehaus.groovy</groupId>
+						<artifactId>groovy-all</artifactId>
+						<version>${groovy.version}</version>
+		      </dependency>
+		      <dependency>
+						<groupId>org.codehaus.groovy</groupId>
+						<artifactId>groovy-all</artifactId>
+						<classifier>indy</classifier>
+						<version>${groovy.version}</version>
+		      </dependency>
+		
+
+
+		<!-- ==========================================================
+		    Chronicle Dependencies
+		    ========================================================== -->
+
+
+			<dependency>
+			  <groupId>net.openhft</groupId>
+			  <artifactId>chronicle-queue</artifactId>
+			</dependency>
+
+
+		<!-- ==========================================================
+		    ZooKeep Dependencies
+		    ========================================================== -->
+
+			<dependency>
+			  <groupId>org.apache.zookeeper</groupId>
+			  <artifactId>zookeeper</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-framework</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-recipes</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-client</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+
+
+		<!-- ==========================================================
+		    Kafka Dependencies
+		    ========================================================== -->
+
+			<dependency>
+			  <groupId>org.apache.kafka</groupId>
+			  <artifactId>kafka-clients</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+			<dependency>
+			  <groupId>org.apache.kafka</groupId>
+			  <artifactId>kafka-streams</artifactId>
+			  <scope>provided</scope>
+			</dependency>
+
+
+		<!-- ==========================================================
+		    Misc Dependencies
+		    ========================================================== -->
+
+			<dependency>				
+				<groupId>com.heliosapm.utils</groupId>
+				<artifactId>heliosutils</artifactId>
+				<scope>provided</scope>
+			</dependency>
+			
+            <dependency>
+                <groupId>io.dropwizard.metrics</groupId>
+                <artifactId>metrics-core</artifactId>
+                <scope>provided</scope>
+            </dependency>
+
+			<dependency>
+			  <groupId>io.netty</groupId>
+			  <artifactId>netty-buffer</artifactId>
+			</dependency>
+
+				<dependency>
+				  <groupId>net.sf.trove4j</groupId>
+				  <artifactId>trove4j</artifactId>
+				</dependency>            
+
+
+
+		<!-- ==========================================================
+		    Logging Dependencies
+		    ========================================================== -->
+
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-api</artifactId>
+		  </dependency>
+
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-core</artifactId>
+		  </dependency>
+	
+	
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-slf4j-impl</artifactId>
+		  </dependency>
+
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-1.2-api</artifactId>
+		  </dependency>
+			
+
+		<!-- ==========================================================
+		    Spring Boot Dependencies
+		    ========================================================== -->
+		
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot</artifactId>
+		  <scope>provided</scope>
+  		</dependency>
+  		
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot-actuator</artifactId>
+		  <scope>provided</scope>
+		</dependency>
+
+		<!-- ==========================================================
+		    Collector Dependencies
+		    ========================================================== -->		
+		  
+<dependency>
+  <groupId>com.h2database</groupId>
+  <artifactId>h2</artifactId>
+  <version>1.4.191</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-groovy</artifactId>
+  <version>1.4.0-rc-1</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-h2</artifactId>
+  <version>1.4.0-rc-1</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-core</artifactId>
+  <version>1.4.0-rc-1</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-hikari</artifactId>
+  <version>1.4.0-rc-1</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-hystrix</artifactId>
+  <version>1.4.0-rc-1</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-spring-boot</artifactId>
+  <version>1.4.0-rc-1</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-config</artifactId>
+  <version>0.9.15</version>
+</dependency>
+
+<dependency>
+  <groupId>io.ratpack</groupId>
+  <artifactId>ratpack-dropwizard-metrics</artifactId>
+  <version>1.4.0-rc-1</version>
+</dependency>
+
+<dependency>
+  <groupId>com.zaxxer</groupId>
+  <artifactId>HikariCP-java6</artifactId>
+  <version>2.3.13</version>
+</dependency>
+
+
+<dependency>
+  <groupId>com.zaxxer</groupId>
+  <artifactId>HikariCP</artifactId>
+  <version>2.4.7</version>
+</dependency>
+
+<dependency>
+  <groupId>org.apache.commons</groupId>
+  <artifactId>commons-pool2</artifactId>
+  <version>2.4.2</version>
+</dependency>
+
+<dependency>
+  <groupId>org.infinispan</groupId>
+  <artifactId>infinispan-bom</artifactId>
+  <version>7.0.2.Final</version>
+  <type>pom</type>
+</dependency>
+
+<dependency>
+	<groupId>org.infinispan</groupId>
+	<artifactId>infinispan-embedded</artifactId>
+	<version>8.2.0.Final</version>
+</dependency>		  		  
+
+<dependency>
+  <groupId>com.espertech</groupId>
+  <artifactId>esper</artifactId>
+  <version>5.3.0</version>
+</dependency>
+
+<dependency>
+  <groupId>com.espertech</groupId>
+  <artifactId>esperio-db</artifactId>
+  <version>5.3.0</version>
+</dependency>
+
+
+		
+    
+    </dependencies>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${compiler-plugin.version}</version>
+                <configuration>
+                    <source>${compiler-source.version}</source>
+                    <target>${compiler-target.version}</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>${javadoc-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <show>public</show>
+                    <nohelp>true</nohelp>
+                    <quiet>true</quiet>
+                </configuration>
+            </plugin>
+	    <plugin>
+		    <groupId>org.apache.maven.plugins</groupId>
+		    <artifactId>maven-source-plugin</artifactId>
+		    <version>${source-plugin.version}</version>
+		    <executions>
+			    <execution>
+				    <id>attach-sources</id>
+				    <phase>verify</phase>
+				    <goals>
+					    <goal>jar</goal>
+				    </goals>
+			    </execution>
+		    </executions>
+	    </plugin>
+	    <plugin>
+		<groupId>org.apache.maven.plugins</groupId>
+		<artifactId>maven-jar-plugin</artifactId>
+		<version>${jar-plugin.version}</version>
+		<configuration>
+		  <forceCreation>true</forceCreation>
+		</configuration>
+	    </plugin>
+	    <plugin>
+		<groupId>org.apache.maven.plugins</groupId>
+		<artifactId>maven-eclipse-plugin</artifactId>
+		<version>${eclipse-plugin.version}</version>
+		<configuration>
+		    <downloadJavadocs>${downloadJavadocs}</downloadJavadocs>
+		    <downloadSources>${downloadSources}</downloadSources>
+		    <classpathContainers>
+		    </classpathContainers>
+		</configuration>
+	    </plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+	     <artifactId>maven-surefire-plugin</artifactId>
+	     <version>${surefire.version}</version>
+	</plugin>
+
+	<plugin>
+	  <groupId>org.apache.maven.plugins</groupId>
+	  <artifactId>maven-shade-plugin</artifactId>
+	  <version>${shade.version}</version>
+        <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+              <configuration>
+              
+                <artifactSet>
+                  <excludes>
+                  <!-- 
+                  	<exclude>log4j:log4j:jar:</exclude>
+                  	<exclude>org.slf4j:*:jar:</exclude>
+                  	<exclude>org.codehaus.groovy:*:jar:</exclude>
+                  -->
+					  <exclude>META-INF/*.SF</exclude>
+	                  <exclude>META-INF/*.DSA</exclude>
+	                  <exclude>META-INF/*.RSA</exclude>                      	
+                  </excludes>
+                  <includes>
+                    
+                  </includes>
+                </artifactSet>
+              
+          		<addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+          		<addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+          		<includePluginDependencies>false</includePluginDependencies>
+          		
+        		<transformers>
+					<transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+	                  <resource>META-INF/spring.handlers</resource>
+	                </transformer>
+	                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+	                  <resource>META-INF/spring.schemas</resource>
+	                </transformer>        			
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ComponentsXmlResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.DontIncludeResourceTransformer">
+                		<resource>.SF</resource>
+                		<resource>.DSA</resource>
+                		<resource>.RSA</resource>
+            		</transformer>
+                </transformers>
+              </configuration>
+            </execution>
+          </executions>	  
+	</plugin>
+	    
+   </plugins>
+ </build>
+    
+    
+</project>

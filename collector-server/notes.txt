@@ -1,0 +1,25 @@
+Directories:
+============
+	lib
+	bin
+	conf
+	datasources
+	web
+	collectors
+	cache/db/chronicle
+	ssh
+	fixtures
+
+DataSources:
+============
+	jdbc
+	jmx
+	mq
+
+Core:
+=====
+	Script extension:
+		instrumented / JMX
+	Scheduler with cron support
+	hot [un-]deployer with filewatcher
+	compiled script tree

@@ -23,6 +23,8 @@ import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.I0Itec.zkclient.ZkClient;
+import org.I0Itec.zkclient.ZkConnection;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.server.ServerConfig;
@@ -36,9 +38,15 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 
+import kafka.admin.AdminUtils;
+import kafka.admin.RackAwareMode;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
 import kafka.utils.SystemTime$;
+import kafka.utils.ZKStringSerializer$;
+import kafka.admin.RackAwareMode$;
+import kafka.admin.RackAwareMode;
+import kafka.utils.ZkUtils;
 
 /**
  * <p>Title: KafkaTestServer</p>
@@ -129,7 +137,14 @@ public class KafkaTestServer {
 	protected ZooKeeperServerMain zkSoServer = null;
 	/** The standalone flag */
 	protected final AtomicBoolean standalone = new AtomicBoolean(true);
-	
+	/** The zookeep connect string as derrived from the zookeep configuration */
+	protected String zookeepConnect = "localhost:2181";
+	/** A Zookeeper util client for admin ops */
+	protected volatile ZkUtils zkUtils = null;
+	/** A zookeeper client for admin ops */
+	protected ZkClient zkClient  = null;
+	/** A zookeeper connection for admin ops */
+	protected ZkConnection zkConnection = null;
 	
 	
 	/**
@@ -152,8 +167,11 @@ public class KafkaTestServer {
 				zkConfigProperties.setProperty("dataDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR));
 				zkConfigProperties.setProperty("dataLogDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR));
 				final int clientPort = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_PORT, DEFAULT_ZK_PORT);
+				final String clientPortAddress = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_IFACE, DEFAULT_ZK_IFACE);				
+				zookeepConnect = clientPortAddress + ":" + clientPort;
+				
 				zkConfigProperties.setProperty("clientPort", "" + clientPort);
-				zkConfigProperties.setProperty("clientPortAddress", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_IFACE, DEFAULT_ZK_IFACE));
+				zkConfigProperties.setProperty("clientPortAddress", clientPortAddress);
 				zkConfigProperties.setProperty("maxClientCnxns", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXCONNS, DEFAULT_ZK_MAXCONNS));
 				zkConfigProperties.setProperty("minSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MINTO, DEFAULT_ZK_MINTO));
 				zkConfigProperties.setProperty("maxSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXTO, DEFAULT_ZK_MAXTO));
@@ -163,7 +181,7 @@ public class KafkaTestServer {
 				configProperties.setProperty("log.dir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOG_DIR, DEFAULT_LOG_DIR));
 				configProperties.setProperty("port", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_PORT, DEFAULT_PORT));
 				configProperties.setProperty("enable.zookeeper", "" + ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_ZOOKEEP, DEFAULT_ZOOKEEP));
-				configProperties.setProperty("zookeeper.connect", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZOOKEEP_URI, DEFAULT_ZOOKEEP_URI));
+				configProperties.setProperty("zookeeper.connect", zookeepConnect);
 				configProperties.setProperty("brokerid", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BROKERID, DEFAULT_BROKERID));
 				log.info("Embedded Kafka ZooKeeper Config: {}",  zkConfigProperties);
 				log.info("Embedded Kafka Broker Config: {}",  configProperties);
@@ -228,7 +246,24 @@ public class KafkaTestServer {
 		}
 	}
 	
-	
+
+	private ZkUtils getZkUtils() {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		if(zkUtils==null) {
+			synchronized(this) {
+				if(zkUtils==null) {
+					zkClient = new ZkClient(
+						zookeepConnect,
+					    5000,
+					    5000,
+					    ZKStringSerializer$.MODULE$);
+					zkConnection = new ZkConnection(zookeepConnect);
+					zkUtils = new ZkUtils(zkClient, zkConnection, false);					
+				}
+			}
+		}
+		return zkUtils;
+	}
 	
 	/**
 	 * Stops the server
@@ -239,6 +274,14 @@ public class KafkaTestServer {
 			kafkaServer = null;
 			kafkaConfig = null;
 			configProperties.clear();
+			if(zkUtils!=null) {
+				try { zkUtils.close(); } catch (Exception x) {}
+				zkUtils = null;
+				try { zkConnection.close(); } catch (Exception x) {}
+				zkConnection = null;
+				try { zkClient.close(); } catch (Exception x) {}
+				zkClient = null;				
+			}			
 			if(standalone.get()) {
 				PrivateAccessor.invoke(zkSoServer, "shutdown");
 			} else {
@@ -253,6 +296,13 @@ public class KafkaTestServer {
 			log.warn("Embedded Kafka Broker is not running");
 		}
 	}
+	
+	public void createTopic(final String topicName, final int partitionCount, final int replicaCount, final Properties topicProperties) {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		final ZkUtils z = getZkUtils();
+		AdminUtils.createTopic(zkUtils, topicName, partitionCount, replicaCount, topicProperties==null ? new Properties() : topicProperties, new RackAwareMode.Disabled$());
+		// kafka.common.TopicExistsException: Topic "xxx" already exists.
+	}
 
 	/**
 	 * @param args
@@ -264,6 +314,9 @@ public class KafkaTestServer {
 		final KafkaTestServer kts = new KafkaTestServer();
 		try {
 			kts.start();
+			kts.log.info("Creating topic [{}]",  "xxx");
+			kts.createTopic("xxx", 5, 1, null);
+			kts.log.info("Topic created [{}]",  "xxx");
 			StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
 				public void run() {
 					if(kts.running.get()) {
