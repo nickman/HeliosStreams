@@ -42,7 +42,9 @@ import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
+import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
+import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
@@ -85,7 +87,7 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	protected final CollectorExecutionService executionService;
 	
 	/** A timer to measure collection times */
-	protected final Timer collectionTimer = new Timer();
+	protected Timer collectionTimer = null;
 	/** A cached gauge for the collection timer's snapshot */
 	protected final CachedGauge<Snapshot> timerSnap = new CachedGauge<Snapshot>(5, TimeUnit.SECONDS) {
 		@Override
@@ -126,9 +128,11 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	 * @param gcl The class loader
 	 * @param sourceFile The source file
 	 */
-	void initialize(final GroovyClassLoader gcl, final File sourceFile) {
+	void initialize(final GroovyClassLoader gcl, final File sourceFile, final String rootDirectory) {
 		this.gcl = gcl;
 		this.sourceFile = sourceFile;
+		final String name = sourceFile.getName().replace(".groovy", "");
+		final String dir = sourceFile.getParent().replace(rootDirectory, "").replace("\\", "/").replace("/./", "/").replace("/collectors/", "");
 		final Matcher m = PERIOD_PATTERN.matcher(this.sourceFile.getAbsolutePath());
 		if(m.matches()) {
 			final String sch = m.group(1);
@@ -141,11 +145,14 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 			log.info("No schedule found for collector script [{}]", this.sourceFile);
 		}
 		objectName = JMXHelper.objectName(new StringBuilder()
-				.append("com.heliosapm.streams.collector.scripts:name=")
-				.append(this.sourceFile.getName())
-				.append(",dir=")
-				.append(this.sourceFile.getParent())
+				.append("com.heliosapm.streams.collector.scripts:dir=")
+				.append(dir)
+				.append(",name=")
+				.append(name)
 		);
+		collectionTimer = SharedMetricsRegistry.getInstance().timer("collection.dir=" + dir + ".name=" + name);		
+		bindingMap.put("globalCache", GlobalCacheService.getInstance());
+		bindingMap.put("log", LogManager.getLogger("collectors." + dir.replace('/', '.') + "." + name));
 		if(JMXHelper.isRegistered(objectName)) {
 			try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
 		}
@@ -153,48 +160,6 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 			log.warn("Failed to register MBean for ManagedScript [{}]", objectName, ex);
 		}
 	}
-	
-	/** A fork join task to invoke the collection in the fork join pool */
-	protected final ForkJoinTask<Void> collectionTask = new ForkJoinTask<Void>() {
-		/**  */
-		private static final long serialVersionUID = 688413353613029684L;
-
-		/**
-		 * <p>Executes the script</p>
-		 * {@inheritDoc}
-		 * @see jsr166y.ForkJoinTask#exec()
-		 */
-		@Override
-		protected boolean exec() {
-			run();
-			return true;
-		}
-		
-
-		/**
-		 * <p>No Op</p>
-		 * {@inheritDoc}
-		 * @see jsr166y.ForkJoinTask#getRawResult()
-		 */
-		@Override
-		public Void getRawResult() {
-			return null;
-		}
-
-		/**
-		 * <p>No Op</p>
-		 * {@inheritDoc}
-		 * @see jsr166y.ForkJoinTask#setRawResult(java.lang.Object)
-		 */
-		@Override
-		protected void setRawResult(Void value) {
-			/* No Op */			
-		}
-
-		
-	};
-	
-	
 	
 	/**
 	 * {@inheritDoc}
@@ -204,8 +169,21 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	public Void call() throws Exception {
 		try {
 			final Context ctx = collectionTimer.time();
-			executionService.execute(collectionTask);
-			ctx.stop();
+			final ForkJoinTask<Void> task = executionService.submit(new Callable<Void>(){
+				@Override
+				public Void call() throws Exception {		
+					run();
+					return null;
+				}
+			});
+			try {
+				task.get(5, TimeUnit.SECONDS);
+				final long elapsed = ctx.stop();
+				log.info("Elapsed: [{}]", TimeUnit.NANOSECONDS.toMillis(elapsed));				
+			} catch (Exception ex) {
+				log.error("Task Execution Failed", ex);
+				try { task.cancel(true); } catch (Exception x) {/* No Op */}
+			}
 			consecutiveErrors.reset();
 		} catch (Exception ex) {
 			consecutiveErrors.increment();
@@ -215,6 +193,15 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 		}
 		
 		return null;
+	}
+	
+	public Map<String, String> getBindings() {
+		final Map<String, String> bind = new HashMap<String, String>(bindingMap.size());
+		for(Map.Entry<String, Object> entry: bindingMap.entrySet()) {
+			final String value = entry.getValue()==null ? null : entry.getValue().toString();
+			bind.put(entry.getKey(), value);
+		}
+		return bind;
 	}
 	
 	/**
@@ -245,6 +232,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 			}
 		}
 	}
+	
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -363,6 +352,7 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	public long getMinCollectTime() {
 		return timerSnap.getValue().getMin();
 	}
+	
 
 	/**
 	 * Returns the total number of completed collections

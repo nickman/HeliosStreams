@@ -20,11 +20,13 @@ package com.heliosapm.streams.collector.groovy;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,12 +35,17 @@ import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.control.messages.WarningMessage;
 
+import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.utils.classload.HeliosURLClassLoader;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.file.FileFinder;
+import com.heliosapm.utils.file.Filters.FileMod;
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.ref.ReferenceService;
 import com.heliosapm.utils.url.URLHelper;
 
 import groovy.lang.GroovyClassLoader;
-import groovy.lang.Script;
 
 /**
  * <p>Title: ManagedScriptFactory</p>
@@ -78,6 +85,10 @@ public class ManagedScriptFactory {
 	protected final CompilerConfiguration compilerConfig = new CompilerConfiguration(CompilerConfiguration.DEFAULT);
 	/** The initial and default imports customizer for the compiler configuration */
 	protected final ImportCustomizer importCustomizer = new ImportCustomizer(); 
+	
+	
+	
+	protected JDBCDataSourceManager jdbcDataSourceManager = null;
 
 	
 	/**
@@ -95,6 +106,13 @@ public class ManagedScriptFactory {
 		return instance;
 	}
 	
+	public static void main(String[] args) {
+		System.setProperty(CONFIG_ROOT_DIR, "./src/test/resources/test-root");
+		JMXHelper.fireUpJMXMPServer(3456);
+		getInstance();
+		StdInCommandHandler.getInstance().run();
+	}
+	
 	/**
 	 * Creates a new ManagedScriptFactory
 	 */
@@ -107,7 +125,24 @@ public class ManagedScriptFactory {
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
 		initSubDirs();
 		libDirClassLoader = HeliosURLClassLoader.getOrCreateLoader(getClass().getSimpleName() + "LibClassLoader", listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
+//		ServiceLoader<Driver> sl = ServiceLoader.load(Driver.class, libDirClassLoader);
+//		for(Driver d: sl) {
+//			log.info("Loaded Driver: [{}]", d.getClass().getName());
+//		}
+		Thread.currentThread().setContextClassLoader(libDirClassLoader);
 		customizeCompiler();		
+		FileFinder ff = FileFinder.newFileFinder(new File(rootDirectory, "collectors").getAbsolutePath())
+			.maxDepth(10)
+			.filterBuilder()
+			.caseInsensitive(false)
+			.endsWithMatch(".groovy")
+			.fileAttributes(FileMod.READABLE)
+			.shouldBeFile()
+			.fileFinder();
+		for(File f : ff.find()) {
+			compileScript(f);
+		}
+		jdbcDataSourceManager = new JDBCDataSourceManager(new File(rootDirectory, "datasources"));
 		log.info("<<<<< ManagedScriptFactory started.");
 	}
 	
@@ -122,13 +157,23 @@ public class ManagedScriptFactory {
 		return groovyClassLoader;
 	}
 	
-	public Script compileScript(final File source) {
+	final Set<WeakReference<GroovyClassLoader>> loaders = new CopyOnWriteArraySet<WeakReference<GroovyClassLoader>>();
+	
+	/**
+	 * Compiles and deploys the script in the passed file
+	 * @param source The file to compile the source from
+	 * @return the script instance
+	 */
+	public ManagedScript compileScript(final File source) {
 		if(source==null) throw new IllegalArgumentException("The passed source file was null");
 		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
 		final GroovyClassLoader gcl = newGroovyClassLoader();
+		final WeakReference<GroovyClassLoader> weakRef = ReferenceService.getInstance().newWeakReference(gcl, null);
+		loaders.add(weakRef);
+		
 		try {
 			final ManagedScript ms = (ManagedScript)gcl.parseClass(source).newInstance();
-			ms.initialize(gcl, source);
+			ms.initialize(gcl, source, rootDirectory.getAbsolutePath());
 			return ms;
 		} catch (CompilationFailedException cex) {
 			throw new RuntimeException("Failed to compile source ["+ source + "]", cex);
@@ -215,7 +260,9 @@ public class ManagedScriptFactory {
 				listLibJarUrls(f, _accum);
 			} else {
 				if(f.getName().toLowerCase().endsWith(".jar")) {
-					_accum.add(URLHelper.toURL(f));
+					final URL jarUrl = URLHelper.toURL(f.getAbsolutePath());
+					_accum.add(jarUrl);
+					log.info("Adding [{}] to classpath", jarUrl);
 				}
 			}
 		}

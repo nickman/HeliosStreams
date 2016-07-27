@@ -20,6 +20,7 @@ package com.heliosapm.streams.collector.groovy;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.Map;
 
 import javax.management.MBeanRegistration;
 
@@ -112,5 +113,11 @@ public interface ManagedScriptMBean extends MBeanRegistration {
 	 * Returns the total number of collection errors
 	 * @return the total number of collection errors
 	 */
-	public long getTotalCollectionErrors();	
+	public long getTotalCollectionErrors();
+	
+	/**
+	 * Returns this script's current bindings
+	 * @return this script's current bindings
+	 */
+	public Map<String, String> getBindings();
 }
