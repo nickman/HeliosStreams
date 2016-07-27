@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.streams.collector.groovy;
 
 import java.io.File;
+import java.io.IOException;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,6 +28,7 @@ import java.util.Set;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.control.messages.WarningMessage;
@@ -36,6 +38,7 @@ import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 import groovy.lang.GroovyClassLoader;
+import groovy.lang.Script;
 
 /**
  * <p>Title: ManagedScriptFactory</p>
@@ -54,6 +57,11 @@ public class ManagedScriptFactory {
 	public static final String CONFIG_ROOT_DIR = "collector.service.rootdir";
 	/** The default collector service root directory */
 	public static final String DEFAULT_ROOT_DIR = new File(new File(System.getProperty("user.home")), ".heliosapm-collector").getAbsolutePath();
+	/** The configuration key for the groovy compiler auto imports */
+	public static final String CONFIG_AUTO_IMPORTS = "collector.service.groovy.autoimports";
+	/** The default groovy compiler auto imports */
+	public static final String[] DEFAULT_AUTO_IMPORTS = {"import javax.management.*", "import java.lang.management.*"};
+	
 	
 	/** The expected directory names under the collector-service root */
 	public static final Set<String> DIR_NAMES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
@@ -66,8 +74,6 @@ public class ManagedScriptFactory {
 	protected final File rootDirectory;
 	/** The lib (jar) directory class loader */
 	protected final HeliosURLClassLoader libDirClassLoader;
-	/** The groovy class loader for dynamic managed scripts */
-	protected final GroovyClassLoader groovyClassLoader;
 	/** The groovy compiler configuration */
 	protected final CompilerConfiguration compilerConfig = new CompilerConfiguration(CompilerConfiguration.DEFAULT);
 	/** The initial and default imports customizer for the compiler configuration */
@@ -101,11 +107,37 @@ public class ManagedScriptFactory {
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
 		initSubDirs();
 		libDirClassLoader = HeliosURLClassLoader.getOrCreateLoader(getClass().getSimpleName() + "LibClassLoader", listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
-		groovyClassLoader = new GroovyClassLoader(libDirClassLoader, compilerConfig, false);
-		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
-		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
 		customizeCompiler();		
 		log.info("<<<<< ManagedScriptFactory started.");
+	}
+	
+	/**
+	 * Creates a new groovy class loader for a new managed script
+	 * @return the groovy class loader
+	 */
+	public GroovyClassLoader newGroovyClassLoader() {	
+		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, compilerConfig, false);
+		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
+		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
+		return groovyClassLoader;
+	}
+	
+	public Script compileScript(final File source) {
+		if(source==null) throw new IllegalArgumentException("The passed source file was null");
+		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
+		final GroovyClassLoader gcl = newGroovyClassLoader();
+		try {
+			final ManagedScript ms = (ManagedScript)gcl.parseClass(source).newInstance();
+			ms.initialize(gcl, source);
+			return ms;
+		} catch (CompilationFailedException cex) {
+			throw new RuntimeException("Failed to compile source ["+ source + "]", cex);
+		} catch (IOException iex) {
+			throw new RuntimeException("Failed to read source ["+ source + "]", iex);			
+		} catch (Exception ex) {
+			log.error("Failed to instantiate script for source [" + source + "]", ex);
+			throw new RuntimeException("Failed to instantiate script for source ["+ source + "]", ex);
+		}
 	}
 
 	/**
@@ -132,6 +164,12 @@ public class ManagedScriptFactory {
 		compilerConfig.setTolerance(0);
 		compilerConfig.setVerbose(true);
 		compilerConfig.setWarningLevel(WarningMessage.PARANOIA);
+		final String[] imports = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_AUTO_IMPORTS, DEFAULT_AUTO_IMPORTS);
+		applyImports(imports);
+		if(imports!=DEFAULT_AUTO_IMPORTS) {
+			applyImports(DEFAULT_AUTO_IMPORTS);
+		}
+		compilerConfig.addCompilationCustomizers(importCustomizer);
 	}
 	
 	/**
