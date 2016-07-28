@@ -20,8 +20,8 @@ package com.heliosapm.streams.collector.groovy;
 
 import java.io.File;
 import java.io.IOException;
-import java.lang.ref.WeakReference;
 import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.LogManager;
@@ -40,12 +41,10 @@ import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.control.messages.WarningMessage;
 
-
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
-import com.heliosapm.utils.classload.HeliosURLClassLoader;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.file.FileChangeEvent;
 import com.heliosapm.utils.file.FileChangeEventListener;
@@ -54,10 +53,13 @@ import com.heliosapm.utils.file.FileFinder;
 import com.heliosapm.utils.file.Filters.FileMod;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
-import com.heliosapm.utils.ref.ReferenceService;
 import com.heliosapm.utils.url.URLHelper;
 
 import groovy.lang.GroovyClassLoader;
+import groovy.lang.GroovyCodeSource;
+import groovy.lang.GroovySystem;
+import groovy.lang.MetaClassRegistryChangeEvent;
+import groovy.lang.MetaClassRegistryChangeEventListener;
 import jsr166e.LongAdder;
 import jsr166y.ForkJoinTask;
 
@@ -68,7 +70,7 @@ import jsr166y.ForkJoinTask;
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScriptFactory</code></p>
  */
 
-public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChangeEventListener {
+public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChangeEventListener, MetaClassRegistryChangeEventListener {
 	/** The singleton instance */
 	private static volatile ManagedScriptFactory instance;
 	/** The singleton instance ctor lock */
@@ -94,7 +96,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	/** The collector service root directory */
 	protected final File rootDirectory;
 	/** The lib (jar) directory class loader */
-	protected final HeliosURLClassLoader libDirClassLoader;
+	protected final URLClassLoader libDirClassLoader;
 	/** The groovy compiler configuration */
 	protected final CompilerConfiguration compilerConfig = new CompilerConfiguration(CompilerConfiguration.DEFAULT);
 	/** The initial and default imports customizer for the compiler configuration */
@@ -124,6 +126,12 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		.build();
 	/** Id generator for groovy class loaders */
 	protected final AtomicLong groovyClassLoaderSerial = new AtomicLong();
+	/** Weak value cache to track created groovy scripts */
+	protected final Cache<File, ManagedScript> managedScripts = CacheBuilder.newBuilder()
+		.concurrencyLevel(4)
+		.initialCapacity(2048)
+		.weakValues()
+		.build();
 	
 	
 	/**
@@ -148,23 +156,47 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		StdInCommandHandler.getInstance().run();
 	}
 	
+	protected final Set<Class<?>> metaClasses = new CopyOnWriteArraySet<Class<?>>();
+	
+	/**
+	 * {@inheritDoc}
+	 * @see groovy.lang.MetaClassRegistryChangeEventListener#updateConstantMetaClass(groovy.lang.MetaClassRegistryChangeEvent)
+	 */
+	@Override
+	public void updateConstantMetaClass(final MetaClassRegistryChangeEvent cmcu) {
+		final Set<Class<?>> metaClasses = new HashSet<Class<?>>();
+		metaClasses.add(cmcu.getClassToUpdate());
+		metaClasses.add(cmcu.getNewMetaClass().getClass());
+		metaClasses.add(cmcu.getOldMetaClass().getClass());
+		final StringBuilder b = new StringBuilder();
+		for(Class<?> clazz: metaClasses) {
+			b.append(clazz.getName()).append(":[").append(clazz.getClassLoader()).append("@").append(System.identityHashCode(clazz.getClassLoader())).append("]\n");
+		}
+		log.info("MetaClassRegistry Updates:\n{}", b.toString());
+		metaClasses.addAll(metaClasses);				
+	}
+	
 	/**
 	 * Creates a new ManagedScriptFactory
 	 */
 	private ManagedScriptFactory() {
 		log.info(">>>>> Starting ManagedScriptFactory...");
-		final String rootDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROOT_DIR, DEFAULT_ROOT_DIR);
+		final String rootDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROOT_DIR, DEFAULT_ROOT_DIR);		
 		rootDirectory = new File(rootDirName);
 		log.info("Collector Service root directory: [{}]", rootDirectory);
 		rootDirectory.mkdirs();
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
 		initSubDirs();
-		libDirClassLoader = HeliosURLClassLoader.getOrCreateLoader(getClass().getSimpleName() + "LibClassLoader", listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
+		libDirClassLoader = new URLClassLoader(listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
+				//HeliosURLClassLoader.getOrCreateLoader(getClass().getSimpleName() + "LibClassLoader", listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
 //		ServiceLoader<Driver> sl = ServiceLoader.load(Driver.class, libDirClassLoader);
 //		for(Driver d: sl) {
 //			log.info("Loaded Driver: [{}]", d.getClass().getName());
 //		}
-		Thread.currentThread().setContextClassLoader(libDirClassLoader);
+//		Thread.currentThread().setContextClassLoader(libDirClassLoader);
+		MetaClassRegistryCleaner.createAndRegister();
+//		GroovySystem.setKeepJavaMetaClasses(false);
+//		GroovySystem.stopThreadedReferenceManager();
 		customizeCompiler();
 		collectorExecutionService = CollectorExecutionService.getInstance();
 		jdbcDataSourceManager = new JDBCDataSourceManager(new File(rootDirectory, "datasources"));
@@ -197,16 +229,9 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 					@Override
 					public Boolean call() throws Exception {
 						try {
-							log.info("Compiling script [{}]...", sourceFile.getAbsolutePath());
 							compileScript(sourceFile);
-							successfulCompiles.increment();
-							compiledScripts.add(sourceFile.getAbsolutePath());
-							log.info("Successfully Compiled script [{}].", sourceFile.getAbsolutePath());
 							return true;
 						} catch (Exception ex) {
-							failedCompiles.increment();
-							failedScripts.add(sourceFile.getAbsolutePath());
-							log.warn("Script [{}] compilation failed: [{}]", sourceFile.getAbsolutePath(), ex.getMessage());
 							return false;
 						}
 					}
@@ -223,7 +248,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			final long elapsed = System.currentTimeMillis() - start;
 			log.info("Startup compilation completed for [{}] source files. Successful: [{}], Failed: [{}], Elapsed: [{}] ms.", sourceFiles.length, successfulCompiles.longValue(), failedCompiles.longValue(), elapsed);
 		}
-		fileChangeWatcher = sourceFinder.watch(5, false, this);				
+		fileChangeWatcher = sourceFinder.watch(5, true, this);
+		fileChangeWatcher.startWatcher(5);
 	}
 	
 	
@@ -236,14 +262,14 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 */
 	public GroovyClassLoader newGroovyClassLoader() {	
 		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, compilerConfig, false);
-		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
-		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
+//		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
+//		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
 		final long gclId = groovyClassLoaderSerial.incrementAndGet();
-		ReferenceService.getInstance().newWeakReference(groovyClassLoader, new Runnable(){
-			public void run() {
-				log.info("GroovyClassLoader #{} Unloaded", gclId);
-			}
-		});
+//		ReferenceService.getInstance().newWeakReference(groovyClassLoader, new Runnable(){
+//			public void run() {
+//				log.info("GroovyClassLoader #{} Unloaded", gclId);
+//			}
+//		});
 		groovyClassLoaders.put(gclId, groovyClassLoader);		
 		return groovyClassLoader;
 	}
@@ -258,18 +284,44 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	public ManagedScript compileScript(final File source) {
 		if(source==null) throw new IllegalArgumentException("The passed source file was null");
 		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
+		final String sourceName = source.getAbsolutePath().replace(rootDirectory.getAbsolutePath(), "");
 		final GroovyClassLoader gcl = newGroovyClassLoader();
+		boolean success = false;
+		String errMsg = null;
 		try {
-			final ManagedScript ms = (ManagedScript)gcl.parseClass(source).newInstance();
+			log.info("Compiling script [{}]...", sourceName);
+			final GroovyCodeSource gcs = new GroovyCodeSource(source, compilerConfig.getSourceEncoding());
+			
+			gcs.setCachable(false);
+			final ManagedScript ms = (ManagedScript)gcl.parseClass(gcs).newInstance();
 			ms.initialize(gcl, source, rootDirectory.getAbsolutePath());
+			success = true;
+			managedScripts.put(source, ms);
+			successfulCompiles.increment();
+			compiledScripts.add(sourceName);
+			failedScripts.remove(sourceName);
+			log.info("Successfully Compiled script [{}].", sourceName);
 			return ms;
 		} catch (CompilationFailedException cex) {
-			throw new RuntimeException("Failed to compile source ["+ source + "]", cex);
+			errMsg = "Failed to compile source ["+ source + "]";
+			cex.printStackTrace(System.err);
+			throw new RuntimeException(errMsg, cex);
 		} catch (IOException iex) {
-			throw new RuntimeException("Failed to read source ["+ source + "]", iex);			
+			errMsg = "Failed to read source ["+ source + "]";
+			throw new RuntimeException(errMsg, iex);
 		} catch (Exception ex) {
-			log.error("Failed to instantiate script for source [" + source + "]", ex);
-			throw new RuntimeException("Failed to instantiate script for source ["+ source + "]", ex);
+			errMsg = "Failed to instantiate script for source ["+ source + "]";
+			log.error(errMsg, ex);
+			throw new RuntimeException(errMsg, ex);
+		} finally {
+			if(!success) {
+				failedCompiles.increment();
+				if(!compiledScripts.contains(sourceName)) {
+					failedScripts.add(sourceName);
+				}
+				log.warn("Script [{}] compilation failed: [{}]", sourceName, errMsg);
+				
+			}
 		}
 	}
 
@@ -356,6 +408,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		}
 		return _accum.toArray(new URL[_accum.size()]);		
 	}
+	
+	
 
 	/**
 	 * {@inheritDoc}
@@ -363,8 +417,38 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 */
 	@Override
 	public void onChange(final File file) {
-		// TODO Auto-generated method stub		
+		log.info("Detected change on source file [{}]", file);
+		collectorExecutionService.submit(new Callable<Boolean>(){
+			@Override
+			public Boolean call() throws Exception {
+				try {
+					compileScript(file);
+					return true;
+				} catch (Exception ex) {
+					return false;
+				}
+			}
+		});
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getGroovyClassLoaderCount()
+	 */
+	@Override
+	public long getGroovyClassLoaderCount() {
+		return groovyClassLoaders.size();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getManagedScriptCount()
+	 */
+	@Override
+	public long getManagedScriptCount() {
+		return managedScripts.size();
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -372,7 +456,12 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 */
 	@Override
 	public void onDelete(final File file) {
-		// TODO Auto-generated method stub
+		log.info("Detected deleted source file [{}]", file);
+		final ManagedScript ms = managedScripts.getIfPresent(file);
+		if(ms!=null) {
+			managedScripts.invalidate(file);
+			try { ms.close(); } catch (Exception x) {/* No Op */}
+		}
 	}
 
 	/**
@@ -381,8 +470,18 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 */
 	@Override
 	public void onNew(final File file) {
-		// TODO Auto-generated method stub
-		
+		log.info("Detected new source file [{}]", file);
+		collectorExecutionService.submit(new Callable<Boolean>(){
+			@Override
+			public Boolean call() throws Exception {
+				try {
+					compileScript(file);
+					return true;
+				} catch (Exception ex) {
+					return false;
+				}
+			}
+		});		
 	}
 
 	/**

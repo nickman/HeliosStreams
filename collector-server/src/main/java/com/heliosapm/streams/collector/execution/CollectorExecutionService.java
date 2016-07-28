@@ -79,6 +79,7 @@ public class CollectorExecutionService {
 	
 	private CollectorExecutionService() {
 		forkJoinPool = new ManagedForkJoinPool("JMXCollection", Runtime.getRuntime().availableProcessors() * 3, true, OBJECT_NAME);	
+		
 	}
 	
 	/**

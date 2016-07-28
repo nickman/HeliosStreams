@@ -46,9 +46,12 @@ import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
+import com.heliosapm.utils.classload.HeliosURLClassLoaderMBean;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
+import com.heliosapm.utils.ref.MBeanProxy;
+import com.heliosapm.utils.ref.ReferenceService.ReferenceType;
 import com.heliosapm.utils.tuples.NVP;
 
 import groovy.lang.Binding;
@@ -148,7 +151,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			final NVP<Long, TimeUnitSymbol> schedule = TimeUnitSymbol.period(sch);
 			scheduledPeriod = schedule.getKey();
 			scheduledPeriodUnit = schedule.getValue().unit;
-			scheduleHandle = SharedScheduler.getInstance().scheduleWithFixedDelay(this, scheduledPeriod, scheduledPeriod, scheduledPeriodUnit, this);
+			scheduleHandle = SharedScheduler.getInstance().scheduleWithFixedDelay(this, 1, scheduledPeriod, scheduledPeriodUnit, this);
 			
 		} else {
 			log.info("No schedule found for collector script [{}]", this.sourceFile);
@@ -163,15 +166,20 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		bindingMap.put("globalCache", GlobalCacheService.getInstance());
 		bindingMap.put("log", LogManager.getLogger("collectors." + dir.replace('/', '.') + "." + name));
 		if(JMXHelper.isRegistered(objectName)) {
-			carryOver();
+			carryOverAndClose();
 			try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
 		}
-		try { JMXHelper.registerMBean(this, objectName); } catch (Exception ex) {
+//		MBeanProxy proxy = MBeanProxy.proxyMBean(ReferenceType.WEAK, ManagedScriptMBean.class, this); 
+		
+		try { 
+			//JMXHelper.registerMBean(proxy, objectName);
+			MBeanProxy.register(ReferenceType.WEAK, objectName, ManagedScriptMBean.class, this);
+		} catch (Exception ex) {
 			log.warn("Failed to register MBean for ManagedScript [{}]", objectName, ex);
 		}
 	}
 	
-	private void carryOver() {
+	private void carryOverAndClose() {
 		final ManagedScriptMBean oldScript = MBeanServerInvocationHandler.newProxyInstance(JMXHelper.getHeliosMBeanServer(), objectName, ManagedScriptMBean.class, false);
 		deploymentId = oldScript.getDeploymentId()+1;
 		totalErrors.add(oldScript.getTotalCollectionErrors());
@@ -187,6 +195,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		if(lastElapsed!=null) {
 			lastCollectionElapsed.set(lastElapsed);
 		}
+		try { oldScript.close(); } catch (Exception x) {/* No Op */}
 	}
 	
 	/**
@@ -212,6 +221,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 				final long elapsed = endTime - start;
 				lastCollectionElapsed.set(elapsed);
 				collectionTimer.update(elapsed, TimeUnit.MILLISECONDS);
+			} catch (InterruptedException iex) {
+				log.warn("Collect Task Execution Interrupted");
 			} catch (Exception ex) {
 				log.error("Task Execution Failed", ex);
 				try { task.cancel(true); } catch (Exception x) {/* No Op */}
@@ -258,19 +269,26 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		}
 		bindingMap.clear();
 		if(gcl!=null) {
+			final Class[] classes = gcl.getLoadedClasses();
+			try { gcl.close(); } catch (Exception x) {/* No Op */}			
+			gcl = null;			
 			int unloaded = 0;
-			for(Class<?> clazz: gcl.getLoadedClasses()) {
+			final StringBuffer b = new StringBuffer("======= Unloaded Meta Classes");
+			for(Class<?> clazz: classes) {
 				GroovySystem.getMetaClassRegistry().removeMetaClass(clazz);
+				b.append("\n\t").append(clazz.getName());
 				unloaded++;
 			}
-			log.info("Removed [{}] meta classes for GCL for [{}]", unloaded, sourceFile);
-			try { gcl.close(); } catch (Exception x) {/* No Op */}
-			gcl = null;
+			log.info("Removed [{}] meta classes for GCL for [{}]\n{}", unloaded, sourceFile, b);
+//			gcl.clearCache();
 			if(JMXHelper.isRegistered(objectName)) {
 				try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
 			}
+			System.gc();
 		}
 	}
+	
+//	-XX:+UnlockDiagnosticVMOptions -XX:+UnlockExperimentalVMOptions -XX:+CMSClassUnloadingEnabled -XX:+ExplicitGCInvokesConcurrentAndUnloadsClasses -XX:+TraceClassUnloading  -XX:+UseConcMarkSweepGC -XX:+ExplicitGCInvokesConcurrent	
 	
 	
 	
@@ -461,7 +479,6 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		if(t==-1L) return null;
 		return t;
 	}
-	
 	
 	
 }

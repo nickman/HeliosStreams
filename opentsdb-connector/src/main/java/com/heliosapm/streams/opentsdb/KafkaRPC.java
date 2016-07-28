@@ -55,6 +55,7 @@ import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.SharedScheduler;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
@@ -233,6 +234,12 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 			log.error("Interrupted while waiting on partition assignment");
 			throw new IllegalArgumentException();
 		}
+		final InternalStatsCollector collector = new InternalStatsCollector(tsdb, "tsd");
+		SharedScheduler.getInstance().scheduleWithFixedDelay(new Runnable(){
+			public void run() {
+				tsdb.collectStats(collector);
+			}
+		}, 15, 15, TimeUnit.SECONDS);
 	}
 	
 	/**

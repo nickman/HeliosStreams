@@ -71,5 +71,17 @@ public interface ManagedScriptFactoryMBean {
 	 * @return the number of scripts that failed compilation
 	 */
 	public int getFailedScriptCount();
+	
+	/**
+	 * Returns the number of cached groovy classloaders
+	 * @return the number of cached groovy classloaders
+	 */
+	public long getGroovyClassLoaderCount();
+	
+	/**
+	 * Returns the number of managed scripts
+	 * @return the number of managed scripts
+	 */
+	public long getManagedScriptCount();	
 
 }
