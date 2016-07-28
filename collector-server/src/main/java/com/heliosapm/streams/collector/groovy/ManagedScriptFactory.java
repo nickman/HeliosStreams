@@ -53,11 +53,12 @@ import com.heliosapm.utils.file.FileFinder;
 import com.heliosapm.utils.file.Filters.FileMod;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.SharedScheduler;
+import com.heliosapm.utils.ref.ReferenceService;
 import com.heliosapm.utils.url.URLHelper;
 
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyCodeSource;
-import groovy.lang.GroovySystem;
 import groovy.lang.MetaClassRegistryChangeEvent;
 import groovy.lang.MetaClassRegistryChangeEventListener;
 import jsr166e.LongAdder;
@@ -200,6 +201,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		customizeCompiler();
 		collectorExecutionService = CollectorExecutionService.getInstance();
 		jdbcDataSourceManager = new JDBCDataSourceManager(new File(rootDirectory, "datasources"));
+		SharedScheduler.getInstance();
 		try { JMXHelper.registerMBean(this, OBJECT_NAME); } catch (Exception ex) {
 			log.warn("Failed to register ManagedScriptFactory management interface. Will continue without.", ex);
 		}
@@ -265,11 +267,11 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
 		final long gclId = groovyClassLoaderSerial.incrementAndGet();
-//		ReferenceService.getInstance().newWeakReference(groovyClassLoader, new Runnable(){
-//			public void run() {
-//				log.info("GroovyClassLoader #{} Unloaded", gclId);
-//			}
-//		});
+		ReferenceService.getInstance().newWeakReference(groovyClassLoader, new Runnable(){
+			public void run() {
+				log.info("GroovyClassLoader #{} Unloaded", gclId);
+			}
+		});
 		groovyClassLoaders.put(gclId, groovyClassLoader);		
 		return groovyClassLoader;
 	}

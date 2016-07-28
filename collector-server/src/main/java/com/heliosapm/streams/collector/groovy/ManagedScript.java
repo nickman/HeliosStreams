@@ -22,8 +22,12 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
@@ -46,7 +50,6 @@ import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
-import com.heliosapm.utils.classload.HeliosURLClassLoaderMBean;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
@@ -198,6 +201,25 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		try { oldScript.close(); } catch (Exception x) {/* No Op */}
 	}
 	
+	private static class CollectionRunnerCallable implements Callable<Void> {
+		protected final WeakReference<ManagedScript> ref;
+		
+		CollectionRunnerCallable(ManagedScript ms) {
+			ref = new WeakReference<ManagedScript>(ms);
+		}
+		
+		@Override
+		public Void call() throws Exception {
+			final ManagedScript ms = ref.get();
+			if(ms!=null) {
+				ms.run();
+			}
+			return null;
+		}
+	}
+	
+	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable(this);
+	
 	/**
 	 * {@inheritDoc}
 	 * @see java.util.concurrent.Callable#call()
@@ -205,15 +227,17 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	@Override
 	public Void call() throws Exception {
 		try {
-			final long start = System.currentTimeMillis(); 
+			final long start = System.currentTimeMillis();
+			final ForkJoinTask<Void> task = executionService.submit(runCallable);
+			
 			//Context ctx = collectionTimer.time();
-			final ForkJoinTask<Void> task = executionService.submit(new Callable<Void>(){
-				@Override
-				public Void call() throws Exception {		
-					run();
-					return null;
-				}
-			});
+//			final ForkJoinTask<Void> task = executionService.submit(new Callable<Void>(){
+//				@Override
+//				public Void call() throws Exception {		
+//					run();
+//					return null;
+//				}
+//			});
 			try {
 				task.get(5, TimeUnit.SECONDS);
 				final long endTime = System.currentTimeMillis();
@@ -270,11 +294,19 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		bindingMap.clear();
 		if(gcl!=null) {
 			final Class[] classes = gcl.getLoadedClasses();
+			
 			try { gcl.close(); } catch (Exception x) {/* No Op */}			
 			gcl = null;			
 			int unloaded = 0;
+			//ClassInfo ci = ClassInfo.getClassInfo(this.getClass());
+//			try {
+//				removeClassFromGlobalClassSet(Class.forName("org.codehaus.groovy.reflection.ClassInfo", true, this.getClass().getClassLoader()));
+//			} catch (Exception x) {
+//				x.printStackTrace(System.err);
+//			}
 			final StringBuffer b = new StringBuffer("======= Unloaded Meta Classes");
 			for(Class<?> clazz: classes) {
+				
 				GroovySystem.getMetaClassRegistry().removeMetaClass(clazz);
 				b.append("\n\t").append(clazz.getName());
 				unloaded++;
@@ -287,6 +319,36 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			System.gc();
 		}
 	}
+	
+	static void removeClassFromGlobalClassSet(Class<?> classInfoClass) throws Exception {
+        Field globalClassValueField = classInfoClass.getDeclaredField("globalClassValue");
+        globalClassValueField.setAccessible(true);
+        Object globalClassValue = globalClassValueField.get(null);
+        Method removeFromGlobalClassValue = globalClassValueField.getType().getDeclaredMethod("remove", Class.class);
+        removeFromGlobalClassValue.setAccessible(true);
+
+        Field globalClassSetField = classInfoClass.getDeclaredField("globalClassSet");
+        globalClassSetField.setAccessible(true);
+        Object globalClassSet = globalClassSetField.get(null);
+        globalClassSetField = globalClassSet.getClass().getDeclaredField("items");
+        globalClassSetField.setAccessible(true);
+        Object globalClassSetItems = globalClassSetField.get(globalClassSet);
+
+        Field clazzField = classInfoClass.getDeclaredField("klazz");
+        clazzField.setAccessible(true);
+
+
+        Iterator it = (Iterator) globalClassSetItems.getClass().getDeclaredMethod("iterator").invoke(globalClassSetItems);
+
+        while (it.hasNext()) {
+            Object classInfo = it.next();
+            Object clazz = clazzField.get("ClassInfo");
+            removeFromGlobalClassValue.invoke(globalClassValue, clazz);
+        }
+
+    }
+	
+	//-XX:SoftRefLRUPolicyMSPerMB=0
 	
 //	-XX:+UnlockDiagnosticVMOptions -XX:+UnlockExperimentalVMOptions -XX:+CMSClassUnloadingEnabled -XX:+ExplicitGCInvokesConcurrentAndUnloadsClasses -XX:+TraceClassUnloading  -XX:+UseConcMarkSweepGC -XX:+ExplicitGCInvokesConcurrent	
 	
