@@ -22,11 +22,16 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.ref.WeakReference;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,9 +40,16 @@ import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.control.messages.WarningMessage;
 
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
+import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.utils.classload.HeliosURLClassLoader;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.file.FileChangeEvent;
+import com.heliosapm.utils.file.FileChangeEventListener;
+import com.heliosapm.utils.file.FileChangeWatcher;
 import com.heliosapm.utils.file.FileFinder;
 import com.heliosapm.utils.file.Filters.FileMod;
 import com.heliosapm.utils.io.StdInCommandHandler;
@@ -46,6 +58,8 @@ import com.heliosapm.utils.ref.ReferenceService;
 import com.heliosapm.utils.url.URLHelper;
 
 import groovy.lang.GroovyClassLoader;
+import jsr166e.LongAdder;
+import jsr166y.ForkJoinTask;
 
 /**
  * <p>Title: ManagedScriptFactory</p>
@@ -54,7 +68,7 @@ import groovy.lang.GroovyClassLoader;
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScriptFactory</code></p>
  */
 
-public class ManagedScriptFactory {
+public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChangeEventListener {
 	/** The singleton instance */
 	private static volatile ManagedScriptFactory instance;
 	/** The singleton instance ctor lock */
@@ -84,12 +98,33 @@ public class ManagedScriptFactory {
 	/** The groovy compiler configuration */
 	protected final CompilerConfiguration compilerConfig = new CompilerConfiguration(CompilerConfiguration.DEFAULT);
 	/** The initial and default imports customizer for the compiler configuration */
-	protected final ImportCustomizer importCustomizer = new ImportCustomizer(); 
-	
-	
-	
+	protected final ImportCustomizer importCustomizer = new ImportCustomizer();
+	/** The groovy source file file finder */
+	protected FileFinder sourceFinder = null; 
+	/** The groovy source file watcher */
+	protected FileChangeWatcher fileChangeWatcher = null;
+	/** The JDBC data source manager to provide DB connections */
 	protected JDBCDataSourceManager jdbcDataSourceManager = null;
-
+	/** The collector execution thread pool */
+	protected final CollectorExecutionService collectorExecutionService; 
+	
+	/** A counter of successful compilations */
+	protected final LongAdder successfulCompiles = new LongAdder();
+	/** A counter of failed compilations */
+	protected final LongAdder failedCompiles = new LongAdder();
+	/** The source file names of successfully compiled scripts */
+	protected final Set<String> compiledScripts = new ConcurrentSkipListSet<String>();
+	/** The source file names of scripts that failed to compile */
+	protected final Set<String> failedScripts = new ConcurrentSkipListSet<String>();
+	/** Weak value cache to track created groovy class loaders */
+	protected final Cache<Long, GroovyClassLoader> groovyClassLoaders = CacheBuilder.newBuilder()
+		.concurrencyLevel(4)
+		.initialCapacity(2048)
+		.weakValues()
+		.build();
+	/** Id generator for groovy class loaders */
+	protected final AtomicLong groovyClassLoaderSerial = new AtomicLong();
+	
 	
 	/**
 	 * Acquires and returns the ManagedScriptFactory singleton instance
@@ -130,21 +165,70 @@ public class ManagedScriptFactory {
 //			log.info("Loaded Driver: [{}]", d.getClass().getName());
 //		}
 		Thread.currentThread().setContextClassLoader(libDirClassLoader);
-		customizeCompiler();		
-		FileFinder ff = FileFinder.newFileFinder(new File(rootDirectory, "collectors").getAbsolutePath())
-			.maxDepth(10)
+		customizeCompiler();
+		collectorExecutionService = CollectorExecutionService.getInstance();
+		jdbcDataSourceManager = new JDBCDataSourceManager(new File(rootDirectory, "datasources"));
+		try { JMXHelper.registerMBean(this, OBJECT_NAME); } catch (Exception ex) {
+			log.warn("Failed to register ManagedScriptFactory management interface. Will continue without.", ex);
+		}
+		log.info("<<<<< ManagedScriptFactory started. Async script deployment starting now.");
+		sourceFinder = FileFinder.newFileFinder(new File(rootDirectory, "collectors").getAbsolutePath())
+			.maxDepth(20)
 			.filterBuilder()
 			.caseInsensitive(false)
 			.endsWithMatch(".groovy")
 			.fileAttributes(FileMod.READABLE)
 			.shouldBeFile()
 			.fileFinder();
-		for(File f : ff.find()) {
-			compileScript(f);
-		}
-		jdbcDataSourceManager = new JDBCDataSourceManager(new File(rootDirectory, "datasources"));
-		log.info("<<<<< ManagedScriptFactory started.");
+		startScriptDeployer();
 	}
+	
+	
+	/** 
+	 * Starts the script deployer
+	 */
+	protected void startScriptDeployer() {
+		final long start = System.currentTimeMillis();
+		final File[] sourceFiles = sourceFinder.find();
+		if(sourceFiles!=null && sourceFiles.length > 0) {
+			final List<ForkJoinTask<Boolean>> compilationTasks = new ArrayList<ForkJoinTask<Boolean>>(sourceFiles.length);
+			for(final File sourceFile : sourceFiles) {
+				compilationTasks.add(collectorExecutionService.submit(new Callable<Boolean>(){
+					@Override
+					public Boolean call() throws Exception {
+						try {
+							log.info("Compiling script [{}]...", sourceFile.getAbsolutePath());
+							compileScript(sourceFile);
+							successfulCompiles.increment();
+							compiledScripts.add(sourceFile.getAbsolutePath());
+							log.info("Successfully Compiled script [{}].", sourceFile.getAbsolutePath());
+							return true;
+						} catch (Exception ex) {
+							failedCompiles.increment();
+							failedScripts.add(sourceFile.getAbsolutePath());
+							log.warn("Script [{}] compilation failed: [{}]", sourceFile.getAbsolutePath(), ex.getMessage());
+							return false;
+						}
+					}
+				}));				
+			}
+			log.info("Waiting for [{}] source files to be compiled", sourceFiles.length);
+			for(ForkJoinTask<Boolean> task: compilationTasks) {
+				try {
+					task.get();
+				} catch (Exception e) {					
+					e.printStackTrace();
+				}
+			}
+			final long elapsed = System.currentTimeMillis() - start;
+			log.info("Startup compilation completed for [{}] source files. Successful: [{}], Failed: [{}], Elapsed: [{}] ms.", sourceFiles.length, successfulCompiles.longValue(), failedCompiles.longValue(), elapsed);
+		}
+		fileChangeWatcher = sourceFinder.watch(5, false, this);				
+	}
+	
+	
+	
+	
 	
 	/**
 	 * Creates a new groovy class loader for a new managed script
@@ -154,10 +238,17 @@ public class ManagedScriptFactory {
 		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, compilerConfig, false);
 		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
 		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
+		final long gclId = groovyClassLoaderSerial.incrementAndGet();
+		ReferenceService.getInstance().newWeakReference(groovyClassLoader, new Runnable(){
+			public void run() {
+				log.info("GroovyClassLoader #{} Unloaded", gclId);
+			}
+		});
+		groovyClassLoaders.put(gclId, groovyClassLoader);		
 		return groovyClassLoader;
 	}
 	
-	final Set<WeakReference<GroovyClassLoader>> loaders = new CopyOnWriteArraySet<WeakReference<GroovyClassLoader>>();
+	
 	
 	/**
 	 * Compiles and deploys the script in the passed file
@@ -168,9 +259,6 @@ public class ManagedScriptFactory {
 		if(source==null) throw new IllegalArgumentException("The passed source file was null");
 		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
 		final GroovyClassLoader gcl = newGroovyClassLoader();
-		final WeakReference<GroovyClassLoader> weakRef = ReferenceService.getInstance().newWeakReference(gcl, null);
-		loaders.add(weakRef);
-		
 		try {
 			final ManagedScript ms = (ManagedScript)gcl.parseClass(source).newInstance();
 			ms.initialize(gcl, source, rootDirectory.getAbsolutePath());
@@ -226,7 +314,7 @@ public class ManagedScriptFactory {
 		for(String imp: imps) {
 			String _imp = imp.trim().replaceAll("\\s+", " ");
 			if(!_imp.startsWith("import")) {
-				log.warn("Unrecognized import [", imp, "]");
+				log.warn("Unrecognized import [", imp, "]"); 
 				continue;
 			}
 			if(_imp.startsWith("import static ")) {
@@ -268,5 +356,106 @@ public class ManagedScriptFactory {
 		}
 		return _accum.toArray(new URL[_accum.size()]);		
 	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.utils.file.FileChangeEventListener#onChange(java.io.File)
+	 */
+	@Override
+	public void onChange(final File file) {
+		// TODO Auto-generated method stub		
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.utils.file.FileChangeEventListener#onDelete(java.io.File)
+	 */
+	@Override
+	public void onDelete(final File file) {
+		// TODO Auto-generated method stub
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.utils.file.FileChangeEventListener#onNew(java.io.File)
+	 */
+	@Override
+	public void onNew(final File file) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.utils.file.FileChangeEventListener#getInterest()
+	 */
+	@Override
+	public FileChangeEvent[] getInterest() {
+		return FileChangeEvent.values();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.utils.file.FileChangeEventListener#setFileChangeWatcher(com.heliosapm.utils.file.FileChangeWatcher)
+	 */
+	@Override
+	public void setFileChangeWatcher(final FileChangeWatcher fileChangeWatcher) {
+		/* No Op */		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getSuccessfulCompileCount()
+	 */
+	@Override
+	public long getSuccessfulCompileCount() {
+		return successfulCompiles.longValue();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getFailedCompileCount()
+	 */
+	@Override
+	public long getFailedCompileCount() {
+		return failedCompiles.longValue();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getCompiledScripts()
+	 */
+	@Override
+	public Set<String> getCompiledScripts() {
+		return new LinkedHashSet<String>(compiledScripts);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getFailedScripts()
+	 */
+	@Override
+	public Set<String> getFailedScripts() {
+		return new LinkedHashSet<String>(failedScripts);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getCompiledScriptCount()
+	 */
+	@Override
+	public int getCompiledScriptCount() {
+		return compiledScripts.size();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getFailedScriptCount()
+	 */
+	@Override
+	public int getFailedScriptCount() {
+		return failedScripts.size();
+	}
+	
 
 }

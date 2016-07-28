@@ -32,7 +32,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.management.MBeanRegistration;
 import javax.management.MBeanServer;
+import javax.management.MBeanServerInvocationHandler;
 import javax.management.ObjectName;
 
 import org.apache.logging.log4j.LogManager;
@@ -41,7 +43,6 @@ import org.apache.logging.log4j.Logger;
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
-import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
@@ -52,6 +53,7 @@ import com.heliosapm.utils.tuples.NVP;
 
 import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
+import groovy.lang.GroovySystem;
 import groovy.lang.Script;
 import jsr166e.LongAdder;
 import jsr166y.ForkJoinTask;
@@ -63,7 +65,7 @@ import jsr166y.ForkJoinTask;
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScript</code></p>
  */
 
-public abstract class ManagedScript extends Script implements ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler {
+public abstract class ManagedScript extends Script implements MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler {
 
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -101,6 +103,13 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	protected final LongAdder totalErrors = new LongAdder();
 	/** The timestamp of the most recent collection error */
 	protected final AtomicLong lastError = new AtomicLong(-1L);
+	/** The timestamp of the most recent collection at completion */
+	protected final AtomicLong lastCompleteCollection = new AtomicLong(-1L);
+	/** The elapsed time of the most recent collection */
+	protected final AtomicLong lastCollectionElapsed = new AtomicLong(-1L);
+	
+	/** The deployment sequence id */
+	protected int deploymentId = 0;
 	
 	/** Regex pattern to determine if a schedule directive is build into the source file name */
 	public static final Pattern PERIOD_PATTERN = Pattern.compile(".*\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
@@ -154,10 +163,29 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 		bindingMap.put("globalCache", GlobalCacheService.getInstance());
 		bindingMap.put("log", LogManager.getLogger("collectors." + dir.replace('/', '.') + "." + name));
 		if(JMXHelper.isRegistered(objectName)) {
+			carryOver();
 			try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
 		}
 		try { JMXHelper.registerMBean(this, objectName); } catch (Exception ex) {
 			log.warn("Failed to register MBean for ManagedScript [{}]", objectName, ex);
+		}
+	}
+	
+	private void carryOver() {
+		final ManagedScriptMBean oldScript = MBeanServerInvocationHandler.newProxyInstance(JMXHelper.getHeliosMBeanServer(), objectName, ManagedScriptMBean.class, false);
+		deploymentId = oldScript.getDeploymentId()+1;
+		totalErrors.add(oldScript.getTotalCollectionErrors());
+		Date dt = oldScript.getLastCollectionErrorDate();
+		if(dt!=null) {
+			lastError.set(dt.getTime());
+		}
+		dt = oldScript.getLastCollectionDate();
+		if(dt!=null) {
+			lastCompleteCollection.set(dt.getTime());
+		}
+		final Long lastElapsed = oldScript.getLastCollectionElapsed();
+		if(lastElapsed!=null) {
+			lastCollectionElapsed.set(lastElapsed);
 		}
 	}
 	
@@ -168,7 +196,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	@Override
 	public Void call() throws Exception {
 		try {
-			final Context ctx = collectionTimer.time();
+			final long start = System.currentTimeMillis(); 
+			//Context ctx = collectionTimer.time();
 			final ForkJoinTask<Void> task = executionService.submit(new Callable<Void>(){
 				@Override
 				public Void call() throws Exception {		
@@ -178,8 +207,11 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 			});
 			try {
 				task.get(5, TimeUnit.SECONDS);
-				final long elapsed = ctx.stop();
-				log.info("Elapsed: [{}]", TimeUnit.NANOSECONDS.toMillis(elapsed));				
+				final long endTime = System.currentTimeMillis();
+				lastCompleteCollection.set(endTime);
+				final long elapsed = endTime - start;
+				lastCollectionElapsed.set(elapsed);
+				collectionTimer.update(elapsed, TimeUnit.MILLISECONDS);
 			} catch (Exception ex) {
 				log.error("Task Execution Failed", ex);
 				try { task.cancel(true); } catch (Exception x) {/* No Op */}
@@ -222,9 +254,16 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	public void close() throws IOException {
 		if(scheduleHandle!=null) {
 			scheduleHandle.cancel(true);
+			scheduleHandle = null;
 		}
 		bindingMap.clear();
 		if(gcl!=null) {
+			int unloaded = 0;
+			for(Class<?> clazz: gcl.getLoadedClasses()) {
+				GroovySystem.getMetaClassRegistry().removeMetaClass(clazz);
+				unloaded++;
+			}
+			log.info("Removed [{}] meta classes for GCL for [{}]", unloaded, sourceFile);
 			try { gcl.close(); } catch (Exception x) {/* No Op */}
 			gcl = null;
 			if(JMXHelper.isRegistered(objectName)) {
@@ -273,8 +312,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#getMedian()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getMedianCollectTime()
 	 */
 	@Override
 	public double getMedianCollectTime() {
@@ -282,17 +321,16 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	}
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#get75thPercentile()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#get75PctCollectTime()
 	 */
 	@Override
 	public double get75PctCollectTime() {
 		return timerSnap.getValue().get75thPercentile();
 	}
-
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#get95thPercentile()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#get95PctCollectTime()
 	 */
 	@Override
 	public double get95PctCollectTime() {
@@ -300,8 +338,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	}
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#get98thPercentile()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#get98PctCollectTime()
 	 */
 	@Override
 	public double get98PctCollectTime() {
@@ -309,8 +347,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	}
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#get99thPercentile()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#get99PctCollectTime()
 	 */
 	@Override
 	public double get99PctCollectTime() {
@@ -318,8 +356,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	}
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#get999thPercentile()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#get999PctCollectTime()
 	 */
 	@Override
 	public double get999PctCollectTime() {
@@ -327,8 +365,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	}
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#getMax()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getMaxCollectTime()
 	 */
 	@Override
 	public long getMaxCollectTime() {
@@ -336,8 +374,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	}
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#getMean()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getMeanCollectTime()
 	 */
 	@Override
 	public double getMeanCollectTime() {
@@ -345,8 +383,8 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	}
 
 	/**
-	 * @return
-	 * @see com.codahale.metrics.Snapshot#getMin()
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getMinCollectTime()
 	 */
 	@Override
 	public long getMinCollectTime() {
@@ -366,10 +404,10 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLastCollectionErrorTime()
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLastCollectionErrorDate()
 	 */
 	@Override
-	public Date getLastCollectionErrorTime() {
+	public Date getLastCollectionErrorDate() {
 		final long t = lastError.get();
 		if(t==-1L) return null;
 		return new Date(t);
@@ -392,4 +430,38 @@ public abstract class ManagedScript extends Script implements ManagedScriptMBean
 	public long getTotalCollectionErrors() {
 		return totalErrors.longValue();
 	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getDeploymentId()
+	 */
+	@Override
+	public int getDeploymentId() {
+		return deploymentId;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLastCollectionDate()
+	 */
+	@Override
+	public Date getLastCollectionDate() {
+		final long t = lastCompleteCollection.get();
+		if(t==-1L) return null;
+		return new Date(t);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLastCollectionElapsed()
+	 */
+	@Override
+	public Long getLastCollectionElapsed() {
+		final long t = lastCollectionElapsed.get();
+		if(t==-1L) return null;
+		return t;
+	}
+	
+	
+	
 }

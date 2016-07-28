@@ -1,4 +1,4 @@
 println "Running ${getClass().getName()}";
-sql = globalCache.get("groovyds/testdb");
-sd = sql.firstRow("SELECT SYSDATE FROM DUAL").SYSDATE;
+sql = globalCache.get("groovyds/localtsdb");
+sd = sql.firstRow("SELECT NOW() SYSDATE FROM DUAL").SYSDATE;
 log.info("SYSDATE: [{}]", sd);

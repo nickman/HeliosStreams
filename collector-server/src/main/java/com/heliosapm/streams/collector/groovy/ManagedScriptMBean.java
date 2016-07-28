@@ -22,8 +22,6 @@ import java.io.IOException;
 import java.util.Date;
 import java.util.Map;
 
-import javax.management.MBeanRegistration;
-
 /**
  * <p>Title: ManagedScriptMBean</p>
  * <p>Description: JMX MBean interface for {@link ManagedScript} instances</p> 
@@ -31,9 +29,10 @@ import javax.management.MBeanRegistration;
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScriptMBean</code></p>
  */
 
-public interface ManagedScriptMBean extends MBeanRegistration {
+public interface ManagedScriptMBean {
 	/**
 	 * Closes the groovy class loader and unregisters the MBean
+	 * @throws IOException will not be thrown.
 	 */
 	public void close() throws IOException;
 	
@@ -101,7 +100,7 @@ public interface ManagedScriptMBean extends MBeanRegistration {
 	 * Returns the time of the last collection error, or null if one has never occurred
 	 * @return the time of the last collection error
 	 */
-	public Date getLastCollectionErrorTime();
+	public Date getLastCollectionErrorDate();
 	
 	/**
 	 * Returns the number of consecutive errors since the last successful attempt (or start)
@@ -120,4 +119,22 @@ public interface ManagedScriptMBean extends MBeanRegistration {
 	 * @return this script's current bindings
 	 */
 	public Map<String, String> getBindings();
+	
+	/**
+	 * Returns the deployment sequence id
+	 * @return the deployment sequence id
+	 */
+	public int getDeploymentId();
+	
+	/**
+	 * Returns the date of the last completed collection, or null if one has not been collected yet
+	 * @return the date of the last completed collection
+	 */
+	public Date getLastCollectionDate();
+	
+	/**
+	 * Returns the elapsed time in ms. of the last completed collection, or null if one has not been collected yet
+	 * @return Returns the elapsed time in ms. of the last completed collection
+	 */
+	public Long getLastCollectionElapsed();
 }
