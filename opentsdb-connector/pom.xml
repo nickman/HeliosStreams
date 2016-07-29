@@ -31,6 +31,13 @@
 			<scope>test</scope>
 		</dependency>
 
+		<dependency>
+			<groupId>com.heliosapm.streams</groupId>
+			<artifactId>stream-hub</artifactId>
+			<version>${project.version}</version>
+			<scope>test</scope>
+		</dependency>
+
 <!--
 
 		<dependency>

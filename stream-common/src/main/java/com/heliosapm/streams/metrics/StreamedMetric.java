@@ -24,6 +24,8 @@
  */
 package com.heliosapm.streams.metrics;
 
+import java.io.DataInputStream;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -32,6 +34,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.zip.GZIPInputStream;
 
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
@@ -391,6 +394,44 @@ public class StreamedMetric implements BytesMarshallable {
 		}		
 	}
 	
+	public static StreamedMetric[] read(final InputStream is) {
+		DataInputStream dis = null;
+		GZIPInputStream gis = null;
+		final Set<StreamedMetric> metrics;
+		try {
+			final int type = is.read();
+			final byte[] metricCountBytes = new byte[4];
+			is.read(metricCountBytes);
+			final int metricCount = Utils.fromBytes(metricCountBytes);
+			metrics = new HashSet<StreamedMetric>(metricCount);
+			if(type==1) {
+				gis = new GZIPInputStream(is);
+				dis = new DataInputStream(gis);
+			} else if(type==1) {
+				dis = new DataInputStream(dis);
+			} else {
+				throw new Exception("Invalid compression indicator byte [" + type + "]");
+			}
+			for(int i = 0; i < metricCount; i++) {
+				final byte stype = dis.readByte();
+				
+				if(stype==0) {
+					metrics.add(StreamedMetric.readFromStream(dis));
+				} else if(stype==0) {
+					metrics.add(StreamedMetricValue.readFromStream(dis));
+				} else {
+					throw new RuntimeException("Unrecognized metric type code [" + type + "]");
+				}
+			}
+			return metrics.toArray(new StreamedMetric[metrics.size()]);
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to read StreamedMetric from input stream", ex);
+		} finally {
+			if(gis!=null) try { gis.close(); } catch (Exception x) {/* No Op */}
+			if(dis!=null) try { dis.close(); } catch (Exception x) {/* No Op */}
+		}		
+	}
+	
 	/** An approximation of the minimum number of bytes that need to be available ina  buffer to realistically read a metric from it */
 	public static final int MIN_READABLE_BYTES = 29;
 	
@@ -465,6 +506,32 @@ public class StreamedMetric implements BytesMarshallable {
 		}				
 	}
 	
+	static StreamedMetric readFromStream(final DataInputStream dis) {
+		return new StreamedMetric().read(dis);
+	}
+	
+	StreamedMetric read(final DataInputStream dis) {
+		try {
+			final byte v = dis.readByte();
+			if(v==0) {
+				valueType = null;
+			} else {
+				valueType = ValueType.ordinal(v-1);
+			}
+			timestamp = dis.readLong();		
+			metricName = dis.readUTF();		
+			final int tsize = dis.readByte();			
+			for(int i = 0; i < tsize; i++) {
+				final String key = dis.readUTF();
+				final String val = dis.readUTF();			
+				tags.put(key, val);
+			}
+			return this;
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to read StreamedMetric from DataInputStream", ex);
+		}
+		
+	}
 	
 	/**
 	 * Sets a value type
@@ -573,7 +640,8 @@ public class StreamedMetric implements BytesMarshallable {
 	public String toOpenTSDBString() {
 		final StringBuilder b = new StringBuilder(96).append("put ")
 		.append(metricName).append(" ")
-		.append(timestamp).append(" ");
+		.append(timestamp).append(" ")
+		.append(1).append(" ");
 		for(Map.Entry<String, String> entry: tags.entrySet()) {
 			b.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
 		}

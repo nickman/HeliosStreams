@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.metrics;
 
+import java.io.DataInputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -541,6 +542,29 @@ public class StreamedMetricValue extends StreamedMetric {
 			sm.longValue = buff.readLong();				
 		}			
 		return sm;
+	}
+	
+	
+	static StreamedMetricValue readFromStream(final DataInputStream dis) {
+		return new StreamedMetricValue().read(dis);
+	}
+	
+	StreamedMetricValue read(final DataInputStream dis) {		
+		try {
+			super.read(dis);
+			final byte type = dis.readByte();
+			if(type==0) {
+				isDoubleValue = true;
+				doubleValue = dis.readDouble();
+			} else {
+				isDoubleValue = false;
+				longValue = dis.readLong();				
+			}						
+			return this;
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to read StreamedMetricValue from DataInputStream", ex);
+		}
+		
 	}
 	
 	

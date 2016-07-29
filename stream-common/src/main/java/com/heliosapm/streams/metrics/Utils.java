@@ -198,6 +198,15 @@ public class Utils {
 				(((long)bytes[7 + offset] & 0xff)      ));
 	}	
 	
+	public static int fromBytes(final byte[] bytes, final int offset) {
+	    return ((0xFF & bytes[offset]) << 24) | ((0xFF & bytes[offset+1]) << 16) |
+	            ((0xFF & bytes[offset+2]) << 8) | (0xFF & bytes[offset+3]);
+	}
+	
+	public static int fromBytes(final byte[] bytes) {
+		return fromBytes(bytes, 0);
+	}
+	
 	
 //    static void putLongB(ByteBuffer bb, int bi, long x) {
 //        bb._put(bi    , long7(x));
