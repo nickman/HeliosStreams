@@ -288,6 +288,10 @@
           <groupId>log4j</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>zkclient</artifactId>
+          <groupId>com.101tec</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>connect-json</artifactId>
           <groupId>org.apache.kafka</groupId>
         </exclusion>

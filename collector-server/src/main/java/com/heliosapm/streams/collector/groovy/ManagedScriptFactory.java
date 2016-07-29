@@ -20,14 +20,17 @@ package com.heliosapm.streams.collector.groovy;
 
 import java.io.File;
 import java.io.IOException;
+import java.lang.instrument.Instrumentation;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -43,6 +46,7 @@ import org.codehaus.groovy.control.messages.WarningMessage;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -153,8 +157,28 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	public static void main(String[] args) {
 		System.setProperty(CONFIG_ROOT_DIR, "./src/test/resources/test-root");
 		JMXHelper.fireUpJMXMPServer(3456);
+		final Instrumentation instr = LocalAgentInstaller.getInstrumentation();
 		getInstance();
-		StdInCommandHandler.getInstance().run();
+		StdInCommandHandler.getInstance()
+			.registerCommand("gc", new Runnable(){
+				public void run() {
+					System.gc();
+				}
+			}).registerCommand("cls", new Runnable(){
+				public void run() {
+//					final Map<String, int[]> map = new HashMap<String, int[]>();
+					final StringBuilder b = new StringBuilder("======== GCL Loaded Classes:");
+					for(Class<?> clazz: instr.getAllLoadedClasses()) {
+						final ClassLoader cl = clazz.getClassLoader();
+						if(cl!=null && (cl instanceof GroovyClassLoader)) {
+							b.append("\n\t").append(clazz.getName()).append(" : ").append(cl.toString());
+						}
+					}
+					b.append("\n==========");
+					System.err.println(b);
+				}
+			})
+		.run();
 	}
 	
 	protected final Set<Class<?>> metaClasses = new CopyOnWriteArraySet<Class<?>>();
@@ -271,8 +295,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			public void run() {
 				log.info("GroovyClassLoader #{} Unloaded", gclId);
 			}
-		});
-		groovyClassLoaders.put(gclId, groovyClassLoader);		
+		}); 
+//		groovyClassLoaders.put(gclId, groovyClassLoader);		
 		return groovyClassLoader;
 	}
 	
@@ -295,7 +319,9 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			final GroovyCodeSource gcs = new GroovyCodeSource(source, compilerConfig.getSourceEncoding());
 			
 			gcs.setCachable(false);
-			final ManagedScript ms = (ManagedScript)gcl.parseClass(gcs).newInstance();
+			final Class<ManagedScript> msClazz = gcl.parseClass(gcs);
+			ReferenceService.getInstance().newWeakReference(msClazz, null);
+			final ManagedScript ms = msClazz.newInstance();
 			ms.initialize(gcl, source, rootDirectory.getAbsolutePath());
 			success = true;
 			managedScripts.put(source, ms);

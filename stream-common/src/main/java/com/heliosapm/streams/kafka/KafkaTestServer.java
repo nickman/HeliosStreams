@@ -20,11 +20,20 @@ package com.heliosapm.streams.kafka;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
+import org.apache.kafka.common.requests.MetadataResponse.TopicMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.server.ServerConfig;
@@ -32,6 +41,7 @@ import org.apache.zookeeper.server.ZooKeeperServerMain;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
 import org.apache.zookeeper.server.quorum.QuorumPeerMain;
 
+import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
@@ -40,14 +50,14 @@ import com.heliosapm.utils.reflect.PrivateAccessor;
 
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
+import kafka.common.TopicExistsException;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
 import kafka.utils.SystemTime$;
 import kafka.utils.ZKStringSerializer$;
-import kafka.admin.RackAwareMode$;
-import kafka.admin.RackAwareMode;
 import kafka.utils.ZkUtils;
-
+import scala.collection.JavaConversions;
+import scala.collection.JavaConverters;
 /**
  * <p>Title: KafkaTestServer</p>
  * <p>Description: An embedded kafka server for testing</p> 
@@ -161,6 +171,12 @@ public class KafkaTestServer {
 	public void start() throws Exception {
 		if(running.compareAndSet(false, true)) {
 			try {
+				final File zkDataDir = new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR));
+				final File zkLogDir = new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR));
+				final File kLogDir = new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOG_DIR, DEFAULT_LOG_DIR));
+				delTree(zkDataDir);
+				delTree(zkLogDir);
+				delTree(kLogDir);
 				zkConfigProperties.clear();
 				zkConfigProperties.setProperty("tickTime", "2000");
 				zkConfigProperties.setProperty("syncEnabled", "false");
@@ -177,7 +193,7 @@ public class KafkaTestServer {
 				zkConfigProperties.setProperty("maxSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXTO, DEFAULT_ZK_MAXTO));
 //				zkConfigProperties.setProperty("server.0", "PP-DT-NWHI-01:" + clientPort + ":" + (clientPort+1)); //  + ":PARTICIPANT");
 				configProperties.clear();
-				
+				configProperties.setProperty("delete.topic.enable", "true");
 				configProperties.setProperty("log.dir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOG_DIR, DEFAULT_LOG_DIR));
 				configProperties.setProperty("port", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_PORT, DEFAULT_PORT));
 				configProperties.setProperty("enable.zookeeper", "" + ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_ZOOKEEP, DEFAULT_ZOOKEEP));
@@ -246,6 +262,20 @@ public class KafkaTestServer {
 		}
 	}
 	
+	private static final Set<File> roots = new HashSet<File>(Arrays.asList(File.listRoots()));
+	
+	private static void delTree(final File f) {
+		if(roots.contains(f)) throw new IllegalArgumentException("DANGER: The file [" + f + "] is a root.");
+		if(f.isDirectory()) {
+			for(File sf : f.listFiles()) {
+				delTree(sf);
+			}
+			f.delete();
+		} else {
+			f.delete();
+		}
+	}
+	
 
 	private ZkUtils getZkUtils() {
 		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
@@ -297,11 +327,164 @@ public class KafkaTestServer {
 		}
 	}
 	
-	public void createTopic(final String topicName, final int partitionCount, final int replicaCount, final Properties topicProperties) {
+	/**
+	 * Creates a new topic
+	 * @param topicName The topic name
+	 * @param partitionCount The partition count
+	 * @param replicaCount The replica count
+	 * @param topicProperties The optional topic properties
+	 * @throws TopicExistsException thrown if the requested topic already exists
+	 */
+	public void createTopic(final String topicName, final int partitionCount, final int replicaCount, final Properties topicProperties) throws TopicExistsException {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		if(topicName==null || topicName.trim().isEmpty()) throw new IllegalArgumentException("The passed topic name was null or empty");
+		if(partitionCount < 1) throw new IllegalArgumentException("Invalid topic partition count: " + partitionCount);
+		if(replicaCount < 1) throw new IllegalArgumentException("Invalid topic replica count: " + replicaCount);
+		final ZkUtils z = getZkUtils();
+		AdminUtils.createTopic(z, topicName, partitionCount, replicaCount, topicProperties==null ? new Properties() : topicProperties, new RackAwareMode.Disabled$());
+	}
+	
+	/**
+	 * Determines if the passed topic name represents an existing topic
+	 * @param topicName the topic name to test for 
+	 * @return true if the passed topic name represents an existing topic, false otherwise
+	 */
+	public boolean topicExists(final String topicName) {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		if(topicName==null || topicName.trim().isEmpty()) throw new IllegalArgumentException("The passed topic name was null or empty");
+		final ZkUtils z = getZkUtils();
+		return AdminUtils.topicExists(z, topicName.trim());
+	}
+	
+	/**
+	 * Determines if the passed consumer group is active
+	 * @param consumerGroup the consumer group to test for 
+	 * @return true if if the passed consumer group is active, false otherwise
+	 */
+	public boolean consumerGroupActive(final String consumerGroup) {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		if(consumerGroup==null || consumerGroup.trim().isEmpty()) throw new IllegalArgumentException("The passed consumer group was null or empty");
+		final ZkUtils z = getZkUtils();
+		return AdminUtils.isConsumerGroupActive(z, consumerGroup.trim());
+	}	
+	
+	/**
+	 * Returns a map of topic properties keyed by the topic name for all topics installed into this server
+	 * @return a map of topic properties keyed by the topic name 
+	 */
+	public Map<String, Properties> topicProperties() {
 		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
 		final ZkUtils z = getZkUtils();
-		AdminUtils.createTopic(zkUtils, topicName, partitionCount, replicaCount, topicProperties==null ? new Properties() : topicProperties, new RackAwareMode.Disabled$());
-		// kafka.common.TopicExistsException: Topic "xxx" already exists.
+		final scala.collection.Map<String, Properties> scmap = AdminUtils.fetchAllTopicConfigs(z);
+		return JavaConversions.mapAsJavaMap(scmap);
+	}
+	
+	/**
+	 * Returns a set of the names of all topics installed into this server
+	 * @return a set of topic names 
+	 */
+	public Set<String> topicNames() {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		final Set<String> set = new LinkedHashSet<String>();
+		set.addAll(topicProperties().keySet());
+		return set;
+	}
+	
+	
+	/**
+	 * Returns the metadata for the specified topic names
+	 * @param topicNames The topic names
+	 * @return a set of TopicMetadatas 
+	 */
+	public Set<TopicMetadata> topicMetaData(final String...topicNames) {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		if(topicNames==null || topicNames.length==0) return Collections.emptySet();		
+		final ZkUtils z = getZkUtils();
+		final Set<String> set = new LinkedHashSet<String>(Arrays.asList(topicNames));		
+		return JavaConversions.setAsJavaSet(AdminUtils.fetchTopicMetadataFromZk(JavaConverters.asScalaSetConverter(set).asScala(), z));		
+	}
+	
+	/**
+	 * Deletes the named topics
+	 * @param topicNames The names of the topics to delete
+	 * @return A set of the names of the topics that were successfully deleted
+	 */
+	public String[] deleteTopics(final String...topicNames) {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		if(topicNames==null || topicNames.length==0) return new String[0];
+		final Set<String> deleted = new LinkedHashSet<String>();
+		final ZkUtils z = getZkUtils();
+		for(String topicName: topicNames) {
+			if(topicName==null || topicName.trim().isEmpty()) {
+				try {
+					AdminUtils.deleteTopic(z, topicName.trim());
+					deleted.add(topicName.trim());
+				} catch (Exception ex) {
+					log.warn("Failed to delete topic [" + topicName.trim() + "]", ex);
+				}
+			}
+		}
+		return deleted.toArray(new String[deleted.size()]);
+	}
+	
+	
+	/** An empty topicDef array const */
+	private static final TopicDefinition[] EMPTY_TOPIC_ARR = {};
+	
+	/**
+	 * Creates topics in this kafka server, one for each passed topic definition
+	 * @param topicDefs The TopicDefinitions to create topics from
+	 * @return an array of TopicDefinitions, one for each successfully created topic
+	 */
+	public TopicDefinition[] createTopics(final TopicDefinition...topicDefs) {
+		if(topicDefs==null || topicDefs.length==0) return EMPTY_TOPIC_ARR;
+		final Set<TopicDefinition> created = new LinkedHashSet<TopicDefinition>();
+		for(TopicDefinition td : topicDefs) {
+			if(td==null) continue;
+			try {
+				createTopic(td.getTopicName(), td.getPartitionCount(), td.getReplicaCount(), td.getTopicProperties());
+				created.add(td);
+			} catch (Exception ex) {
+				log.warn("Failed to create topic [{}]", td, ex);
+			}
+		}
+		return created.toArray(new TopicDefinition[created.size()]);
+	}
+	
+	/**
+	 * Creates topics in this kafka server, one for each topic definition parsed out of the passed json
+	 * @param json The TopicDefinitions JSON to create topics from
+	 * @return an array of TopicDefinitions, one for each successfully created topic
+	 */
+	public TopicDefinition[] createTopics(final String json) {
+		return createTopics(TopicDefinition.topics(json));
+	}
+	
+	/**
+	 * Creates topics in this kafka server, one for each topic definition parsed out of the passed json file
+	 * @param json The TopicDefinitions JSON to create topics from
+	 * @return an array of TopicDefinitions, one for each successfully created topic
+	 */
+	public TopicDefinition[] createTopics(final File json) {
+		return createTopics(TopicDefinition.topics(json));
+	}
+	
+	/**
+	 * Creates topics in this kafka server, one for each topic definition parsed out of the JSON read from the passed URL
+	 * @param json The URL to read the JSON TopicDefinitions from
+	 * @return an array of TopicDefinitions, one for each successfully created topic
+	 */
+	public TopicDefinition[] createTopics(final URL json) {
+		return createTopics(TopicDefinition.topics(json));
+	}
+	
+	/**
+	 * Creates topics in this kafka server, one for each topic definition parsed out of the JSON read from the passed input stream
+	 * @param json The input stream to read the JSON TopicDefinitions from
+	 * @return an array of TopicDefinitions, one for each successfully created topic
+	 */
+	public TopicDefinition[] createTopics(final InputStream json) {
+		return createTopics(TopicDefinition.topics(json));
 	}
 
 	/**
@@ -314,9 +497,19 @@ public class KafkaTestServer {
 		final KafkaTestServer kts = new KafkaTestServer();
 		try {
 			kts.start();
-			kts.log.info("Creating topic [{}]",  "xxx");
-			kts.createTopic("xxx", 5, 1, null);
-			kts.log.info("Topic created [{}]",  "xxx");
+			TopicDefinition td = new TopicDefinition("xxx", 3, 1, new Props.PropsBuilder()
+					.setProperty("flush.messages", "5")
+					.getProperties()
+			);
+			if(kts.topicExists("xxx")) {
+				kts.log.info("Topic Deleted:" + kts.deleteTopics("xxx"));
+			}
+			kts.log.info("Creating topic [{}]",  td);
+			kts.createTopics(td);
+			kts.log.info("Topic created [{}]",  td);
+			kts.log.info("Topic exists: [{}]", kts.topicExists("xxx"));
+			kts.log.info("Topic Properties: [{}]", kts.topicProperties());
+			kts.log.info("Topic Meta: [{}]", kts.topicMetaData("xxx"));
 			StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
 				public void run() {
 					if(kts.running.get()) {

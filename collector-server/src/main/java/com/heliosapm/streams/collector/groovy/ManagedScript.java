@@ -43,6 +43,7 @@ import javax.management.ObjectName;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.codehaus.groovy.reflection.ClassInfo;
 
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
@@ -55,6 +56,7 @@ import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.ref.MBeanProxy;
 import com.heliosapm.utils.ref.ReferenceService.ReferenceType;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
 
 import groovy.lang.Binding;
@@ -295,6 +297,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		if(gcl!=null) {
 			final Class[] classes = gcl.getLoadedClasses();
 			
+			
 			try { gcl.close(); } catch (Exception x) {/* No Op */}			
 			gcl = null;			
 			int unloaded = 0;
@@ -310,6 +313,18 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 				GroovySystem.getMetaClassRegistry().removeMetaClass(clazz);
 				b.append("\n\t").append(clazz.getName());
 				unloaded++;
+				try {
+					final ClassInfo classInfo = ClassInfo.getClassInfo(clazz);
+					final HashMap<Class,ClassInfo> map = (HashMap<Class,ClassInfo>)PrivateAccessor.invokeStatic(classInfo.getClass(), "getLocalClassInfoMap", new Object[0]);
+					if(map!=null) {
+						ClassInfo ci = map.remove(clazz);
+						if(ci!=null) {
+							log.info("Removed ClassInfo for [{}]", clazz.getName());
+						}
+					}
+				} catch (Throwable t) {
+					t.printStackTrace(System.err);
+				}
 			}
 			log.info("Removed [{}] meta classes for GCL for [{}]\n{}", unloaded, sourceFile, b);
 //			gcl.clearCache();
@@ -348,10 +363,17 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 
     }
 	
-	//-XX:SoftRefLRUPolicyMSPerMB=0
-	
-//	-XX:+UnlockDiagnosticVMOptions -XX:+UnlockExperimentalVMOptions -XX:+CMSClassUnloadingEnabled -XX:+ExplicitGCInvokesConcurrentAndUnloadsClasses -XX:+TraceClassUnloading  -XX:+UseConcMarkSweepGC -XX:+ExplicitGCInvokesConcurrent	
-	
+
+/*	
+-XX:+UnlockDiagnosticVMOptions 
+-XX:+UnlockExperimentalVMOptions 
+-XX:+CMSClassUnloadingEnabled 
+-XX:+ExplicitGCInvokesConcurrentAndUnloadsClasses 
+-XX:+TraceClassUnloading  
+-XX:+UseConcMarkSweepGC 
+-XX:+ExplicitGCInvokesConcurrent	
+-XX:SoftRefLRUPolicyMSPerMB=0
+*/		
 	
 	
 	/**

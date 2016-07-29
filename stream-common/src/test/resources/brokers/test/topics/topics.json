@@ -1,0 +1,16 @@
+[
+  {
+    "name": "tsdb.metrics.bin",
+    "partitions": 2,
+    "replicas": 2,
+    "properties": {
+      "foo": "a"
+    }
+  },
+  {
+    "name": "tsdb.metrics.st",
+    "properties": {
+      "foo": "a"
+    }
+  }  
+]
