@@ -23,6 +23,7 @@ import java.lang.management.RuntimeMXBean;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -46,7 +47,6 @@ import javax.script.SimpleBindings;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.NIOHelper;
@@ -446,6 +446,17 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 		if(host!=null && !host.trim().isEmpty()) return host;
 		return HOST;
 	}	
+	
+	/**
+	 * Returns the app and host as default tags
+	 * @return a tag map
+	 */
+	public static Map<String, String> defaultTags() {
+		final Map<String, String> map = new LinkedHashMap<String, String>(2);
+		map.put("app", appName());
+		map.put("host", hostName());
+		return map;
+	}
 	
 	/**
 	 * Attempts to find a reliable app name

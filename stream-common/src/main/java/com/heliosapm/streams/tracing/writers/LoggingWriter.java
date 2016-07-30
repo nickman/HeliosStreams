@@ -22,6 +22,7 @@ import java.io.File;
 import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.Properties;
+import java.util.Random;
 
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -38,9 +39,13 @@ import org.apache.logging.log4j.core.config.Configuration;
 import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.apache.logging.log4j.core.layout.PatternLayout;
 
+import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.streams.metrics.ValueType;
 import com.heliosapm.streams.tracing.AbstractMetricWriter;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.time.SystemClock;
 
 /**
  * <p>Title: LoggingWriter</p>
@@ -61,38 +66,60 @@ public class LoggingWriter extends AbstractMetricWriter {
 	public static final String CONFIG_LOGGER_NAME = "metricwriter.logging.logname";
 	/** The config key for the logger file to write to */
 	public static final String CONFIG_FILE_NAME = "metricwriter.logging.filename";
+	/** The default logger directory to write to */
+	public static final String DEFAULT_DIR_NAME = new File(TMP, "stream-metrics").getAbsolutePath();
 	/** The default logger file to write to */
-	public static final String DEFAULT_FILE_NAME = new File(TMP, "streams.logfile.out").getAbsolutePath();
+	public static final String DEFAULT_FILE_NAME = new File(new File(DEFAULT_DIR_NAME), "streams.logfile.out").getAbsolutePath();
+
+	/** The config key for the logger file roll name format */
+	public static final String CONFIG_ROLL_PATTERN = "metricwriter.logging.rollformat";
+	/** The default logger file roll name format */
+	public static final String DEFAULT_ROLL_PATTERN = "-%d{MM-dd-yyyy-HH-mm}";
+	
+	
 	
 	/** The utf8 character set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
 	
 	/**
 	 * Creates a new LoggingWriter
-	 * @param confirmsMetrics
 	 */
-	public LoggingWriter(boolean confirmsMetrics) {
+	public LoggingWriter() {
 		super(false);
 	}
 	
 	@Override
-	public void configure(Properties config) {		
-		final String loggerName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOGGER_NAME, null, config);
+	public void configure(Properties config) {				final String loggerName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOGGER_NAME, null, config);
 		if(loggerName==null || !LogManager.getContext(true).hasLogger(loggerName)) {
+			/* 
+			 * ===================================================
+			 * FIXME:  this is super ugly
+			 * ===================================================
+			 * TODO:
+			 *  - log4j2 async appender
+			 *  - low gc message objects
+			 */
 			final String fileName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_FILE_NAME, DEFAULT_FILE_NAME, config);
+			final File file = new File(fileName);
+			final File dir = file.getParentFile();
+			if(dir.exists()) {
+				if(!dir.isDirectory()) throw new IllegalArgumentException("The logging directory is a file [" + dir + "]");
+			} else {
+				if(!dir.mkdirs()) throw new IllegalArgumentException("Cannot create the logging directory [" + dir + "]");
+			}
 			LoggerContext context= (LoggerContext) LogManager.getContext();
 	        Configuration loggingConfig = context.getConfiguration();
-	        PatternLayout layout= PatternLayout.createLayout("%m%n%", null, loggingConfig, null, UTF8, false, false, null, null);
+	        PatternLayout layout= PatternLayout.createLayout("%m%n", null, loggingConfig, null, UTF8, false, false, null, null);
 	        
 	        
-	        final DefaultRolloverStrategy strategy = DefaultRolloverStrategy.createStrategy("10", "0", null, null, null, true, loggingConfig);
+	        final DefaultRolloverStrategy strategy = DefaultRolloverStrategy.createStrategy("10", "1", null, null, null, true, loggingConfig);
 	        final int lastIndex = fileName.lastIndexOf('.');
-	        final String format = "%d{MM-dd-yyyy-hh}-%i";
+	        final String format = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROLL_PATTERN, DEFAULT_ROLL_PATTERN, config);
 	        final StringBuilder b = new StringBuilder(fileName);
 	        if(lastIndex==-1) {
 	        	b.append(".").append(format);
 	        } else {
-	        	b.insert(lastIndex-1, format);
+	        	b.insert(lastIndex, format);
 	        }
 	        final String rolledFileFormat = b.toString();
 	        final TriggeringPolicy trigger = TimeBasedTriggeringPolicy.createPolicy("1", "true");
@@ -136,21 +163,33 @@ public class LoggingWriter extends AbstractMetricWriter {
 	        		getClass().getSimpleName() + "Logger",  
 	        		"false", refs, null, loggingConfig, null);
 	        loggerConfig.addAppender(appender, Level.INFO, null);
+	        
 	        loggingConfig.addLogger(getClass().getSimpleName() + "Logger", loggerConfig);
 	        context.updateLoggers();	        
-	        
+	        org.apache.logging.log4j.core.Logger xlogger = 	context.getLogger(getClass().getName() + "Logger");
+	        for(Appender app: xlogger.getAppenders().values()) {
+	        	xlogger.removeAppender(app);
+	        }
+	        xlogger.addAppender(appender);
+	        log = context.getLogger(getClass().getName() + "Logger");
 		} else {
 			log = LogManager.getLogger(loggerName);
-			
-			
 		}
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#doStart()
+	 */
 	@Override
 	protected void doStart() {		
 		appender.start();
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#doStop()
+	 */
 	@Override
 	protected void doStop() {
 		appender.stop();
@@ -162,8 +201,9 @@ public class LoggingWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	protected void doMetrics(Collection<StreamedMetric> metrics) {
-		// TODO Auto-generated method stub
-
+		for(StreamedMetric sm: metrics) {
+			log.info(sm.toString());
+		}
 	}
 
 	/**
@@ -172,9 +212,36 @@ public class LoggingWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	protected void doMetrics(StreamedMetric... metrics) {
-		// TODO Auto-generated method stub
-
+		for(StreamedMetric sm: metrics) {
+			log.info(sm.toString());
+		}
 	}
 
+	public static void main(String[] args) {
+		log("LoggingWriter Test");
+		final Random r = new Random(System.currentTimeMillis());
+		LoggingWriter lw = new LoggingWriter();
+		lw.configure(null);
+		lw.doStart();
+		try {
+			//for(int i = 0; i < 100; i++) {
+			while(true) {
+				for(int i = 0; i < 100; i++) {
+					StreamedMetricValue smv = new StreamedMetricValue(System.currentTimeMillis(), Math.abs(r.nextInt(100) + r.nextDouble()), "foo.bar", AgentName.defaultTags()).setValueType(ValueType.DELTA);
+					lw.onMetrics(smv);
+				}
+				log("Loop...");
+				SystemClock.sleep(5000);
+			}			
 
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+		} finally {
+			lw.doStop();
+		}
+	}
+	
+	public static void log(Object msg) {
+		System.out.println(msg);
+	}
 }
