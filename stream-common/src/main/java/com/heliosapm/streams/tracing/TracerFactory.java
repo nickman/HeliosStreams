@@ -123,10 +123,12 @@ public class TracerFactory {
 		log("Tracer Test");
 		ITracer tracer = TracerFactory.getInstance(null).getTracer();
 		tracer.seg("foo.bar");
-		for(int i = 0; i < 1000; i++) {
-			tracer.trace(i, System.currentTimeMillis());
+		for(int x = 0; x < 1000; x++) {
+			for(int i = 0; i < 1000; i++) {
+				tracer.trace(i, System.currentTimeMillis());
+			}
+			tracer.flush();
 		}
-		tracer.flush();
 		log("Done");
 		StdInCommandHandler.getInstance().run();
 	}
