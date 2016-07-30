@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.streams.tracing.writers;
 
 import java.io.File;
+import java.io.Serializable;
 import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.Properties;
@@ -28,10 +29,14 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.core.Appender;
+import org.apache.logging.log4j.core.Layout;
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.appender.RollingFileAppender;
+import org.apache.logging.log4j.core.appender.RollingRandomAccessFileAppender;
 import org.apache.logging.log4j.core.appender.rolling.DefaultRolloverStrategy;
 import org.apache.logging.log4j.core.appender.rolling.RollingFileManager;
+import org.apache.logging.log4j.core.appender.rolling.RollingRandomAccessFileManager;
+import org.apache.logging.log4j.core.appender.rolling.RolloverStrategy;
 import org.apache.logging.log4j.core.appender.rolling.TimeBasedTriggeringPolicy;
 import org.apache.logging.log4j.core.appender.rolling.TriggeringPolicy;
 import org.apache.logging.log4j.core.config.AppenderRef;
@@ -45,6 +50,7 @@ import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.ValueType;
 import com.heliosapm.streams.tracing.AbstractMetricWriter;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.time.SystemClock;
 
 /**
@@ -74,9 +80,27 @@ public class LoggingWriter extends AbstractMetricWriter {
 	/** The config key for the logger file roll name format */
 	public static final String CONFIG_ROLL_PATTERN = "metricwriter.logging.rollformat";
 	/** The default logger file roll name format */
-	public static final String DEFAULT_ROLL_PATTERN = "-%d{MM-dd-yyyy-HH-mm}";
+	public static final String DEFAULT_ROLL_PATTERN = "-%d{MM-dd-yyyy-HH}.gz";
 	
+	/** The config key for the log entry prefix leading each logged line */
+	public static final String CONFIG_ENTRY_PREFIX = "metricwriter.logging.entryprefix";
+	/** The default log entry prefix leading each logged line */
+	public static final String DEFAULT_ENTRY_PREFIX = "";
 	
+	/** The config key for the log entry suffix trailing each logged line */
+	public static final String CONFIG_ENTRY_SUFFIX = "metricwriter.logging.entrysuffix";
+	/** The default log entry suffix leading each logged line */
+	public static final String DEFAULT_ENTRY_SUFFIX = "";
+	
+	/** The config key for the flag indicating if the rolling file appender is a random access file */
+	public static final String CONFIG_RA_FILE = "metricwriter.logging.ra";
+	/** The default random access file enablement */
+	public static final boolean DEFAULT_RA_FILE = true;
+	
+	/** Prefix indicating a log entry is a metric */
+	public static final String METRIC_PREFIX = "M:";
+	/** Prefix indicating a log entry is an event */
+	public static final String EVENT_PREFIX = "E:";
 	
 	/** The utf8 character set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
@@ -88,8 +112,15 @@ public class LoggingWriter extends AbstractMetricWriter {
 		super(false);
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#configure(java.util.Properties)
+	 */
 	@Override
-	public void configure(Properties config) {				final String loggerName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOGGER_NAME, null, config);
+	public void configure(Properties config) {				
+		
+		final String loggerName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOGGER_NAME, null, config);
+		
 		if(loggerName==null || !LogManager.getContext(true).hasLogger(loggerName)) {
 			/* 
 			 * ===================================================
@@ -99,6 +130,9 @@ public class LoggingWriter extends AbstractMetricWriter {
 			 *  - log4j2 async appender
 			 *  - low gc message objects
 			 */
+			final String entryPrefix = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ENTRY_PREFIX, DEFAULT_ENTRY_PREFIX, config);
+			final String entrySuffix = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ENTRY_SUFFIX, DEFAULT_ENTRY_SUFFIX, config);
+			final boolean randomAccessFile = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_RA_FILE, DEFAULT_RA_FILE, config);
 			final String fileName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_FILE_NAME, DEFAULT_FILE_NAME, config);
 			final File file = new File(fileName);
 			final File dir = file.getParentFile();
@@ -109,51 +143,26 @@ public class LoggingWriter extends AbstractMetricWriter {
 			}
 			LoggerContext context= (LoggerContext) LogManager.getContext();
 	        Configuration loggingConfig = context.getConfiguration();
-	        PatternLayout layout= PatternLayout.createLayout("%m%n", null, loggingConfig, null, UTF8, false, false, null, null);
+	        PatternLayout layout= PatternLayout.createLayout(entryPrefix + "%m" + entrySuffix + "%n" , null, loggingConfig, null, UTF8, false, false, null, null);
 	        
 	        
 	        final DefaultRolloverStrategy strategy = DefaultRolloverStrategy.createStrategy("10", "1", null, null, null, true, loggingConfig);
-	        final int lastIndex = fileName.lastIndexOf('.');
+//	        final int lastIndex = fileName.lastIndexOf('.');
 	        final String format = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROLL_PATTERN, DEFAULT_ROLL_PATTERN, config);
-	        final StringBuilder b = new StringBuilder(fileName);
-	        if(lastIndex==-1) {
-	        	b.append(".").append(format);
-	        } else {
-	        	b.insert(lastIndex, format);
-	        }
+	        final StringBuilder b = new StringBuilder(fileName).append(format);
+//	        if(lastIndex==-1) {
+//	        	b.append(".").append(format);
+//	        } else {
+//	        	b.insert(lastIndex, format);
+//	        }
 	        final String rolledFileFormat = b.toString();
 	        final TriggeringPolicy trigger = TimeBasedTriggeringPolicy.createPolicy("1", "true");
 	        
-	        RollingFileManager fileManager = RollingFileManager.getFileManager(
-	        		fileName, 
-	        		rolledFileFormat, 
-	        		false, 
-	        		true,
-	        		trigger, 
-	        		strategy, 
-	        		null, 
-	        		layout, 
-	        		8192,
-	        		true
-	        		);
-	        trigger.initialize(fileManager);	        
-	        appender = RollingFileAppender.createAppender(
-	        		fileName, 						// file name
-	        		rolledFileFormat, 				// rolled file name pattern
-	        		"true", 						// append
-	        		getClass().getSimpleName(), 	// appender name
-	        		"true", 						// buffered io
-	        		"8192", 						// buffer size
-	        		"true", 						// immediate flush	
-	        		trigger, 						// triggering policy
-	        		strategy,						// rollover strategy
-	        		layout, 						// layout
-	        		null, 							// filter
-	        		"true",							// ignore exceptions 
-	        		null, 							// advertise
-	        		null, 							// advertise uri
-	        		loggingConfig);					// config
-	        
+	        if(randomAccessFile) {
+	        	appender = createRollingRandomAccessFileAppender(fileName, loggingConfig, layout, strategy, rolledFileFormat, trigger);
+	        } else {
+	        	appender = createRollingFileAppender(fileName, loggingConfig, layout, strategy, rolledFileFormat, trigger);
+	        }
 	        loggingConfig.addAppender(appender);
 	        AppenderRef ref = AppenderRef.createAppenderRef(getClass().getSimpleName(), Level.INFO, null);
 	        AppenderRef[] refs = new AppenderRef[] { ref };
@@ -163,7 +172,6 @@ public class LoggingWriter extends AbstractMetricWriter {
 	        		getClass().getSimpleName() + "Logger",  
 	        		"false", refs, null, loggingConfig, null);
 	        loggerConfig.addAppender(appender, Level.INFO, null);
-	        
 	        loggingConfig.addLogger(getClass().getSimpleName() + "Logger", loggerConfig);
 	        context.updateLoggers();	        
 	        org.apache.logging.log4j.core.Logger xlogger = 	context.getLogger(getClass().getName() + "Logger");
@@ -177,6 +185,95 @@ public class LoggingWriter extends AbstractMetricWriter {
 		}
 	}
 	
+	
+	/**
+	 * Creates a new {@link RollingFileAppender}
+	 * @param fileName The log file
+	 * @param loggingConfig The logging config
+	 * @param layout The layout
+	 * @param strategy the rollover strategy
+	 * @param rolledFileFormat The log file roll pattern
+	 * @param trigger The roll trigger
+	 * @return the new appender
+	 */
+	protected Appender createRollingRandomAccessFileAppender(final String fileName, Configuration loggingConfig, PatternLayout layout,
+			final DefaultRolloverStrategy strategy, final String rolledFileFormat, final TriggeringPolicy trigger) {
+        
+        RollingRandomAccessFileManager fileManager = RollingRandomAccessFileManager.getRollingRandomAccessFileManager(
+        		fileName, 
+        		rolledFileFormat, 
+        		true, 
+        		true,
+        		8192,
+        		trigger, 
+        		strategy, 
+        		null, 
+        		layout      		
+        		);
+        trigger.initialize(fileManager);
+		
+		return RollingRandomAccessFileAppender.createAppender(
+				fileName, 						// file name
+				rolledFileFormat, 				// rolled file name pattern
+				"true", 						// append
+				getClass().getSimpleName(), 	// appender name
+				"true", 						// immediate flush
+				"8192", 						// buffer size				
+				trigger, 						// triggering policy
+				strategy,						// rollover strategy
+				layout, 						// layout
+				null, 							// filter
+				"true",							// ignore exceptions 
+				null, 							// advertise
+				null, 							// advertise uri
+				loggingConfig);					// config
+	}
+	
+
+	/**
+	 * Creates a new {@link RollingFileAppender}
+	 * @param fileName The log file
+	 * @param loggingConfig The logging config
+	 * @param layout The layout
+	 * @param strategy the rollover strategy
+	 * @param rolledFileFormat The log file roll pattern
+	 * @param trigger The roll trigger
+	 * @return the new appender
+	 */
+	protected Appender createRollingFileAppender(final String fileName, Configuration loggingConfig, PatternLayout layout,
+			final DefaultRolloverStrategy strategy, final String rolledFileFormat, final TriggeringPolicy trigger) {
+        RollingFileManager fileManager = RollingFileManager.getFileManager(
+        		fileName, 
+        		rolledFileFormat, 
+        		false, 
+        		true,
+        		trigger, 
+        		strategy, 
+        		null, 
+        		layout, 
+        		8192,
+        		true
+        		);
+        trigger.initialize(fileManager);
+		
+		return RollingFileAppender.createAppender(
+				fileName, 						// file name
+				rolledFileFormat, 				// rolled file name pattern
+				"true", 						// append
+				getClass().getSimpleName(), 	// appender name
+				"true", 						// buffered io
+				"8192", 						// buffer size
+				"true", 						// immediate flush	
+				trigger, 						// triggering policy
+				strategy,						// rollover strategy
+				layout, 						// layout
+				null, 							// filter
+				"true",							// ignore exceptions 
+				null, 							// advertise
+				null, 							// advertise uri
+				loggingConfig);					// config
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#doStart()
@@ -184,6 +281,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	@Override
 	protected void doStart() {		
 		appender.start();
+//		notifyStarted();
 	}
 	
 	/**
@@ -193,6 +291,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	@Override
 	protected void doStop() {
 		appender.stop();
+//		notifyStopped();
 	}
 
 	/**
@@ -202,7 +301,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	@Override
 	protected void doMetrics(Collection<StreamedMetric> metrics) {
 		for(StreamedMetric sm: metrics) {
-			log.info(sm.toString());
+			log.info(StringHelper.fastConcat(METRIC_PREFIX, sm.toString()));
 		}
 	}
 
@@ -213,7 +312,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	@Override
 	protected void doMetrics(StreamedMetric... metrics) {
 		for(StreamedMetric sm: metrics) {
-			log.info(sm.toString());
+			log.info(StringHelper.fastConcat(METRIC_PREFIX, sm.toString()));
 		}
 	}
 
@@ -243,5 +342,19 @@ public class LoggingWriter extends AbstractMetricWriter {
 	
 	public static void log(Object msg) {
 		System.out.println(msg);
+	}
+
+	@Override
+	protected void startUp() throws Exception {
+		appender.start();
+		System.err.println("Appender Started");
+		
+	}
+
+	@Override
+	protected void shutDown() throws Exception {
+		appender.stop();
+		System.err.println("Appender Stopped");
+		
 	}
 }

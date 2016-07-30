@@ -21,6 +21,7 @@ package com.heliosapm.streams.tracing;
 import java.util.Collection;
 import java.util.Properties;
 
+import com.google.common.util.concurrent.Service;
 import com.heliosapm.streams.metrics.StreamedMetric;
 
 import io.netty.buffer.ByteBuf;
@@ -32,7 +33,7 @@ import io.netty.buffer.ByteBuf;
  * <p><code>com.heliosapm.streams.tracing.IMetricWriter</code></p>
  */
 
-public interface IMetricWriter {
+public interface IMetricWriter extends Service {
 	/**
 	 * Handles the delivery of an array of {@link StreamedMetric} instances
 	 * @param metrics The metrics to deliver

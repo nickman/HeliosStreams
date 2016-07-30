@@ -399,25 +399,30 @@ public class StreamedMetric implements BytesMarshallable {
 		GZIPInputStream gis = null;
 		final Set<StreamedMetric> metrics;
 		try {
+			is.mark(5);
 			final int type = is.read();
 			final byte[] metricCountBytes = new byte[4];
 			is.read(metricCountBytes);
+			is.reset();
 			final int metricCount = Utils.fromBytes(metricCountBytes);
 			metrics = new HashSet<StreamedMetric>(metricCount);
 			if(type==1) {
 				gis = new GZIPInputStream(is);
 				dis = new DataInputStream(gis);
-			} else if(type==1) {
-				dis = new DataInputStream(dis);
+			} else if(type==0) {
+				dis = new DataInputStream(is);
 			} else {
 				throw new Exception("Invalid compression indicator byte [" + type + "]");
 			}
+			is.read();
+			is.read(metricCountBytes);
 			for(int i = 0; i < metricCount; i++) {
+				
 				final byte stype = dis.readByte();
 				
 				if(stype==0) {
 					metrics.add(StreamedMetric.readFromStream(dis));
-				} else if(stype==0) {
+				} else if(stype==1) {
 					metrics.add(StreamedMetricValue.readFromStream(dis));
 				} else {
 					throw new RuntimeException("Unrecognized metric type code [" + type + "]");

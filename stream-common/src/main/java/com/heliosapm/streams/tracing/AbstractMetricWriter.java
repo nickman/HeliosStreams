@@ -25,7 +25,7 @@ import java.util.Properties;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import com.google.common.util.concurrent.AbstractService;
+import com.google.common.util.concurrent.AbstractIdleService;
 import com.heliosapm.streams.metrics.StreamedMetric;
 
 import io.netty.buffer.ByteBuf;
@@ -39,7 +39,7 @@ import jsr166e.LongAdder;
  * <p><code>com.heliosapm.streams.tracing.AbstractMetricWriter</code></p>
  */
 
-public abstract class AbstractMetricWriter extends AbstractService implements IMetricWriter {
+public abstract class AbstractMetricWriter extends AbstractIdleService implements IMetricWriter {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	
@@ -168,20 +168,10 @@ public abstract class AbstractMetricWriter extends AbstractService implements IM
 		/* Default is empty */
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.google.common.util.concurrent.AbstractService#doStart()
-	 */
-	@Override
 	protected void doStart() {
 		/* Default is empty */
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.google.common.util.concurrent.AbstractService#doStop()
-	 */
-	@Override
 	protected void doStop() {
 		/* Default is empty */
 	}
@@ -192,7 +182,7 @@ public abstract class AbstractMetricWriter extends AbstractService implements IM
 	 */
 	@Override
 	public void start() throws Exception {
-		doStart();
+		startAsync();
 	}
 
 	/**
@@ -201,7 +191,7 @@ public abstract class AbstractMetricWriter extends AbstractService implements IM
 	 */
 	@Override
 	public void stop() {
-		doStop();
+		stopAsync();
 	}
 
 	/**
