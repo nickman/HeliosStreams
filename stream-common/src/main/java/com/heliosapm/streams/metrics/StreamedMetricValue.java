@@ -270,7 +270,10 @@ public class StreamedMetricValue extends StreamedMetric {
 		final StringBuilder b = new StringBuilder(96).append("put ")
 		.append(metricName).append(" ")
 		.append(timestamp).append(" ")
-		.append(isDoubleValue ? doubleValue : longValue).append(" ");
+		.append(isDoubleValue ? 
+				doubleValue : 
+				longValue)
+		.append(" ");
 		
 		for(Map.Entry<String, String> entry: tags.entrySet()) {
 			b.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");

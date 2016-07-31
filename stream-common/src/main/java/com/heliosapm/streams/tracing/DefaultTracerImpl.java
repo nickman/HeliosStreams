@@ -697,7 +697,7 @@ public class DefaultTracerImpl implements ITracer {
 	@Override
 	public ITracer trace(final long value, final long timestamp, final String... tagValues) {
 		if(!traceActive) { traceActive=true; return this; }
-		traceOut(value, timestamp, tagValues);
+		traceOut(timestamp, value, tagValues);
 		return this;
 	}
 
@@ -833,21 +833,23 @@ public class DefaultTracerImpl implements ITracer {
 	 */
 	@Override
 	public ITracer flush() {
-		final ElapsedTime et = SystemClock.startClock();
-		outBuffer.setInt(COUNT_OFFSET, bufferedEvents);
-		final ByteBuf bufferCopy = BufferManager.getInstance().buffer(outBuffer.readableBytes());
-		bufferCopy.writeBytes(outBuffer);
-		outBuffer.resetReaderIndex();
-		outBuffer.writerIndex(START_DATA_OFFSET);
-		final int finalCount = bufferedEvents;
-		flushPool.execute(new Runnable(){
-			@Override
-			public void run() {
-				writer.onMetrics(bufferCopy);
-				log.info(et.printAvg("Metrics flushed", finalCount));
-			}
-		});
-		bufferedEvents = 0;
+		if(bufferedEvents > 0) {
+			final ElapsedTime et = SystemClock.startClock();
+			outBuffer.setInt(COUNT_OFFSET, bufferedEvents);
+			final ByteBuf bufferCopy = BufferManager.getInstance().buffer(outBuffer.readableBytes());
+			bufferCopy.writeBytes(outBuffer);
+			outBuffer.resetReaderIndex();
+			outBuffer.writerIndex(START_DATA_OFFSET);
+			final int finalCount = bufferedEvents;
+			flushPool.execute(new Runnable(){
+				@Override
+				public void run() {
+					writer.onMetrics(bufferCopy);
+					log.info(et.printAvg("Metrics flushed", finalCount));
+				}
+			});
+			bufferedEvents = 0;
+		}
 		return this;
 		
 	}
