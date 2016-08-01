@@ -22,8 +22,10 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.tracing.writers.LoggingWriter;
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 
 /**
@@ -121,6 +123,8 @@ public class TracerFactory {
 	
 	public static void main(String[] args) {
 		log("Tracer Test");
+		JMXHelper.fireUpJMXMPServer(2553);
+		ExtendedThreadManager.install();
 		ITracer tracer = TracerFactory.getInstance(null).getTracer();
 		tracer.seg("foo.bar");
 		for(int x = 0; x < 1000; x++) {

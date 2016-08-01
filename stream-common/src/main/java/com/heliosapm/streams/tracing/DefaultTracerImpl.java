@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.SortedMap;
 import java.util.Stack;
 import java.util.TreeMap;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -34,7 +34,6 @@ import javax.management.ObjectName;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferFactory;
 import org.jboss.netty.buffer.HeapChannelBufferFactory;
 
@@ -61,7 +60,7 @@ import io.netty.buffer.ByteBuf;
 
 public class DefaultTracerImpl implements ITracer {
 	/** Thread pool used to flush tracing buffer */
-	private static final Executor flushPool = Executors.newFixedThreadPool(2, new ThreadFactory(){
+	private static final ExecutorService flushPool = Executors.newFixedThreadPool(2, new ThreadFactory(){
 		final AtomicInteger serial = new AtomicInteger();
 		@Override
 		public Thread newThread(final Runnable r) {
@@ -833,20 +832,29 @@ public class DefaultTracerImpl implements ITracer {
 	 */
 	@Override
 	public ITracer flush() {
-		final ElapsedTime et = SystemClock.startClock();
+		final long start = System.currentTimeMillis();
+		
 		outBuffer.setInt(COUNT_OFFSET, bufferedEvents);
 		final ByteBuf bufferCopy = BufferManager.getInstance().buffer(outBuffer.readableBytes());
 		bufferCopy.writeBytes(outBuffer);
 		outBuffer.resetReaderIndex();
 		outBuffer.writerIndex(START_DATA_OFFSET);
 		final int finalCount = bufferedEvents;
-		flushPool.execute(new Runnable(){
+		
+		flushPool.submit(new Runnable(){
+			
 			@Override
 			public void run() {
+				final ElapsedTime et = SystemClock.startClock();
+				final long start = System.currentTimeMillis();
 				writer.onMetrics(bufferCopy);
+				bufferCopy.release();
+//				log.info("Elapsed: {} ms.", System.currentTimeMillis()-start);
 				log.info(et.printAvg("Metrics flushed", finalCount));
+				
 			}
 		});
+		log.info("FLUSH----> {} ms.", System.currentTimeMillis()-start);
 		bufferedEvents = 0;
 		return this;
 		
