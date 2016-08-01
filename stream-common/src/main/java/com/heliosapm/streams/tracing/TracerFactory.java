@@ -22,7 +22,11 @@ import java.util.concurrent.TimeUnit;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.tracing.writers.LoggingWriter;
+<<<<<<< HEAD
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
+=======
+import com.heliosapm.streams.tracing.writers.NetWriter;
+>>>>>>> 0e6207fa0085250ab5c78b59e10c804ed5608490
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -41,6 +45,12 @@ public class TracerFactory {
 	private static volatile TracerFactory instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
+	
+	/** The config key name for the writer class name */
+	public static final String CONFIG_WRITER_CLASS = "tracing.writer.class";
+	/** The default writer class name */
+	public static final String DEFAULT_WRITER_CLASS = LoggingWriter.class.getName();
+	
 	
 	/** A cache of {@link ITracer}s keyed by the thread that owns the tracer */
 	private final Cache<Thread, ITracer> threadTracers = CacheBuilder.newBuilder()
@@ -84,10 +94,6 @@ public class TracerFactory {
 		return instance;
 	}
 	
-	/** The config key name for the writer class name */
-	public static final String CONFIG_WRITER_CLASS = "tracing.writer.class";
-	/** The default writer class name */
-	public static final String DEFAULT_WRITER_CLASS = LoggingWriter.class.getName();
 	
 	private TracerFactory(final Properties config) {
 		try {
@@ -125,6 +131,8 @@ public class TracerFactory {
 		log("Tracer Test");
 		JMXHelper.fireUpJMXMPServer(2553);
 		ExtendedThreadManager.install();
+		System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.TelnetWriter");
+		System.setProperty(NetWriter.CONFIG_REMOTE_URIS, "localhost:3333");
 		ITracer tracer = TracerFactory.getInstance(null).getTracer();
 		tracer.seg("foo.bar");
 		for(int x = 0; x < 1000; x++) {

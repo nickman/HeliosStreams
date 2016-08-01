@@ -20,6 +20,7 @@ package com.heliosapm.streams.tracing.writers;
 
 import java.io.File;
 import java.io.Serializable;
+import java.lang.management.ManagementFactory;
 import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.Properties;
@@ -66,7 +67,10 @@ public class LoggingWriter extends AbstractMetricWriter {
 	
 	protected Appender appender = null;
 	
-	private static final File TMP = new File(System.getProperty("java.io.tmpdir"));
+	/** The JVM's temp directory */
+	public static final File TMP = new File(System.getProperty("java.io.tmpdir"));
+	/** The JVM's PID */
+	public static final String PID = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
 	
 	/** The config key for the logger name to use */
 	public static final String CONFIG_LOGGER_NAME = "metricwriter.logging.logname";
@@ -75,7 +79,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	/** The default logger directory to write to */
 	public static final String DEFAULT_DIR_NAME = new File(TMP, "stream-metrics").getAbsolutePath();
 	/** The default logger file to write to */
-	public static final String DEFAULT_FILE_NAME = new File(new File(DEFAULT_DIR_NAME), "streams.logfile.out").getAbsolutePath();
+	public static final String DEFAULT_FILE_NAME = new File(new File(DEFAULT_DIR_NAME), "streams.logfile." + PID + ".log").getAbsolutePath();
 
 	/** The config key for the logger file roll name format */
 	public static final String CONFIG_ROLL_PATTERN = "metricwriter.logging.rollformat";
