@@ -24,7 +24,7 @@
 
 	<Loggers>
         <Logger name="com.heliosapm" level="info" additivity="false">
-            <AppenderRef ref="Console-Appender" level="info"/>               
+            <AppenderRef ref="Console-Appender" level="debug"/>               
         </Logger>
         <Logger name="org.I0Itec" level="info" additivity="false">
             <AppenderRef ref="Console-Appender" level="info"/>               

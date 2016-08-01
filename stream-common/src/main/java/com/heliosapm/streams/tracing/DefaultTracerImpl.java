@@ -34,8 +34,6 @@ import javax.management.ObjectName;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jboss.netty.buffer.ChannelBufferFactory;
-import org.jboss.netty.buffer.HeapChannelBufferFactory;
 
 import com.codahale.metrics.Meter;
 import com.heliosapm.streams.buffers.BufferManager;
@@ -49,6 +47,7 @@ import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 
 /**
  * <p>Title: DefaultTracerImpl</p>
@@ -126,16 +125,13 @@ public class DefaultTracerImpl implements ITracer {
 	// Where all traces go when their time comnes
 	// ===============================================================================
 	/** The buffer factory used to create buffers for all tracers */
-	private static final ChannelBufferFactory bufferFactory = 
-		new HeapChannelBufferFactory();
+	private static final ByteBufAllocator bufferFactory = BufferManager.getInstance();
 //	ConfigurationHelper.getIntSystemThenEnvProperty(CONF_INIT_SIZE, DEFAULT_INIT_SIZE),
 //	ConfigurationHelper.getFloatSystemThenEnvProperty(CONF_EXT_PCT, DEFAULT_EXT_PCT)
 	
 	/** The buffer this tracer's traces are written out to before they're flushed */
 	private final ByteBuf outBuffer;
 	
-	/** The ctor of the groovy enhanced tracer. We reference it reflectively so's we don't require Groovy. */
-	private static volatile Constructor<? extends ITracer> groovyTracerCtor = null;
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	
@@ -192,7 +188,7 @@ public class DefaultTracerImpl implements ITracer {
 		maxTags = 8;  // FIXME: config
 		minTags = 1;  // FIXME: config... allow zero for graphite et.al.
 		maxTracesBeforeFlush = 200;  // FIXME: config a default
-		outBuffer = BufferManager.getInstance().buffer(this.maxTracesBeforeFlush * 128); 
+		outBuffer = bufferFactory.buffer(this.maxTracesBeforeFlush * 128); 
 		outBuffer.setByte(COMPRESS_OFFSET, 0);
 		outBuffer.setInt(COUNT_OFFSET, 0);
 		outBuffer.writerIndex(START_DATA_OFFSET);
@@ -625,7 +621,7 @@ public class DefaultTracerImpl implements ITracer {
 //		return _trace(value, msTime==null ? System.currentTimeMillis() : msTime, tagValues);
 //	}
 	
-	private void traceOut(final long timestamp, final long value, final String...tagValues) {
+	private void traceOut(final long value, final long timestamp, final String...tagValues) {
 		final int pos = outBuffer.writerIndex();
 		try {			
 			modified = false;
@@ -639,10 +635,10 @@ public class DefaultTracerImpl implements ITracer {
 				outTags.putAll(tags);
 				outTags.putAll(buildTags(tagValues));
 			} else {
-				outTags = tags;
+				outTags = buildTags();
 			}
-			tags.putAll(appHostTags);
-			StreamedMetricValue.write(outBuffer, null, buildMetricName(), timestamp, value, tags);
+			outTags.putAll(appHostTags);
+			StreamedMetricValue.write(outBuffer, null, buildMetricName(), timestamp, value, outTags);
 		} catch (Exception ex) {
 			outBuffer.writerIndex(pos);
 			bufferedEvents--;
@@ -671,10 +667,10 @@ public class DefaultTracerImpl implements ITracer {
 				outTags.putAll(tags);
 				outTags.putAll(buildTags(tagValues));
 			} else {
-				outTags = tags;
+				outTags = buildTags();
 			}
-			tags.putAll(appHostTags);
-			StreamedMetricValue.write(outBuffer, null, buildMetricName(), timestamp, value, tags);
+			outTags.putAll(appHostTags);
+			StreamedMetricValue.write(outBuffer, null, buildMetricName(), timestamp, value, outTags);
 		} catch (Exception ex) {
 			outBuffer.writerIndex(pos);
 			bufferedEvents--;
@@ -755,7 +751,7 @@ public class DefaultTracerImpl implements ITracer {
 	 */
 	@Override
 	public ITracer trace(final double value, final String... tagValues) {
-		if(!traceActive) { traceActive=true; return this; }
+		if(!traceActive) { traceActive=true; return this; }		
 		return trace(value, msTime==null ? System.currentTimeMillis() : msTime, tagValues);
 	}
 
@@ -835,7 +831,7 @@ public class DefaultTracerImpl implements ITracer {
 		if(bufferedEvents > 0) {
 			final ElapsedTime et = SystemClock.startClock();
 			outBuffer.setInt(COUNT_OFFSET, bufferedEvents);
-			final ByteBuf bufferCopy = BufferManager.getInstance().buffer(outBuffer.readableBytes());
+			final ByteBuf bufferCopy = bufferFactory.buffer(outBuffer.readableBytes());
 			bufferCopy.writeBytes(outBuffer);
 			outBuffer.resetReaderIndex();
 			outBuffer.writerIndex(START_DATA_OFFSET);

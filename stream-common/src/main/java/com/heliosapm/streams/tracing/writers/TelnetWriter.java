@@ -33,8 +33,10 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.MessageToMessageEncoder;
+import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 
 /**
@@ -52,6 +54,9 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 	public static final Charset UTF8 = Charset.forName("UTF8");
 	/** A string encoder */
 	public static final StringEncoder STR_ENCODER = new StringEncoder(UTF8);
+	/** The response handler */
+	public static final ResponseHandler RESPONSE_HANDLER = new ResponseHandler();
+	
 	/** A streamed metric to string encoder */
 	protected static final StreamedMetricEncoder METRIC_ENCODER = new StreamedMetricEncoder();
 	/** The telnet channel initializer */
@@ -60,8 +65,32 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 		protected void initChannel(final NioSocketChannel ch) throws Exception {
 			ch.pipeline().addLast("stringEncoder", STR_ENCODER);
 			ch.pipeline().addLast("metricEncoder", METRIC_ENCODER);
+			ch.pipeline().addLast("stringDecoder", new StringDecoder(UTF8));
+			ch.pipeline().addLast("responseHandler", RESPONSE_HANDLER);
 		}
 	};
+	
+	/**
+	 * <p>Title: ResponseHandler</p>
+	 * <p>Description: Handles responses from the telnet endpoint</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.tracing.writers.TelnetWriter.ResponseHandler</code></p>
+	 */
+	protected static class ResponseHandler extends SimpleChannelInboundHandler<String> {
+		/** Instance logger */
+		protected final Logger log = LogManager.getLogger(getClass());
+
+		/**
+		 * {@inheritDoc}
+		 * @see io.netty.channel.SimpleChannelInboundHandler#channelRead0(io.netty.channel.ChannelHandlerContext, java.lang.Object)
+		 */
+		@Override
+		protected void channelRead0(final ChannelHandlerContext ctx, final String msg) throws Exception {
+			log.info("\n\t================================\n\tTelnet Response:\n\t[{}]\n\t================================\n", msg);
+		}
+		
+	}
 	
 	/**
 	 * Creates a new TelnetWriter
@@ -132,6 +161,12 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 				}
 			} else {
 				log.warn("Unknown type submitted: [{}]", msg.getClass().getName());
+			}
+			log.info("LEVEL: ------> [{}]", log.getLevel());
+			if(log.isDebugEnabled() && !out.isEmpty()) {
+				for(Object s: out) {
+					log.debug("Out Metric:\n[{}]", s);
+				}
 			}
 		}
 	}

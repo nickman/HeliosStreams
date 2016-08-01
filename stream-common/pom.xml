@@ -124,6 +124,19 @@
 				  <artifactId>trove4j</artifactId>
 				</dependency>            
 
+		<!-- ==========================================================
+		    Groovy Dependencies
+		    ========================================================== -->
+
+
+		      <dependency>
+						<groupId>org.codehaus.groovy</groupId>
+						<artifactId>groovy-all</artifactId>
+						<classifier>indy</classifier>
+						<version>${groovy.version}</version>
+						<scope>provided</scope>
+		      </dependency>
+
 
 
 		<!-- ==========================================================

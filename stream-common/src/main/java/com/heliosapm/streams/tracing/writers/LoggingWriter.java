@@ -63,7 +63,7 @@ import com.heliosapm.utils.time.SystemClock;
 
 public class LoggingWriter extends AbstractMetricWriter {
 	/** The logger used to write the metrics */
-	protected Logger log = null;
+	protected Logger metricLog = null;
 	
 	protected Appender appender = null;
 	
@@ -183,9 +183,9 @@ public class LoggingWriter extends AbstractMetricWriter {
 	        	xlogger.removeAppender(app);
 	        }
 	        xlogger.addAppender(appender);
-	        log = context.getLogger(getClass().getName() + "Logger");
+	        metricLog = context.getLogger(getClass().getName() + "Logger");
 		} else {
-			log = LogManager.getLogger(loggerName);
+			metricLog = LogManager.getLogger(loggerName);
 		}
 	}
 	
@@ -305,7 +305,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	@Override
 	protected void doMetrics(Collection<StreamedMetric> metrics) {
 		for(StreamedMetric sm: metrics) {
-			log.info(StringHelper.fastConcat(METRIC_PREFIX, sm.toString()));
+			metricLog.info(StringHelper.fastConcat(METRIC_PREFIX, sm.toString()));
 		}
 	}
 
@@ -316,7 +316,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	@Override
 	protected void doMetrics(StreamedMetric... metrics) {
 		for(StreamedMetric sm: metrics) {
-			log.info(StringHelper.fastConcat(METRIC_PREFIX, sm.toString()));
+			metricLog.info(StringHelper.fastConcat(METRIC_PREFIX, sm.toString()));
 		}
 	}
 

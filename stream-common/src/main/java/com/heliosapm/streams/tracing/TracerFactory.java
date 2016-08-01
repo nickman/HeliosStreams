@@ -15,22 +15,26 @@
  */
 package com.heliosapm.streams.tracing;
 
+import java.lang.reflect.Constructor;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.heliosapm.streams.tracing.groovy.Groovy;
+import com.heliosapm.streams.tracing.groovy.GroovyTracer;
 import com.heliosapm.streams.tracing.writers.LoggingWriter;
-<<<<<<< HEAD
-import com.heliosapm.utils.concurrency.ExtendedThreadManager;
-=======
 import com.heliosapm.streams.tracing.writers.NetWriter;
->>>>>>> 0e6207fa0085250ab5c78b59e10c804ed5608490
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
+
 
 /**
  * <p>Title: TracerFactory</p>
@@ -51,6 +55,13 @@ public class TracerFactory {
 	/** The default writer class name */
 	public static final String DEFAULT_WRITER_CLASS = LoggingWriter.class.getName();
 	
+	
+	/** Instance logger */
+	protected final Logger log = LogManager.getLogger(getClass());
+	
+	
+	/** The groovy tracer ctor */
+	private final Constructor<? extends ITracer> groovyCtor;
 	
 	/** A cache of {@link ITracer}s keyed by the thread that owns the tracer */
 	private final Cache<Thread, ITracer> threadTracers = CacheBuilder.newBuilder()
@@ -95,6 +106,7 @@ public class TracerFactory {
 	}
 	
 	
+	@SuppressWarnings("unchecked")
 	private TracerFactory(final Properties config) {
 		try {
 			final String writerClassName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_WRITER_CLASS, DEFAULT_WRITER_CLASS, config);
@@ -102,7 +114,18 @@ public class TracerFactory {
 			writer.configure(config);
 			writer.start();
 			writer.awaitRunning(10, TimeUnit.SECONDS);
-			
+			if(Groovy.isGroovyAvailable()) {
+				Constructor<?> tmpCtor = null;
+				try {
+					tmpCtor = Class.forName("com.heliosapm.streams.tracing.groovy.GroovyTracer").getDeclaredConstructor(IMetricWriter.class); 
+				} catch (Exception ex) {
+					log.warn("Failed to load GroovyTracer even though Groovy was available on the classpath: {}", ex.getMessage());
+					tmpCtor = null;
+				}
+				groovyCtor = (Constructor<? extends ITracer>) tmpCtor;
+			} else {
+				groovyCtor = null;
+			}
 		} catch (Exception ex) {
 			throw new IllegalArgumentException("Failed to configure TracerFactory", ex);
 		}
@@ -118,7 +141,10 @@ public class TracerFactory {
 		try {
 			return threadTracers.get(Thread.currentThread(), new Callable<ITracer>(){
 				@Override
-				public ITracer call() throws Exception {				
+				public ITracer call() throws Exception {
+					if(groovyCtor!=null) {
+						return groovyCtor.newInstance(writer);
+					} 
 					return new DefaultTracerImpl(writer);
 				}
 			});
@@ -131,16 +157,10 @@ public class TracerFactory {
 		log("Tracer Test");
 		JMXHelper.fireUpJMXMPServer(2553);
 		ExtendedThreadManager.install();
-		System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.TelnetWriter");
-		System.setProperty(NetWriter.CONFIG_REMOTE_URIS, "localhost:3333");
-		ITracer tracer = TracerFactory.getInstance(null).getTracer();
-		tracer.seg("foo.bar");
-		for(int x = 0; x < 1000; x++) {
-			for(int i = 0; i < 1000; i++) {
-				tracer.trace(i, System.currentTimeMillis());
-			}
-			tracer.flush();
-		}
+		System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.ConsoleWriter");
+		System.setProperty(NetWriter.CONFIG_REMOTE_URIS, "localhost:4242");
+//		final ITracer tracer = TracerFactory.getInstance(null).getTracer();
+		final GroovyTracer tracer = (GroovyTracer)TracerFactory.getInstance(null).getTracer();
 		log("Done");
 		StdInCommandHandler.getInstance().run();
 	}
