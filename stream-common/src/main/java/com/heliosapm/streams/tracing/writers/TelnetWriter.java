@@ -60,7 +60,6 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 		protected void initChannel(final NioSocketChannel ch) throws Exception {
 			ch.pipeline().addLast("stringEncoder", STR_ENCODER);
 			ch.pipeline().addLast("metricEncoder", METRIC_ENCODER);
-			
 		}
 	};
 	

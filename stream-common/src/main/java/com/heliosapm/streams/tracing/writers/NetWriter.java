@@ -20,7 +20,9 @@ package com.heliosapm.streams.tracing.writers;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -29,9 +31,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
+import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.tracing.AbstractMetricWriter;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -43,6 +43,7 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
@@ -122,10 +123,15 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 		eventExecutor = new UnorderedThreadPoolEventExecutor(channelGroupThreads, groupThreadFactory, this);		
 		channels = new DefaultChannelGroup(getClass().getSimpleName() + "Channels", eventExecutor);
 		group = new NioEventLoopGroup(eventLoopThreads, eventLoopThreadFactory);
-		bootstrap
+		bootstrap			
 			.group(group)
 			.channel(channelType)
-			.handler(getChannelInitializer());
+			.handler(getChannelInitializer())
+		;
+		bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000);  // FIXME: config
+		bootstrap.option(ChannelOption.ALLOCATOR, BufferManager.getInstance());
+				
+			
 		// FIXME: Tweaks for channel configuration
 			
 	}

@@ -271,13 +271,13 @@ public class StreamedMetricValue extends StreamedMetric {
 		.append(metricName).append(" ")
 		.append(timestamp).append(" ")
 		.append(isDoubleValue ? 
-				doubleValue : 
-				longValue)
+				Double.toString(doubleValue) : 
+				Long.toString(longValue))
 		.append(" ");
 		
 		for(Map.Entry<String, String> entry: tags.entrySet()) {
 			b.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
-		}
+		}		
 		return b.toString();
 	}
 	
