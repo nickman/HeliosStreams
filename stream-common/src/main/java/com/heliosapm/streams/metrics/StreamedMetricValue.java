@@ -178,6 +178,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * Indicates if this StreamedMetric has a value
 	 * @return true since this type has a value
 	 */
+	@Override
 	public boolean isValued() {
 		return true;
 	}
@@ -187,6 +188,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * @param vt The value type to set
 	 * @return this metric
 	 */
+	@Override
 	public StreamedMetricValue setValueType(final ValueType vt) {
 		if(vt!=null) {
 			if(vt.valueless) throw new IllegalArgumentException("Invalid value type for StreamedMetric. Type is valueless [" + vt.name + "]");
@@ -266,6 +268,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * <b><code>put &lt;metric&gt; &lt;timestamp&gt; &lt;value&gt; &lt;tagk1=tagv1[ tagk2=tagv2 ...tagkN=tagvN]&gt;</code></b>.
 	 * @return the OpenTSDB rendered put line
 	 */
+	@Override
 	public String toOpenTSDBString() {
 		final StringBuilder b = new StringBuilder(96).append("put ")
 		.append(metricName).append(" ")
@@ -274,7 +277,7 @@ public class StreamedMetricValue extends StreamedMetric {
 				Double.toString(doubleValue) : 
 				Long.toString(longValue))
 		.append(" ");
-		
+				
 		for(Map.Entry<String, String> entry: tags.entrySet()) {
 			b.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
 		}		
@@ -473,6 +476,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * Returns a byte array containing the serialized streammetric
 	 * @return a byte array 
 	 */
+	@Override
 	public byte[] toByteArray() {
 		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
 		try {
@@ -495,6 +499,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * Returns this streamed metric serialized into a byte buf
 	 * @return the byte buf
 	 */
+	@Override
 	public ByteBuf toByteBuff() {
 		final ByteBuf buff = BufferManager.getInstance().directBuffer(byteSize);
 		buff.writeByte(TYPE_CODE);
@@ -513,6 +518,7 @@ public class StreamedMetricValue extends StreamedMetric {
 	 * Writes this metric into the passed buffer
 	 * @param buff The buffer to write this metric into
 	 */
+	@Override
 	public void intoByteBuf(final ByteBuf buff) {
 		buff.writeByte(TYPE_CODE);
 		writeByteArray(buff);
@@ -552,6 +558,7 @@ public class StreamedMetricValue extends StreamedMetric {
 		return new StreamedMetricValue().read(dis);
 	}
 	
+	@Override
 	StreamedMetricValue read(final DataInputStream dis) {		
 		try {
 			super.read(dis);

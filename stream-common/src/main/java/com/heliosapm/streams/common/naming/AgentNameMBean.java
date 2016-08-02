@@ -40,44 +40,44 @@ public interface AgentNameMBean {
 	
 	
 	/** The system property config name for the metric submitting host name  */
-	public static final String PROP_HOST_NAME = "tsdb.id.host";
+	public static final String PROP_HOST_NAME = "helios.id.host";
 	/** The system property config name for the metric submitting app name  */
-	public static final String PROP_APP_NAME = "tsdb.id.app";
+	public static final String PROP_APP_NAME = "helios.id.app";
 	/** The system property config name for a system property or env var that specifies the app name.
 	 * If the prop value starts with <b><code>e:</code></b>, will inspect the environment, otherwise,
 	 * looks for a system prop. 
 	 */ 
-	public static final String SYSPROP_APP_NAME = "tsdb.id.app.prop";
+	public static final String SYSPROP_APP_NAME = "helios.id.app.prop";
 	/** The system property config name for reading a remote app name  */
-	public static final String REMOTE_PROP_APP_NAME = "remote.tsdb.id.app";
+	public static final String REMOTE_PROP_APP_NAME = "remote.helios.id.app";
 	/** The system property config name for reading a remote host name  */
-	public static final String REMOTE_PROP_HOST_NAME = "remote.tsdb.id.host";
+	public static final String REMOTE_PROP_HOST_NAME = "remote.helios.id.host";
 	
 	/** The system property config name for a prop where the value is a JS script that will compute the app name */ 
-	public static final String JS_APP_NAME = "tsdb.id.app.js";
+	public static final String JS_APP_NAME = "helios.id.app.js";
 	/** The system property config name for a prop where the value is a JS script that will compute remote app name */ 
-	public static final String REMOTE_JS_APP_NAME = "remote.tsdb.id.app.js";
+	public static final String REMOTE_JS_APP_NAME = "remote.helios.id.app.js";
 	/** The system property config name for a prop where the value is a JS script that will compute remote host name */ 
-	public static final String REMOTE_JS_HOST_NAME = "remote.tsdb.id.host.js";
+	public static final String REMOTE_JS_HOST_NAME = "remote.helios.id.host.js";
 	
 	/** The configuration property name for forcing all trace content to lower case  */
-	public static final String PROP_FORCE_LOWER_CASE = "tsdb.trace.lc";
+	public static final String PROP_FORCE_LOWER_CASE = "helios.trace.lc";
 	/** The default force all lower case tracing */
 	public static final boolean DEFAULT_FORCE_LOWER_CASE = true;
 	/** The configuration property name for only tracing the short host name (rather than the FQN) */
-	public static final String PROP_USE_SHORT_HOSTNAMES = "tsdb.hostname.short";
+	public static final String PROP_USE_SHORT_HOSTNAMES = "helios.hostname.short";
 	/** The default short host name */
 	public static final boolean DEFAULT_USE_SHORT_HOSTNAMES = true;
 	
 	
 	/** The name of the file used to lock the metric persistence directory */
-	public static final String LOCK_FILE_NAME = ".tsdb.lock";
+	public static final String LOCK_FILE_NAME = ".helios.lock";
 	
 	/** The system property config name for additional JVM wide standard tags for all submitted metrics
 	 * in addition to <b><code>host</code></b> and <b><code>app</code></b>. Format should be comma separated values:
 	 * <b><code>key1=val1,key2=val2,keyn=valn</code></b>. 
 	 */
-	public static final String PROP_EXTRA_TAGS = "tsdb.tags.extra";
+	public static final String PROP_EXTRA_TAGS = "helios.tags.extra";
 	
     /** The global tag name for the host */
     public static final String HOST_TAG = "host";
@@ -86,13 +86,13 @@ public interface AgentNameMBean {
 	
 	
 	/** Notification type for initial name and host assignment */
-	public static final String NOTIF_ASSIGNED = "tsdb.agentname.assigned";
+	public static final String NOTIF_ASSIGNED = "helios.agentname.assigned";
 	/** Notification type for an AgentName app name change */
-	public static final String NOTIF_APP_NAME_CHANGE = "tsdb.agentname.change.name";
+	public static final String NOTIF_APP_NAME_CHANGE = "helios.agentname.change.name";
 	/** Notification type for an AgentName host change */
-	public static final String NOTIF_HOST_NAME_CHANGE = "tsdb.agentname.change.host";
+	public static final String NOTIF_HOST_NAME_CHANGE = "helios.agentname.change.host";
 	/** Notification type for an AgentName app and host change */
-	public static final String NOTIF_BOTH_NAME_CHANGE = "tsdb.agentname.change.both";
+	public static final String NOTIF_BOTH_NAME_CHANGE = "helios.agentname.change.both";
 	
 	final MBeanNotificationInfo[] NOTIF_INFOS = new MBeanNotificationInfo[]{
 			new MBeanNotificationInfo(new String[]{NOTIF_ASSIGNED}, Notification.class.getName(), "Broadcast when the AgentName is initially assigned"),
@@ -107,12 +107,26 @@ public interface AgentNameMBean {
 	 * @return the current app name
 	 */
 	public String getAppName();
+	
+	/**
+	 * Returns the source of the current app name
+	 * @return the source of the current app name
+	 */
+	public String getAppNameSource();
+	
 
 	/**
 	 * Returns the current host name
 	 * @return the current host name
 	 */
 	public String getHostName();
+	
+	/**
+	 * Returns the source of the current host name
+	 * @return the source of the current host name
+	 */
+	public String getHostNameSource();
+	
 	
 	/**
 	 * Updates the AgentName's app name.

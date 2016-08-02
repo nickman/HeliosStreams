@@ -60,7 +60,7 @@ import com.heliosapm.utils.net.LocalHost;
  * <p>Description: Discovers the host and app name and notifies if they change</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.tsdbex.tracing.agentid.AgentName</code></p>
+ * <p><code>com.heliosapm.streams.common.naming.AgentName</code></p>
  */
 
 public class AgentName extends NotificationBroadcasterSupport  implements AgentNameMBean {
@@ -104,6 +104,12 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	private volatile String appName = null;
 	/** The cached host name */
 	private volatile String hostName = null;
+	
+	/** The app name source */
+	private static volatile String appNameSource = null;
+	/** The host name source */
+	private static volatile String hostNameSource = null;
+	
 	
 	/** Instance logger */
 	private final Logger log = LoggerFactory.getLogger(getClass());
@@ -302,6 +308,24 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	}
 	
 	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.common.naming.AgentNameMBean#getAppNameSource()
+	 */
+	@Override
+	public String getAppNameSource() {		
+		return appNameSource;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.common.naming.AgentNameMBean#getHostNameSource()
+	 */
+	@Override
+	public String getHostNameSource() {
+		return hostNameSource;
+	}
+	
+	/**
 	 * Adds an AgentName change listener 
 	 * @param listener the listener to add
 	 */
@@ -384,7 +408,7 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.tsdbex.tracing.agentid.AgentNameMBean#resetAppName(java.lang.String)
+	 * @see com.heliosapm.streams.common.naming.AgentNameMBean#resetAppName(java.lang.String)
 	 */
 	@Override
 	public void resetAppName(final String newAppName) {
@@ -401,7 +425,7 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.tsdbex.tracing.agentid.AgentNameMBean#resetHostName(java.lang.String)
+	 * @see com.heliosapm.streams.common.naming.AgentNameMBean#resetHostName(java.lang.String)
 	 */
 	@Override
 	public void resetHostName(final String newHostName) {
@@ -421,15 +445,29 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	 * Attempts a series of methods of divining the host name
 	 * @return the determined host name
 	 */
-	public static String hostName() {	
+	private static String hostName() {	
 		String host = System.getProperty(PROP_HOST_NAME, "").trim();
-		if(host!=null && !host.isEmpty()) return host;
+		if(host!=null && !host.isEmpty()) {
+			hostNameSource = "PROP_HOST_NAME:" + PROP_HOST_NAME + ":" + host.trim();
+			return host.trim();
+		}
 		host = LocalHost.getHostNameByNic();
-		if(host!=null) return host;		
+		if(host!=null) {
+			hostNameSource = "HostNameByNic:" + host.trim();
+			return host.trim();		
+		}
 		host = LocalHost.getHostNameByInet();
-		if(host!=null) return host;
-		host = System.getenv(IS_WIN ? "COMPUTERNAME" : "HOSTNAME");
-		if(host!=null && !host.trim().isEmpty()) return host;
+		if(host!=null) {
+			hostNameSource = "HostNameByInet:" + host.trim();
+			return host.trim();
+		}
+		final String env = IS_WIN ? "COMPUTERNAME" : "HOSTNAME";
+		host = System.getenv(env);
+		if(host!=null && !host.trim().isEmpty()) {
+			hostNameSource = "Env:" + env + ":" + host.trim();
+			return host.trim();
+		}
+		hostNameSource = "Runtime:" + HOST;
 		return HOST;
 	}	
 	
@@ -451,10 +489,10 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	 * Returns the app and host as default tags
 	 * @return a tag map
 	 */
-	public static Map<String, String> defaultTags() {
+	public Map<String, String> defaultTags() {
 		final Map<String, String> map = new LinkedHashMap<String, String>(2);
-		map.put("app", appName());
-		map.put("host", hostName());
+		map.put("app", getAppName());
+		map.put("host", getHostName());
 		return map;
 	}
 	
@@ -462,24 +500,36 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	 * Attempts to find a reliable app name
 	 * @return the app name
 	 */
-	public static String appName() {
+	private static String appName() {
 		String appName = System.getProperty(PROP_APP_NAME, "").trim();
-		if(appName!=null && !appName.isEmpty()) return appName;
+		if(appName!=null && !appName.isEmpty()) {
+			appNameSource = "PROP_APP_NAME:" + PROP_APP_NAME + ":" + appName;
+			return appName;
+		}
 		appName = getSysPropAppName();
-		if(appName!=null && !appName.trim().isEmpty()) return appName.trim();
+		if(appName!=null && !appName.trim().isEmpty()) {
+			appNameSource = "SysPropAppName:" + System.getProperty(SYSPROP_APP_NAME, "").trim() + ":" + appName.trim();			
+			return appName.trim();
+		}
 		appName = getJSAppName();
-		if(appName!=null && !appName.trim().isEmpty()) return appName.trim();		
-		appName = System.getProperty("sun.java.command", null);
+		if(appName!=null && !appName.trim().isEmpty()) {
+			appNameSource = "JSAppName:" + appName.trim();
+			return appName.trim();		
+		}
+		appName = System.getProperty("spring.boot.admin.client.name", null);
 		if(appName!=null && !appName.trim().isEmpty()) {
 			String app = cleanAppName(appName);
 			if(app!=null && !app.trim().isEmpty()) {
-				return app;
+				appNameSource = "SpringBootAdminClient:" + app.trim();
+				return app.trim();
 			}
 		}
-		// spring.boot.admin.client.name
 		appName = getVMSupportAppName();
-		if(appName!=null && !appName.trim().isEmpty()) return appName;
+		if(appName!=null && !appName.trim().isEmpty()) {			
+			return appName.trim();
+		}
 		//  --main from args ?
+		appNameSource = "PID:" + SPID;
 		return SPID;
 	}
 	
@@ -567,10 +617,7 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	public static String getSysPropAppName() {
 		String appProp = System.getProperty(SYSPROP_APP_NAME, "").trim();
 		if(appProp==null || appProp.isEmpty()) return null;
-		boolean env = appProp==null || appProp.isEmpty();
-		String appName = env ? System.getenv(appProp) : System.getProperty(appProp, "").trim();
-		if(appName!=null && !appName.trim().isEmpty()) return appName;
-		return null;		
+		return ConfigurationHelper.getSystemThenEnvProperty(appProp, null);
 	}
 	
 	/**
@@ -679,17 +726,26 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 		String app = p.getProperty("sun.java.command", null);
 		if(app!=null && !app.trim().isEmpty()) {
 			app = cleanAppName(app);			
-			if(app!=null && !app.trim().isEmpty()) return app;
+			if(app!=null && !app.trim().isEmpty()) {
+				appNameSource = "VMSupport(sun.java.command):" + app.trim(); 
+				return app.trim();
+			}
 		}
 		app = p.getProperty("sun.rt.javaCommand", null);
 		if(app!=null && !app.trim().isEmpty()) {
 			app = cleanAppName(app);			
-			if(app!=null && !app.trim().isEmpty()) return app;				
+			if(app!=null && !app.trim().isEmpty()) {
+				appNameSource = "VMSupport(sun.rt.javaCommand):" + app.trim();
+				return app.trim();				
+			}
 		}		
 		app = p.getProperty("program.name", null);
 		if(app!=null && !app.trim().isEmpty()) {
 			app = cleanAppName(app);			
-			if(app!=null && !app.trim().isEmpty()) return app;				
+			if(app!=null && !app.trim().isEmpty()) {
+				appNameSource = "VMSupport(program.name):" + app.trim();
+				return app.trim();				
+			}
 		}
 		return null;
 	}

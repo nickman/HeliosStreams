@@ -41,6 +41,7 @@ import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serializer;
 
 import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.streams.tracing.TagKeySorter;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
@@ -65,7 +66,7 @@ public class StreamedMetric implements BytesMarshallable {
 	/** The metric instance key */
 	protected transient volatile String metricKey = null;
 	/** The metric tags */
-	protected final Map<String, String> tags = new TreeMap<String, String>();
+	protected final Map<String, String> tags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
 	/** The value type, if one was assigned */
 	protected ValueType valueType = null;
 	/** The estimated byte size */
@@ -646,7 +647,7 @@ public class StreamedMetric implements BytesMarshallable {
 		final StringBuilder b = new StringBuilder(96).append("put ")
 		.append(metricName).append(" ")
 		.append(timestamp).append(" ")
-		.append(1).append(" ");
+		.append(1).append(" ");		
 		for(Map.Entry<String, String> entry: tags.entrySet()) {
 			b.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
 		}

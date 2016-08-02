@@ -74,7 +74,7 @@ public class TagKeySorter implements Comparator<String> {
 	 */
     @SuppressWarnings("static-method")
 	protected int doCompare(final String var1, final String var2) {
-        return "host".equalsIgnoreCase(var1)?-1:("host".equalsIgnoreCase(var2)?1:("app".equalsIgnoreCase(var1)?-1:("app".equalsIgnoreCase(var2)?1:2147483647)));
+        return "app".equalsIgnoreCase(var1)?-1:("app".equalsIgnoreCase(var2)?1:("host".equalsIgnoreCase(var1)?-1:("host".equalsIgnoreCase(var2)?1:2147483647)));
     }
 	
 	

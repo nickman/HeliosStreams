@@ -27,6 +27,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.utils.lang.StringHelper;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -58,9 +59,9 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 	public static final ResponseHandler RESPONSE_HANDLER = new ResponseHandler();
 	
 	/** A streamed metric to string encoder */
-	protected static final StreamedMetricEncoder METRIC_ENCODER = new StreamedMetricEncoder();
+	protected final StreamedMetricEncoder METRIC_ENCODER = new StreamedMetricEncoder();
 	/** The telnet channel initializer */
-	protected static final ChannelInitializer<NioSocketChannel> CHANNEL_INIT = new ChannelInitializer<NioSocketChannel>() {
+	protected final ChannelInitializer<NioSocketChannel> CHANNEL_INIT = new ChannelInitializer<NioSocketChannel>() {
 		@Override
 		protected void initChannel(final NioSocketChannel ch) throws Exception {
 			ch.pipeline().addLast("stringEncoder", STR_ENCODER);
@@ -77,6 +78,7 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
 	 * <p><code>com.heliosapm.streams.tracing.writers.TelnetWriter.ResponseHandler</code></p>
 	 */
+	@Sharable
 	protected static class ResponseHandler extends SimpleChannelInboundHandler<String> {
 		/** Instance logger */
 		protected final Logger log = LogManager.getLogger(getClass());
@@ -87,7 +89,18 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 		 */
 		@Override
 		protected void channelRead0(final ChannelHandlerContext ctx, final String msg) throws Exception {
-			log.info("\n\t================================\n\tTelnet Response:\n\t[{}]\n\t================================\n", msg);
+			if(msg!=null && !msg.trim().isEmpty()) {
+				final String[] messages = StringHelper.splitString(msg, EOL.charAt(0), true);
+				if(messages.length!=0) {
+					final StringBuilder b = new StringBuilder("\n\t================================\n\tTelnet Responses:");
+					for(String s: messages) {
+						b.append("\n\t[").append(s.trim()).append("]");
+					}
+					b.append("\n\t================================\n");
+					log.info(b.toString());
+				}
+				
+			}
 		}
 		
 	}
@@ -116,9 +129,7 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 	 * <p><code>com.heliosapm.streams.tracing.writers.TelnetWriter.StreamedMetricEncoder</code></p>
 	 */
 	@Sharable
-	public static class StreamedMetricEncoder extends MessageToMessageEncoder<Object> {
-		/** Instance logger */
-		protected final Logger log = LogManager.getLogger(getClass());
+	public class StreamedMetricEncoder extends MessageToMessageEncoder<Object> {
 		
 		/**
 		 * {@inheritDoc}
@@ -162,7 +173,6 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 			} else {
 				log.warn("Unknown type submitted: [{}]", msg.getClass().getName());
 			}
-			log.info("LEVEL: ------> [{}]", log.getLevel());
 			if(log.isDebugEnabled() && !out.isEmpty()) {
 				for(Object s: out) {
 					log.debug("Out Metric:\n[{}]", s);

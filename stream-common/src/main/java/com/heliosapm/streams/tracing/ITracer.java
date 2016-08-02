@@ -20,6 +20,8 @@ import java.util.Map;
 
 import javax.management.ObjectName;
 
+import com.google.common.base.Predicate;
+import com.heliosapm.streams.tracing.DefaultTracerImpl.PredicateTrace;
 import com.heliosapm.utils.config.ConfigurationHelper;
 
 /**
@@ -478,5 +480,20 @@ public interface ITracer extends Closeable {
 	 * @return the number of events sent since the last time we inquired
 	 */
 	public long getSentEventCount();
+	
+	/**
+	 * Applies the passed predicate just before a trace is written out.
+	 * If the predicate evaluates true, the trace will be suppressed.
+	 * @param predicate The predicate to apply
+	 * @return this tracer
+	 */
+	public ITracer setSuppressPredicate(final Predicate<PredicateTrace> predicate);
+	
+	/**
+	 * Clears the suppression predicate
+	 * @return this tracer
+	 */
+	public ITracer clearSuppressPredicate();
+	
 
 }

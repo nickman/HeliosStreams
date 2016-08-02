@@ -23,17 +23,22 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.DelayQueue;
+import java.util.concurrent.Delayed;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
+import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.tracing.AbstractMetricWriter;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
+import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.lang.StringHelper;
 
 import io.netty.bootstrap.Bootstrap;
@@ -59,7 +64,7 @@ import io.netty.util.concurrent.UnorderedThreadPoolEventExecutor;
  * @param <C> The type of netty channel implemented by this writer
  */
 
-public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter implements RejectedExecutionHandler {
+public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter implements RejectedExecutionHandler, ConnectionStateSupplier, ConnectionStateListener {
 
 	/** The config key for the remote URIs (<b><code>host:port</code></b>) to write metrics to */
 	public static final String CONFIG_REMOTE_URIS = "metricwriter.net.remotes";
@@ -93,10 +98,26 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	/** The channel type class */
 	protected final Class<C> channelType;
 	
+	/** A set of registered connection state listeners */
+	protected final NonBlockingHashSet<ConnectionStateListener> connectedStateListeners = new NonBlockingHashSet<ConnectionStateListener>(); 
+	
 	/** The core threads in the channel group event executor */
 	protected int channelGroupThreads = -1;
 	/** The core threads in the event loop */
 	protected int eventLoopThreads = -1;
+	
+	/** A map of close futures for connected channels */
+	protected final NonBlockingHashMap<String, ChannelFuture> closeFutures = new NonBlockingHashMap<String, ChannelFuture>(); 
+	/** A set of host/port pairs for non-connected channels */
+	protected final DelayQueue<DelayedReconnect> disconnected = new DelayQueue<DelayedReconnect>();
+	/** A flag indicating if the reconnect thread should keep running */
+	protected final AtomicBoolean keepReconnecting = new AtomicBoolean(false);
+	/** A flag indicating if there are any connected channels available */
+	protected final AtomicBoolean connectionsAvailable = new AtomicBoolean(false);
+	
+	/** The reconnect thread */
+	protected Thread reconnectThread = null;
+	
 	
 	/**
 	 * Creates a new NetWriter
@@ -106,7 +127,78 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	public NetWriter(final Class<C> channelType, final boolean confirmsMetrics) {
 		super(confirmsMetrics);
 		this.channelType = channelType;
+		registerConnectionStateListener(this);
 	}
+	
+	private class DelayedReconnect implements Delayed {
+		private final String uri;
+		private final long now = System.currentTimeMillis() + 60000;
+		
+		/**
+		 * Creates a new DelayedReconnect
+		 * @param uri the URI to reconnect to
+		 */
+		public DelayedReconnect(String uri) {			
+			this.uri = uri;
+		}
+
+		@Override
+		public int compareTo(final Delayed o) {
+			final Long myDelay = getDelay(TimeUnit.MILLISECONDS);
+			final long odelay = o.getDelay(TimeUnit.MILLISECONDS);
+			if(myDelay.equals(odelay)) return -1;
+			return myDelay.compareTo(odelay);
+		}
+
+		@Override
+		public long getDelay(final TimeUnit unit) {
+			return TimeUnit.MILLISECONDS.convert(now - System.currentTimeMillis(), unit);
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#hashCode()
+		 */
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + getOuterType().hashCode();
+			result = prime * result + ((uri == null) ? 0 : uri.hashCode());
+			return result;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#equals(java.lang.Object)
+		 */
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			DelayedReconnect other = (DelayedReconnect) obj;
+			if (!getOuterType().equals(other.getOuterType()))
+				return false;
+			if (uri == null) {
+				if (other.uri != null)
+					return false;
+			} else if (!uri.equals(other.uri))
+				return false;
+			return true;
+		}
+
+		private NetWriter getOuterType() {
+			return NetWriter.this;
+		}
+		
+		
+		
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -142,49 +234,175 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 
 	
 	/**
+	 * Attempts to connect to the specified host/port and updates the channel tracking structures accordingly
+	 * @param uri The <b><code>host:port</code></b> pair
+	 */
+	protected void connect(final String uri) {
+		String _host = null;
+		int _port = -1;
+		try {
+			final String[] hostPort = StringHelper.splitString(uri, ':', true);
+			_host = hostPort[0];
+			_port = Integer.parseInt(hostPort[1]);
+		} catch (Exception ex) {
+			log.warn("Invalid Remote URI [{}]", uri);
+		}
+		final ChannelFuture cf = bootstrap.connect(_host, _port);
+		cf.addListener(new GenericFutureListener<Future<Void>>() {
+			@Override
+			public void operationComplete(final Future<Void> f) throws Exception {
+				if(f.isSuccess()) {
+					final Channel channel = cf.channel();
+					ChannelFuture closeFuture = channel.closeFuture();
+					closeFutures.put(uri, closeFuture);
+					disconnected.remove(new DelayedReconnect(uri));
+					closeFuture.addListener(new GenericFutureListener<Future<? super Void>>() {
+						@Override
+						public void operationComplete(final Future<? super Void> future) throws Exception {
+							closeFutures.remove(uri);
+							if(group.isShutdown() || group.isShuttingDown() || group.isTerminated()) {
+								/* No Op */
+							} else {
+								final DelayedReconnect dc = new DelayedReconnect(uri);
+								if(!disconnected.contains(dc)) {
+									disconnected.add(dc);
+								}
+							}
+							channels.remove(channel); // may have been removed already
+							fireDisconnected();
+						}
+					});
+					channels.add(channel);	
+					fireConnected();
+					log.info("Channel [{}] connected to [{}]", channel, uri);
+				} else {
+					final DelayedReconnect dc = new DelayedReconnect(uri);
+					if(!disconnected.contains(dc)) {
+						disconnected.add(dc);
+					}
+					log.warn("Channel failed to connect to [{}]", uri, f.cause());
+				}
+			}
+		});			
+	}
+	
+	/**
+	 * Fires a connected event if the channel group has at least one channel
+	 * and the current state is disconnected.
+	 */
+	protected void fireConnected() {
+		if(!channels.isEmpty() && !connectionsAvailable.getAndSet(true)) {
+			for(final ConnectionStateListener listener: connectedStateListeners) {
+				SharedNotificationExecutor.getInstance().execute(new Runnable(){
+					@Override
+					public void run() {
+						listener.onConnected();
+					}
+				});
+			}
+		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#isConnected()
+	 */
+	@Override
+	public boolean isConnected() {		
+		return connectionsAvailable.get();
+	}
+	
+	/**
+	 * Fires a disconnected event if the channel group is empty
+	 * and the current state is connected.
+	 */
+	protected void fireDisconnected() {
+		if(channels.isEmpty() && connectionsAvailable.getAndSet(false)) {
+			for(final ConnectionStateListener listener: connectedStateListeners) {
+				SharedNotificationExecutor.getInstance().execute(new Runnable(){
+					@Override
+					public void run() {
+						listener.onDisconnected(!keepReconnecting.get());
+					}
+				});
+			}		
+		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.writers.ConnectionStateSupplier#registerConnectionStateListener(com.heliosapm.streams.tracing.writers.ConnectionStateListener)
+	 */
+	@Override
+	public void registerConnectionStateListener(final ConnectionStateListener listener) {
+		if(listener!=null) {
+			connectedStateListeners.add(listener);
+		}		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.writers.ConnectionStateSupplier#removeConnectionStateListener(com.heliosapm.streams.tracing.writers.ConnectionStateListener)
+	 */
+	@Override
+	public void removeConnectionStateListener(final ConnectionStateListener listener) {
+		if(listener!=null) {
+			connectedStateListeners.remove(listener);
+		}				
+	}
+	
+	
+	/**
 	 * {@inheritDoc}
 	 * @see com.google.common.util.concurrent.AbstractIdleService#startUp()
 	 */
 	@Override
 	protected void startUp()  throws Exception {
 		if(remoteUris.isEmpty()) throw new IllegalStateException("No remote URIs defined");
-		
-		final CountDownLatch latch = new CountDownLatch(1);
-		final int remotes = remoteUris.size();
-		final int[] fails = new int[1];
 		for(final String uri: remoteUris) {
-			String _host = null;
-			int _port = -1;
-			try {
-				final String[] hostPort = StringHelper.splitString(uri, ':', true);
-				_host = hostPort[0];
-				_port = Integer.parseInt(hostPort[1]);
-			} catch (Exception ex) {
-				log.warn("Invalid Remote URI [{}]", uri);
-			}
-			final ChannelFuture cf = bootstrap.connect(_host, _port);
-			cf.addListener(new GenericFutureListener<Future<Void>>() {
-				public void operationComplete(final Future<Void> f) throws Exception {
-					if(f.isSuccess()) {
-						final Channel channel = cf.channel();
-						channels.add(channel);
-						latch.countDown();
-						log.info("Channel [{}] connected to [{}]", channel, uri);
-					} else {
-						fails[0]++;
-						log.warn("Channel failed to connect to [{}]", uri, f.cause());
-					}
-				};
-			});			
+			connect(uri);
 		}
-//		if(fails[0]==remotes) { }   // FIXME: if all remotes failed, there's no point waiting
-
-		try {
-			if(!latch.await(5, TimeUnit.SECONDS)) {	// FIXME: configurable
-				throw new TimeoutException("Timed out trying to connect to any endpoint");
+		startReconnectThread();
+	}
+	
+	/**
+	 * Starts the reconnect thread if it is not already running
+	 */
+	protected void startReconnectThread() {
+		if(keepReconnecting.compareAndSet(false, true)) {
+			reconnectThread = new Thread(getClass().getSimpleName() + "ReconnectThread") {
+				@Override
+				public void run() {
+					log.info("Reconnect thread started");
+					while(keepReconnecting.get()) {
+						try {
+							final DelayedReconnect dc  = disconnected.poll(10, TimeUnit.SECONDS);
+							if(dc!=null) {
+								connect(dc.uri);
+							}
+						} catch (InterruptedException iex) {
+							if(Thread.interrupted()) Thread.interrupted();
+						} catch (Exception ex) {
+							log.warn("Reconnect thread error", ex);
+						}						
+					}
+					log.info("Reconnect thread ending");
+				}
+			};
+			reconnectThread.setDaemon(true);
+			reconnectThread.start();
+		}
+	}
+	
+	/**
+	 * Stops the reconnect thread
+	 */
+	protected void stopReconnectThread() {
+		if(keepReconnecting.compareAndSet(true, false)) {
+			if(reconnectThread!=null) {
+				reconnectThread.interrupt();
+				reconnectThread = null;
 			}
-		} catch (InterruptedException iex) {
-			throw new Exception("Thread interruped while waiting for a connection");
 		}
 	}
 
@@ -194,6 +412,8 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	 */
 	@Override
 	protected void shutDown() {
+		stopReconnectThread();
+		disconnected.clear();
 		channels.close();
 		try {
 			 group.shutdownGracefully();
@@ -210,6 +430,10 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	@Override
 	protected void doMetrics(final Collection<StreamedMetric> metrics) {
 		if(metrics==null || metrics.isEmpty()) return;
+		if(!connectionsAvailable.get()) {
+			// FIXME: drop counter
+			return;
+		}
 		final int size = metrics.size();
 		boolean complete = false;
 		for(Channel ch: channels) {
@@ -231,6 +455,11 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	@Override
 	protected void doMetrics(final StreamedMetric... metrics) {
 		if(metrics==null || metrics.length==0) return;
+		if(!connectionsAvailable.get()) {
+			// FIXME: drop counter
+			return;
+		}
+		
 		final int size = metrics.length;
 		boolean complete = false;
 		for(Channel ch: channels) {
@@ -253,6 +482,11 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	public void onMetrics(final ByteBuf metrics) {
 		if(metrics==null || metrics.readableBytes()<5) return;
 		final int size = metrics.getInt(1);
+		if(!connectionsAvailable.get()) {
+			// FIXME: drop counter
+			return;
+		}
+		
 		boolean complete = false;
 		for(Channel ch: channels) {
 			final ChannelFuture cf = ch.writeAndFlush(metrics).syncUninterruptibly();
@@ -275,5 +509,25 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
 		log.warn("Rejected event execution. Task:[{}], Executor:[{}]");		
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.writers.ConnectionStateListener#onConnected()
+	 */
+	@Override
+	public void onConnected() {
+		log.info(getClass().getSimpleName() + " Connected");		
+	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.writers.ConnectionStateListener#onDisconnected(boolean)
+	 */
+	@Override
+	public void onDisconnected(final boolean shutdown) {
+		if(!shutdown) {
+			log.warn("\n\t=====================\n\t{} Disconnected !\n\t=====================\n");
+		}
+	}
+	
 }

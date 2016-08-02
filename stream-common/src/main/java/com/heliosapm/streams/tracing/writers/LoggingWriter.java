@@ -330,7 +330,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 			//for(int i = 0; i < 100; i++) {
 			while(true) {
 				for(int i = 0; i < 100; i++) {
-					StreamedMetricValue smv = new StreamedMetricValue(System.currentTimeMillis(), Math.abs(r.nextInt(100) + r.nextDouble()), "foo.bar", AgentName.defaultTags()).setValueType(ValueType.DELTA);
+					StreamedMetricValue smv = new StreamedMetricValue(System.currentTimeMillis(), Math.abs(r.nextInt(100) + r.nextDouble()), "foo.bar", AgentName.getInstance().defaultTags()).setValueType(ValueType.DELTA);
 					lw.onMetrics(smv);
 				}
 				log("Loop...");

@@ -36,9 +36,11 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.codahale.metrics.Meter;
+import com.google.common.base.Predicate;
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.tracing.deltas.DeltaManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -99,6 +101,9 @@ public class DefaultTracerImpl implements ITracer {
 	/** The stateful tracing conditional which, if set to false, will suppress the next trace */
 	private boolean traceActive = true;
 	
+	/** The suppression predicate */
+	protected Predicate<PredicateTrace> suppressPredicate = null;
+	
 	/** The writer that delivers the buffered metrics to an end-point */
 	protected final IMetricWriter writer;
 	
@@ -154,6 +159,8 @@ public class DefaultTracerImpl implements ITracer {
 		private final LinkedList<String> cpTagKeyStack = new LinkedList<String>();
 		/** tracks the tag stack */
 		private final LinkedList<String[]> cpTagStack = new LinkedList<String[]>();
+		/** The suppression predicate */
+		private final Predicate<PredicateTrace> cpSuppressPredicate;
 		
 		
 		/**
@@ -165,6 +172,8 @@ public class DefaultTracerImpl implements ITracer {
 			cpTagStack.addAll(t.tagStack);
 			cpTagKeyStack.addAll(t.tagKeyStack);
 			cpMsTime = msTime;
+			cpSuppressPredicate = t.suppressPredicate;
+			
 		}
 		
 		/**
@@ -176,6 +185,7 @@ public class DefaultTracerImpl implements ITracer {
 			t.tagStack.clear(); t.tagStack.addAll(cpTagStack);
 			t.tagKeyStack.clear(); t.tagKeyStack.addAll(cpTagKeyStack);
 			msTime = cpMsTime;
+			t.suppressPredicate = cpSuppressPredicate;
 		}
 	}
 	
@@ -192,7 +202,7 @@ public class DefaultTracerImpl implements ITracer {
 		outBuffer.setByte(COMPRESS_OFFSET, 0);
 		outBuffer.setInt(COUNT_OFFSET, 0);
 		outBuffer.writerIndex(START_DATA_OFFSET);
-		appHostTags = Collections.unmodifiableMap(AgentName.defaultTags());
+		appHostTags = Collections.unmodifiableMap(AgentName.getInstance().defaultTags());
 	}
 	
 	/**
@@ -625,10 +635,7 @@ public class DefaultTracerImpl implements ITracer {
 		final int pos = outBuffer.writerIndex();
 		try {			
 			modified = false;
-			bufferedEvents++;
-			totalEvents++;
-			inqCount++;
-			traceMeter.mark();
+			incr();
 			final SortedMap<String, String> outTags;
 			if(tagValues!=null && tagValues.length > 0) {
 				outTags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
@@ -638,13 +645,18 @@ public class DefaultTracerImpl implements ITracer {
 				outTags = buildTags();
 			}
 			outTags.putAll(appHostTags);
-			StreamedMetricValue.write(outBuffer, null, buildMetricName(), timestamp, value, outTags);
+			final String mn = buildMetricName();
+			if(suppressPredicate!=null) {
+				state.update(value, timestamp, mn, outTags);
+				if(suppressPredicate.apply(state)) {
+					decr();
+					return;
+				}
+			}
+			StreamedMetricValue.write(outBuffer, null, mn, timestamp, value, outTags);
 		} catch (Exception ex) {
 			outBuffer.writerIndex(pos);
-			bufferedEvents--;
-			totalEvents--;
-			inqCount--;
-			traceMeter.mark(-1L);			
+			decr();
 			throw new RuntimeException("Failed to trace", ex);
 		} finally {
 			if(bufferedEvents==maxTracesBeforeFlush) {
@@ -657,10 +669,7 @@ public class DefaultTracerImpl implements ITracer {
 		final int pos = outBuffer.writerIndex();
 		try {			
 			modified = false;
-			bufferedEvents++;
-			totalEvents++;
-			inqCount++;
-			traceMeter.mark();
+			incr();
 			final SortedMap<String, String> outTags;
 			if(tagValues!=null && tagValues.length > 0) {
 				outTags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
@@ -670,13 +679,18 @@ public class DefaultTracerImpl implements ITracer {
 				outTags = buildTags();
 			}
 			outTags.putAll(appHostTags);
-			StreamedMetricValue.write(outBuffer, null, buildMetricName(), timestamp, value, outTags);
+			final String mn = buildMetricName();
+			if(suppressPredicate!=null) {
+				state.update(value, timestamp, mn, outTags);
+				if(suppressPredicate.apply(state)) {
+					decr();
+					return;
+				}
+			}
+			StreamedMetricValue.write(outBuffer, null, mn, timestamp, value, outTags);
 		} catch (Exception ex) {
 			outBuffer.writerIndex(pos);
-			bufferedEvents--;
-			totalEvents--;
-			inqCount--;
-			traceMeter.mark(-1L);			
+			decr();
 			throw new RuntimeException("Failed to trace", ex);
 		} finally {
 			if(bufferedEvents==maxTracesBeforeFlush) {
@@ -686,13 +700,127 @@ public class DefaultTracerImpl implements ITracer {
 	}
 	
 	/**
+	 * Increments traced event counts
+	 */
+	protected void incr() {
+		bufferedEvents++;
+		totalEvents++;
+		inqCount++;
+		traceMeter.mark();		
+	}
+	
+	/**
+	 * Decrements traced event counts
+	 */
+	protected void decr() {
+		bufferedEvents--;
+		totalEvents--;
+		inqCount--;
+		traceMeter.mark(-1L);		
+	}
+	
+	
+	private static final PredicateTrace state = new PredicateTrace();
+	
+	/**
+	 * <p>Title: PredicateTrace</p>
+	 * <p>Description: A wrapper around the traceable state of this tracer</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.tracing.DefaultTracerImpl.PredicateTrace</code></p>
+	 */
+	public static class PredicateTrace {
+		private boolean dv = true;
+		private double doubleValue = -1D;
+		private long longValue = -1L;
+		private long timestamp = -1L;
+		private String metricName = null;
+		private Map<String, String> tags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
+		
+		void update(final double value, final long timestamp, final String metricName, final Map<String, String> tags) {
+			dv = true;
+			doubleValue = value;
+			this.timestamp = timestamp;
+			this.metricName = metricName;
+			this.tags.clear();
+			this.tags.putAll(tags);
+		}
+		
+		void update(final long value, final long timestamp, final String metricName, final Map<String, String> tags) {
+			dv = false;
+			longValue = value;
+			this.timestamp = timestamp;
+			this.metricName = metricName;
+			this.tags.clear();
+			this.tags.putAll(tags);
+		}
+		
+		
+		/**
+		 * Indicates if this is a double value or a long value
+		 * @return the dv true if this is a double value, false if this is a long value
+		 */
+		public boolean isDv() {
+			return dv;
+		}
+		
+		/**
+		 * Returns the value
+		 * @return the value
+		 */
+		public Number getValue() {
+			return dv ? doubleValue : longValue;
+		}
+		/**
+		 * Returns the double value
+		 * @return the doubleValue
+		 */
+		public double getDoubleValue() {
+			if(!dv) throw new IllegalStateException("This trace is long type. Cannot call getDoubleValue()");
+			return doubleValue;
+		}
+		/**
+		 * Returns the long value
+		 * @return the longValue
+		 */
+		public long getLongValue() {
+			if(dv) throw new IllegalStateException("This trace is double type. Cannot call getLongValue()");
+			return longValue;
+		}
+		/**
+		 * Returns the timestamp in ms.
+		 * @return the timestamp
+		 */
+		public long getTimestamp() {
+			return timestamp;
+		}
+		/**
+		 * Returns the metric name
+		 * @return the metricName
+		 */
+		public String getMetricName() {
+			return metricName;
+		}
+		/**
+		 * Returns the tags
+		 * @return the tags
+		 */
+		public Map<String, String> getTags() {
+			return tags;
+		}
+		
+		
+		
+	}
+	
+	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.tracing.ITracer#trace(long, long, java.lang.String[])
 	 */
 	@Override
 	public ITracer trace(final long value, final long timestamp, final String... tagValues) {
 		if(!traceActive) { traceActive=true; return this; }
-		traceOut(timestamp, value, tagValues);
+		traceOut(value, timestamp, tagValues);
 		return this;
 	}
 
@@ -973,6 +1101,7 @@ public class DefaultTracerImpl implements ITracer {
 		.append("\n\tTags:").append(tagStackToString())
 		.append("\n\tTagKeys:").append(tagKeyStack)
 		.append("\n\tTimestamp:").append(msTime)
+		.append("\n\tSupressPredicate:").append(suppressPredicate)
 		.append("\n\tFlushCount:").append(maxTracesBeforeFlush)
 		.append("\n\tBufferedEvents:").append(bufferedEvents)
 		.append("\n\tBuffer:").append(outBuffer)
@@ -1032,6 +1161,26 @@ public class DefaultTracerImpl implements ITracer {
 		final long x = inqCount;
 		inqCount = 0;
 		return x;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.ITracer#setSuppressPredicate(com.google.common.base.Predicate)
+	 */
+	@Override
+	public ITracer setSuppressPredicate(final Predicate<PredicateTrace> predicate) {
+		this.suppressPredicate = predicate;
+		return this;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.ITracer#clearSuppressPredicate()
+	 */
+	@Override
+	public ITracer clearSuppressPredicate() {
+		this.suppressPredicate = null;
+		return this;
 	}
 
 }

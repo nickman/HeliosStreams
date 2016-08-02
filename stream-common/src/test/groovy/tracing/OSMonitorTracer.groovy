@@ -1,24 +1,36 @@
 import com.heliosapm.streams.tracing.*;
 import static com.heliosapm.streams.tracing.TracerFactory.*;
+import static com.heliosapm.streams.tracing.SuppressPredicates.*;
 import com.heliosapm.streams.tracing.writers.*;
 import org.helios.nativex.sigar.HeliosSigar;
 import org.hyperic.sigar.*;
 import java.util.concurrent.atomic.*;
 import org.hyperic.sigar.ptql.*;
 import org.apache.logging.log4j.*;
+import static com.heliosapm.utils.jmx.JMXHelper.*;
 TSDBHOST = "localhost";
 TSDBPORT = 4242;
 
 sigar = HeliosSigar.getInstance();
-System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.TelnetWriter");
+System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.KafkaSyncWriter");
+System.setProperty("metricwriter.kafka.bootstrap.servers", "localhost:9093,localhost:9094");
+System.setProperty("metricwriter.kafka.acks", "1");
+System.setProperty("metricwriter.kafka.retries", "0");
+System.setProperty("metricwriter.kafka.batch.size", "16384");
+System.setProperty("metricwriter.kafka.linger.ms", "1");
+System.setProperty("metricwriter.kafka.buffer.memory", "33554432");
+System.setProperty("metricwriter.kafka.topics", "tsdb.metrics.st");
+System.setProperty("metricwriter.kafka.interceptor.classes", "com.heliosapm.streams.common.kafka.interceptor.MonitoringProducerInterceptor");
 //System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.ConsoleWriter");
 
 System.setProperty(NetWriter.CONFIG_REMOTE_URIS, "$TSDBHOST:$TSDBPORT");
-ITracer tracer = TracerFactory.getInstance(null).getTracer();
+ITracer tracer = TracerFactory.getInstance(null).getTracer().setMaxTracesBeforeFlush(1200);
 println "Tracer Type: ${tracer.getClass().getName()}";
 processFinder = new ProcessFinder(sigar.getSigar());
-LogManager.getLogger(com.heliosapm.streams.tracing.writers.TelnetWriter.StreamedMetricEncoder.class).setLevel(Level.DEBUG);
-println LogManager.getLogger(com.heliosapm.streams.tracing.writers.TelnetWriter.StreamedMetricEncoder.class).getLevel();
+
+fireUpJMXMPServer(1294);
+
+//LogManager.getLogger(com.heliosapm.streams.tracing.writers.TelnetWriter.class).setLevel(Level.DEBUG);
 
 
 while(true) {
@@ -42,16 +54,15 @@ while(true) {
 		} catch (x) {
 			x.printStackTrace(System.err);
 		} finally {
-			tracer.flush();		
+			//tracer.flush();		
 		}
 	}
 	println "Completed CPU Tracing in $elapsed ms.";
 
 	elapsed = tracer.time {
 		try {
-			tracer.seg("sys.fs").pushTs(System.currentTimeMillis());
+			tracer.seg("sys.fs").pushTs(System.currentTimeMillis()).setSuppressPredicate(IGNORE_NEGATIVE);
 			sigar.getFileSystemList().each() { fs ->
-				println "Tracing FS: name: [${fs.getDirName()}], type: [${fs.getSysTypeName()}]";
 				try {
 					fsu = sigar.getFileSystemUsage(fs.getDirName());
 					tracer.pushTags([name : fs.getDirName(), type : fs.getSysTypeName()]);					
@@ -64,7 +75,7 @@ while(true) {
 						.pushSeg("total").trace(fsu.getTotal()).popSeg()
 						.pushSeg("used").trace(fsu.getUsed()).popSeg()
 						.pushSeg("usedperc").trace(fsu.getUsePercent()).popSeg()
-						.pushSeg("bytes")
+							.pushSeg("bytes")
 						.pushSeg("reads").trace(fsu.getDiskReadBytes()).popSeg()
 						.pushSeg("writes").trace(fsu.getDiskWriteBytes()).popSeg()
 							.popSeg()
@@ -79,10 +90,76 @@ while(true) {
 		} catch (x) {
 			x.printStackTrace(System.err);
 		} finally {
-			tracer.flush();		
+			//tracer.flush();		
 		}
 	}
+
 	println "Completed FileSystem Tracing in $elapsed ms.";
+
+	elapsed = tracer.time {
+		try {
+			
+			tracer.seg("sys.net.iface").pushTs(System.currentTimeMillis()).setSuppressPredicate(IGNORE_NEGATIVE);
+			sigar.getNetInterfaceList().each() { iface ->				
+				try {
+					ifs = sigar.getNetInterfaceStat(iface);
+					tracer.pushTags([name : iface, dir : "rx"]);					
+					tracer
+						.pushSeg("bytes").trace(ifs.getRxBytes()).popSeg()
+						.pushSeg("packets").trace(ifs.getRxPackets()).popSeg()
+						.pushSeg("dropped").trace(ifs.getRxDropped()).popSeg()
+						.pushSeg("errors").trace(ifs.getRxErrors()).popSeg()
+						.pushSeg("overruns").trace(ifs.getRxOverruns()).popSeg();
+					tracer.popTags(2);
+					tracer.pushTags([name : iface, dir : "tx"]);					
+					tracer
+						.pushSeg("bytes").trace(ifs.getTxBytes()).popSeg()
+						.pushSeg("packets").trace(ifs.getTxPackets()).popSeg()
+						.pushSeg("dropped").trace(ifs.getTxDropped()).popSeg()
+						.pushSeg("errors").trace(ifs.getTxErrors()).popSeg()
+						.pushSeg("overruns").trace(ifs.getTxOverruns()).popSeg();
+
+				} finally {
+					tracer.popTags(2);
+				}
+			}
+		} catch (x) {
+			x.printStackTrace(System.err);
+		} finally {
+			//tracer.flush();					
+		}
+	}
+
+	println "Completed Net Interface Tracing in $elapsed ms.";
+	
+	elapsed = tracer.time {
+		try {
+			tracer.seg("sys.net.tcp").pushTs(System.currentTimeMillis()).setSuppressPredicate(IGNORE_NEGATIVE);
+			tcp = sigar.getTcp();
+			tracer
+				.pushSeg("retrans").trace(tcp.getRetransSegs()).popSeg()
+				.pushSeg("passiveopens").trace(tcp.getPassiveOpens()).popSeg()
+				.pushSeg("currestab").trace(tcp.getCurrEstab()).popSeg()
+				.pushSeg("estabresets").trace(tcp.getEstabResets()).popSeg()
+				.pushSeg("attemptfails").trace(tcp.getAttemptFails()).popSeg()
+				.pushSeg("insegs").trace(tcp.getInSegs()).popSeg()
+				.pushSeg("outsegs").trace(tcp.getOutSegs()).popSeg()
+				.pushSeg("activeopens").trace(tcp.getActiveOpens()).popSeg()
+				.pushSeg("inerrs").trace(tcp.getInErrs()).popSeg()
+				.pushSeg("outrsts").trace(tcp.getOutRsts()).popSeg();
+
+		} catch (x) {
+			x.printStackTrace(System.err);
+		} finally {
+			//tracer.flush();					
+		}
+	}
+
+	println "Completed TCP Tracing in $elapsed ms.";
+
+
+	tracer.flush();	
+	//println tracer.dump();
 
 
 	Thread.sleep(5000);

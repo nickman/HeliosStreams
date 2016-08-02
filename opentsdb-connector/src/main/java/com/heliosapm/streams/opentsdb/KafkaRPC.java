@@ -113,6 +113,12 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	/** The default polling timeout in ms. */
 	public static final long DEFAULT_POLLTIMEOUT = 10000;
 	
+	/** The config key name for stat collection forwarding */
+	public static final String CONFIG_STATS_FORWARD = "stats.forward";
+	/** The default stat collection forwarding */
+	public static final boolean DEFAULT_STATS_FORWARD = false;
+	
+	
 	/** A ref to the buffer manager */
 	protected final BufferManager bufferManager;
 	
@@ -138,10 +144,14 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	protected int kafkaStartupTimeout = DEFAULT_KAFKAMETA_TIMEOUT;
 	
 	
+	
+	
 	/** Indicates if message queue writes should be compressed */
 	protected boolean compression = false;
 	/** Indicates if the kafka monitoring interceptors should be installed */
 	protected boolean monitoringInterceptor = false;
+	/** Indicates if stats collection should include a save to the tsd */
+	protected boolean forwardStats = false;
 	
 	/** The chronicle message queue */
 	protected MessageQueue messageQueue;
@@ -207,6 +217,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		topics = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_TOPICS, DEFAULT_TOPIC, rpcConfig);
 		pollTimeout = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_POLLTIMEOUT, DEFAULT_POLLTIMEOUT, rpcConfig);
 		syncAdd = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_SYNC_ADD, DEFAULT_SYNC_ADD, rpcConfig);
+		forwardStats = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_STATS_FORWARD, DEFAULT_STATS_FORWARD, rpcConfig);
 		syncAddTimeout = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_SYNCADD_TIMEOUT, DEFAULT_SYNCADD_TIMEOUT, rpcConfig);
 		kafkaStartupTimeout = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_KAFKAMETA_TIMEOUT, DEFAULT_KAFKAMETA_TIMEOUT, rpcConfig);
 		monitoringInterceptor = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_KAFKA_MONITOR, DEFAULT_KAFKA_MONITOR, rpcConfig);
@@ -236,10 +247,11 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		}
 		final InternalStatsCollector collector = new InternalStatsCollector(tsdb, "tsd");
 		SharedScheduler.getInstance().scheduleWithFixedDelay(new Runnable(){
+			@Override
 			public void run() {
 				tsdb.collectStats(collector);
 			}
-		}, 15, 15, TimeUnit.SECONDS);
+		}, 5, 15, TimeUnit.SECONDS);
 	}
 	
 	/**

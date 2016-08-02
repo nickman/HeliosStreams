@@ -157,7 +157,8 @@ public class TracerFactory {
 		log("Tracer Test");
 		JMXHelper.fireUpJMXMPServer(2553);
 		ExtendedThreadManager.install();
-		System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.ConsoleWriter");
+		//System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.ConsoleWriter");
+		System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.TelnetWriter");
 		System.setProperty(NetWriter.CONFIG_REMOTE_URIS, "localhost:4242");
 //		final ITracer tracer = TracerFactory.getInstance(null).getTracer();
 		final GroovyTracer tracer = (GroovyTracer)TracerFactory.getInstance(null).getTracer();

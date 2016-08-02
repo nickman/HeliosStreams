@@ -69,33 +69,41 @@ public abstract class MonitoringInterceptorBase<K, V> {
 
 	/**
 	 * Creates a new MonitoringInterceptorBase
+	 * @param producer true for a producer, false for a consumer
 	 */
 	protected MonitoringInterceptorBase(final boolean producer) {
 		this.producer = producer;
 		verb = producer ? "produced" : "consumed";
 		noun = producer ? "Producer" : "Consumer";
-		appName = AgentName.appName();
-		hostName = AgentName.hostName();
+		appName = AgentName.getInstance().getAppName();
+		hostName = AgentName.getInstance().getHostName();
 		totalMeter = SharedMetricsRegistry.getInstance().meter("messages." + verb + ".service=Kafka" + noun + "" + ".host=" + hostName + ".app=" + appName);
 	}
 
+	/**
+	 * Acquires a meter for the passed topic name and partition id
+	 * @param topicName The topic name
+	 * @param partitionId The partition id
+	 * @return the assigned meter
+	 */
 	protected Meter meter(final String topicName, final Integer partitionId) {
 		final long pId = partitionId==null ? -1L : partitionId;
-		return meters.get(topicName, new Callable<NonBlockingHashMapLong<Meter>>() { public NonBlockingHashMapLong<Meter> call() { return new NonBlockingHashMapLong<Meter>(16, false); }})
-				.get(pId, new Callable<Meter>() { public Meter call() {return SharedMetricsRegistry.getInstance().meter(pId==-1L ? String.format(noPartitionServiceTag, topicName, groupId, clientId) : String.format(serviceTag, topicName, partitionId, groupId, clientId)); }} );		
+		return meters.get(topicName, new Callable<NonBlockingHashMapLong<Meter>>() { @Override
+		public NonBlockingHashMapLong<Meter> call() { return new NonBlockingHashMapLong<Meter>(16, false); }})
+				.get(pId, new Callable<Meter>() { @Override
+				public Meter call() {return SharedMetricsRegistry.getInstance().meter(pId==-1L ? String.format(noPartitionServiceTag, topicName, groupId, clientId) : String.format(serviceTag, topicName, partitionId, groupId, clientId)); }} );		
 	}
 	
 	/**
-	 * {@inheritDoc}
-	 * @see org.apache.kafka.clients.producer.ProducerInterceptor#close()
+	 * Closes this interceptor 
 	 */
 	public void close() {
 		meters.clear();
 	}
 	
 	/**
-	 * {@inheritDoc}
-	 * @see org.apache.kafka.common.Configurable#configure(java.util.Map)
+	 * Configures this interceptor
+	 * @param configs The config properties
 	 */
 	public void configure(final Map<String, ?> configs) {
 		final Object g =  configs.get("group.id");

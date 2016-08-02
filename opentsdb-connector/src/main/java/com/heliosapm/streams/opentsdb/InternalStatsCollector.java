@@ -23,7 +23,12 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.TimeUnit;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.metrics.Utils;
 import com.heliosapm.utils.lang.StringHelper;
 
@@ -39,10 +44,10 @@ import net.opentsdb.stats.StatsCollector;
 
 public class InternalStatsCollector extends StatsCollector {
 	protected final TSDB tsdb;
-	protected final String host = ManagementFactory.getRuntimeMXBean().getName().split("@")[1];
-	protected final String app = "tsdb";
 	protected final Map<String, String> atags;
-	
+	/** Instance logger */
+	protected final Logger log = LoggerFactory.getLogger(getClass());
+
 	/**
 	 * Creates a new InternalStatsCollector
 	 * @param tsdb The tsdb to write the metrics to
@@ -52,8 +57,9 @@ public class InternalStatsCollector extends StatsCollector {
 		super(prefix);		
 		this.tsdb = tsdb;
 		final Map<String, String> tmp = new LinkedHashMap<String, String>();
-		tmp.put("host", host);
-		tmp.put("app", app);
+		final AgentName am = AgentName.getInstance();
+		tmp.put("host", am.getHostName());
+		tmp.put("app", am.getAppName());
 		atags = Collections.unmodifiableMap(tmp);
 		
 	}
@@ -62,9 +68,9 @@ public class InternalStatsCollector extends StatsCollector {
 	public void emit(final String datapoint) {
 		// metricname, timestamp, value, [tags]
 		try {
-			final String[] parsedDatapoint = StringHelper.splitString(datapoint, ' ');
+			final String[] parsedDatapoint = StringHelper.splitString(datapoint.trim(), ' ', true);
 			//  <timestamp>, [<value>,] <metric-name>, <host>, <app> [,<tagkey1>=<tagvalue1>,<tagkeyn>=<tagvaluen>]
-			long timestamp = Utils.toMsTime(parsedDatapoint[1]);
+			long timestamp = toMsTime(parsedDatapoint[1]);
 			
 			if(parsedDatapoint[2].indexOf('.')!=-1) {
 				tsdb.addPoint(parsedDatapoint[0], timestamp, Double.parseDouble(parsedDatapoint[2]), tagsFromArr(parsedDatapoint));
@@ -72,10 +78,34 @@ public class InternalStatsCollector extends StatsCollector {
 				tsdb.addPoint(parsedDatapoint[0], timestamp, Long.parseLong(parsedDatapoint[2]), tagsFromArr(parsedDatapoint));
 			}
 			  
-		} catch (Exception ex) {
-			/* No Op */
+		} catch (Throwable ex) {
+			log.error("Failed to add data point [" + datapoint + "]", ex);
 		}
 	}
+	
+	/**
+	 * Converts the passed string to a ms timestamp.
+	 * If the parsed long has less than 13 digits, it is assumed to be in seconds.
+	 * Otherwise assumed to be in milliseconds.
+	 * @param value The string value to parse
+	 * @return a ms timestamp
+	 */
+	public static long toMsTime(final String value) {
+		final long v = (long)Double.parseDouble(value.trim());
+		return digits(v) < 13 ? TimeUnit.SECONDS.toMillis(v) : v; 
+	}
+	
+	/**
+	 * Determines the number of digits in the passed long
+	 * @param v The long to test
+	 * @return the number of digits
+	 */
+	public static int digits(final long v) {
+		if(v==0) return 1;
+		return (int)(Math.log10(v)+1);
+	}
+	
+	
 	
 	
 	protected Map<String, String> tagsFromArr(final String...fields) {
