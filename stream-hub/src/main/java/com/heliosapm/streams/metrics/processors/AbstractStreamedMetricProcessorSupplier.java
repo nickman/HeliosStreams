@@ -132,9 +132,10 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	}
 
 	/**
-	 * Returns the
+	 * Returns the state store definitions
 	 * @return the stateStoreDefinitions
 	 */
+	@Override
 	public Set<StateStoreDefinition<?, ?>> getStateStoreDefinitions() {
 		return new HashSet<StateStoreDefinition<?, ?>>(stateStoreDefinitions);
 	}

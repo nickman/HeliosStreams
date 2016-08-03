@@ -20,6 +20,8 @@ cd $KAFKA_HOME
 ./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.st --partitions 3 --replication-factor $REPL
 # Metrics are examined to determine their type and then routed accordingly. Metrics are written to tsdb.metrics.binary
 ./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.directed --partitions 3 --replication-factor $REPL
+# Reads in JSON docs published by filebeat, extracts the message and routes (or drops) accordingly
+./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.beats --partitions 3 --replication-factor $REPL
 
 popd
 

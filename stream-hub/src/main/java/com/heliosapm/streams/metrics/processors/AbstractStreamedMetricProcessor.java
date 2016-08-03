@@ -31,7 +31,6 @@ import com.codahale.metrics.Counter;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
-import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
 
 /**
@@ -39,9 +38,11 @@ import com.heliosapm.streams.metrics.ValueType;
  * <p>Description: </p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor</code></p>
+ * @param <K> The key type
+ * @param <V> The value type
  */
 
-public abstract class AbstractStreamedMetricProcessor implements Processor<String, StreamedMetric> {
+public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<K, V> {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The application id of the context */
@@ -109,7 +110,7 @@ public abstract class AbstractStreamedMetricProcessor implements Processor<Strin
 	 * @see org.apache.kafka.streams.processor.Processor#process(java.lang.Object, java.lang.Object)
 	 */
 	@Override
-	public void process(final String key, final StreamedMetric value) {
+	public void process(final K key, final V value) {
 		log.debug("Processing Metric [{}]", key);
 		final Context ctx = timer.time();
 		if(doProcess(key, value)) {
@@ -125,7 +126,7 @@ public abstract class AbstractStreamedMetricProcessor implements Processor<Strin
 	 * @param value The streamed metric to process
 	 * @return true if the metric was processed, false otherwise
 	 */
-	protected abstract boolean doProcess(final String key, final StreamedMetric value);
+	protected abstract boolean doProcess(final K key, final V value);
 
 	/**
 	 * {@inheritDoc}

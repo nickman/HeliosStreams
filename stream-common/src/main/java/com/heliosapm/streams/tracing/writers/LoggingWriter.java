@@ -65,6 +65,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	/** The logger used to write the metrics */
 	protected Logger metricLog = null;
 	
+	/** The file appender used by the logger */
 	protected Appender appender = null;
 	
 	/** The JVM's temp directory */

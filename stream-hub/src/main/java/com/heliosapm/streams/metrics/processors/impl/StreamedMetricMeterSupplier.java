@@ -62,7 +62,7 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
 	 * <p><code>com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier.StreamedMetricMeter</code></p>
 	 */
-	static class StreamedMetricMeter extends AbstractStreamedMetricProcessor {
+	static class StreamedMetricMeter extends AbstractStreamedMetricProcessor<String, StreamedMetric> {
 		/** The aggregation period of this meter in seconds */
 		protected final int aggregationPeriod;
 		/** The first timestamp for each unique metric key in the current period */
@@ -96,8 +96,9 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor#doProcess(java.lang.String, com.heliosapm.streams.metrics.StreamedMetric)
+		 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor#doProcess(java.lang.Object, java.lang.Object)
 		 */
+		@SuppressWarnings("null")
 		@Override
 		protected boolean doProcess(final String key, final StreamedMetric sm) {
 			TimestampedMetricKey tmk = metricTimestampStore.get(key);
@@ -138,7 +139,7 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 		
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#punctuate(long)
+		 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor#punctuate(long)
 		 */
 		@Override
 		public void punctuate(final long timestamp) {			

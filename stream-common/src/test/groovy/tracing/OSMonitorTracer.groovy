@@ -12,7 +12,9 @@ TSDBHOST = "localhost";
 TSDBPORT = 4242;
 
 sigar = HeliosSigar.getInstance();
-System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.KafkaSyncWriter");
+//System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.KafkaSyncWriter");
+System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.LoggingWriter");
+
 System.setProperty("metricwriter.kafka.bootstrap.servers", "localhost:9093,localhost:9094");
 System.setProperty("metricwriter.kafka.acks", "1");
 System.setProperty("metricwriter.kafka.retries", "0");

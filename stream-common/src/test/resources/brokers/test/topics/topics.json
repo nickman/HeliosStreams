@@ -1,16 +1,45 @@
 [
   {
-    "name": "tsdb.metrics.bin",
-    "partitions": 2,
-    "replicas": 2,
+    "name": "tsdb.metrics.binary",
+    "partitions": 3,
+    "replicas": 1,
     "properties": {
       "foo": "a"
     }
   },
   {
+    "name": "tsdb.metrics.accumulator",
+    "partitions": 3,
+    "replicas": 1
+  },
+  {
+    "name": "tsdb.metrics.meter",
+    "partitions": 3,
+    "replicas": 1
+  },
+  {
+    "name": "tsdb.metrics.delta",
+    "partitions": 3,
+    "replicas": 1
+  },
+  {
+    "name": "tsdb.metrics.pagg",
+    "partitions": 3,
+    "replicas": 1
+  },
+  {
+    "name": "tsdb.metrics.psagg",
+    "partitions": 3,
+    "replicas": 1
+  },
+  {
     "name": "tsdb.metrics.st",
-    "properties": {
-      "foo": "a"
-    }
+    "partitions": 3,
+    "replicas": 1
+  },  
+  {
+    "name": "tsdb.metrics.beats",
+    "partitions": 3,
+    "replicas": 1
   }  
 ]

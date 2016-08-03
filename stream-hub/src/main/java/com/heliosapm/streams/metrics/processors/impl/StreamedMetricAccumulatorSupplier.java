@@ -62,7 +62,7 @@ public class StreamedMetricAccumulatorSupplier extends AbstractStreamedMetricPro
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
 	 * <p><code>com.heliosapm.streams.metrics.processors.impl.StreamedMetricAccumulatorSupplier.StreamedMetricAccumulator</code></p>
 	 */
-	static class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor {
+	static class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor<String, StreamedMetric> {
 		/** The frequency of aggregation flushes in seconds */
 		protected final long flushPeriod;
 		/** The accumulated counts keyed by the metric key */
@@ -94,7 +94,7 @@ public class StreamedMetricAccumulatorSupplier extends AbstractStreamedMetricPro
 
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor#doProcess(java.lang.String, com.heliosapm.streams.metrics.StreamedMetric)
+		 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor#doProcess(java.lang.Object, java.lang.Object)
 		 */
 		@Override
 		protected boolean doProcess(final String key, final StreamedMetric sm) {
@@ -112,7 +112,7 @@ public class StreamedMetricAccumulatorSupplier extends AbstractStreamedMetricPro
 		
 		/**
 		 * {@inheritDoc}
-		 * @see com.heliosapm.streams.metrics.processor.AbstractStreamedMetricProcessor#punctuate(long)
+		 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor#punctuate(long)
 		 */
 		@Override
 		public void punctuate(final long timestamp) {
