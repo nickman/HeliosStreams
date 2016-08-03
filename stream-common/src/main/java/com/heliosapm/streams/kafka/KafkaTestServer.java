@@ -24,6 +24,7 @@ import java.io.InputStream;
 import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -148,7 +149,7 @@ public class KafkaTestServer {
 	/** The standalone flag */
 	protected final AtomicBoolean standalone = new AtomicBoolean(true);
 	/** The zookeep connect string as derrived from the zookeep configuration */
-	protected String zookeepConnect = "localhost:2181";
+	protected String zookeepConnect = "localhost:3181,localhost:4181,localhost:2181";
 	/** A Zookeeper util client for admin ops */
 	protected volatile ZkUtils zkUtils = null;
 	/** A zookeeper client for admin ops */
@@ -171,6 +172,7 @@ public class KafkaTestServer {
 	public void start() throws Exception {
 		if(running.compareAndSet(false, true)) {
 			try {
+				final boolean launchZooKeeper = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_ZOOKEEP, DEFAULT_ZOOKEEP);
 				final File zkDataDir = new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR));
 				final File zkLogDir = new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR));
 				final File kLogDir = new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOG_DIR, DEFAULT_LOG_DIR));
@@ -178,19 +180,22 @@ public class KafkaTestServer {
 				delTree(zkLogDir);
 				delTree(kLogDir);
 				zkConfigProperties.clear();
-				zkConfigProperties.setProperty("tickTime", "2000");
-				zkConfigProperties.setProperty("syncEnabled", "false");
-				zkConfigProperties.setProperty("dataDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR));
-				zkConfigProperties.setProperty("dataLogDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR));
+				if(launchZooKeeper) {
+					zkConfigProperties.setProperty("tickTime", "2000");
+					zkConfigProperties.setProperty("syncEnabled", "false");
+					zkConfigProperties.setProperty("dataDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR));
+					zkConfigProperties.setProperty("dataLogDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR));
+				}
 				final int clientPort = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_PORT, DEFAULT_ZK_PORT);
 				final String clientPortAddress = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_IFACE, DEFAULT_ZK_IFACE);				
 				zookeepConnect = clientPortAddress + ":" + clientPort;
-				
-				zkConfigProperties.setProperty("clientPort", "" + clientPort);
-				zkConfigProperties.setProperty("clientPortAddress", clientPortAddress);
-				zkConfigProperties.setProperty("maxClientCnxns", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXCONNS, DEFAULT_ZK_MAXCONNS));
-				zkConfigProperties.setProperty("minSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MINTO, DEFAULT_ZK_MINTO));
-				zkConfigProperties.setProperty("maxSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXTO, DEFAULT_ZK_MAXTO));
+				if(launchZooKeeper) {
+					zkConfigProperties.setProperty("clientPort", "" + clientPort);
+					zkConfigProperties.setProperty("clientPortAddress", clientPortAddress);
+					zkConfigProperties.setProperty("maxClientCnxns", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXCONNS, DEFAULT_ZK_MAXCONNS));
+					zkConfigProperties.setProperty("minSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MINTO, DEFAULT_ZK_MINTO));
+					zkConfigProperties.setProperty("maxSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXTO, DEFAULT_ZK_MAXTO));
+				}
 //				zkConfigProperties.setProperty("server.0", "PP-DT-NWHI-01:" + clientPort + ":" + (clientPort+1)); //  + ":PARTICIPANT");
 				configProperties.clear();
 				configProperties.setProperty("delete.topic.enable", "true");
@@ -199,51 +204,54 @@ public class KafkaTestServer {
 				configProperties.setProperty("enable.zookeeper", "" + ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_ZOOKEEP, DEFAULT_ZOOKEEP));
 				configProperties.setProperty("zookeeper.connect", zookeepConnect);
 				configProperties.setProperty("brokerid", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BROKERID, DEFAULT_BROKERID));
-				log.info("Embedded Kafka ZooKeeper Config: {}",  zkConfigProperties);
-				log.info("Embedded Kafka Broker Config: {}",  configProperties);
-				log.info(">>>>> Starting Embedded ZooKeeper...");
-				zkConfig = new QuorumPeerConfig();
-//				zkConfig.parse(System.getenv("ZOOKEEPER_HOME") + File.separator + "conf" + File.separator + "zoo.cfg");
-				zkConfig.parseProperties(zkConfigProperties);
-				final Thread zkRunThread;
-				final Throwable[] t = new Throwable[1];
-				if(zkConfig.getServers().size() > 1) {
-					standalone.set(false);
-					zkServer = new QuorumPeerMain();
-					zkRunThread = new Thread("ZooKeeperRunThread") {
-						public void run() {
-							try {
-								zkServer.runFromConfig(zkConfig);
-							} catch (IOException ex) {
-								log.error("Failed to start ZooKeeper", ex);
-								t[0] = ex;
-							}
-						}
-					};
-				} else {
-					standalone.set(true);
-					sc = new ServerConfig();
-					sc.readFrom(zkConfig);
-					zkSoServer = new ZooKeeperServerMain();					
-					zkRunThread = new Thread("ZooKeeperStandaloneRunThread") {
-						public void run() {
-							try {
-								zkSoServer.runFromConfig(sc);
-							} catch (IOException ex) {
-								log.error("Failed to start standalone ZooKeeper", ex);
-								t[0] = ex;
-							}
-						}
-					};
-				}
-				zkRunThread.setDaemon(true);
-				zkRunThread.start();
 				
+				if(launchZooKeeper) {
+					log.info(">>>>> Starting Embedded ZooKeeper...");
+					log.info("Embedded Kafka ZooKeeper Config: {}",  zkConfigProperties);
+					zkConfig = new QuorumPeerConfig();
+	//				zkConfig.parse(System.getenv("ZOOKEEPER_HOME") + File.separator + "conf" + File.separator + "zoo.cfg");
+					zkConfig.parseProperties(zkConfigProperties);
+					final Thread zkRunThread;
+					final Throwable[] t = new Throwable[1];
+					if(zkConfig.getServers().size() > 1) {
+						standalone.set(false);
+						zkServer = new QuorumPeerMain();
+						zkRunThread = new Thread("ZooKeeperRunThread") {
+							public void run() {
+								try {
+									zkServer.runFromConfig(zkConfig);
+								} catch (IOException ex) {
+									log.error("Failed to start ZooKeeper", ex);
+									t[0] = ex;
+								}
+							}
+						};
+					} else {
+						standalone.set(true);
+						sc = new ServerConfig();
+						sc.readFrom(zkConfig);
+						zkSoServer = new ZooKeeperServerMain();					
+						zkRunThread = new Thread("ZooKeeperStandaloneRunThread") {
+							public void run() {
+								try {
+									zkSoServer.runFromConfig(sc);
+								} catch (IOException ex) {
+									log.error("Failed to start standalone ZooKeeper", ex);
+									t[0] = ex;
+								}
+							}
+						};
+					}
+					zkRunThread.setDaemon(true);
+					zkRunThread.start();
+					log.info("<<<<< Embedded ZooKeeper started.");
+				}
 				
 //				ZooKeeperServer zkServer  = new ZooKeeperServer(new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR)), new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR)), 200);
 				
-				log.info("<<<<< Embedded ZooKeeper started.");
+				
 				log.info(">>>>> Starting Embedded Kafka...");
+				log.info("Embedded Kafka Broker Config: {}",  configProperties);
 				kafkaConfig = new KafkaConfig(configProperties);
 				kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, null);
 				kafkaServer.startup();				
@@ -393,15 +401,49 @@ public class KafkaTestServer {
 	
 	/**
 	 * Returns the metadata for the specified topic names
-	 * @param topicNames The topic names
-	 * @return a set of TopicMetadatas 
+	 * @param topicNames The topic names to retrieve metadata for, or null/empty array for all topics
+	 * @return a map of TopicMetadatas keyed by topic name 
 	 */
-	public Set<TopicMetadata> topicMetaData(final String...topicNames) {
+	public Map<String, TopicMetadata> topicMetaData(final String...topicNames) {
 		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
-		if(topicNames==null || topicNames.length==0) return Collections.emptySet();		
 		final ZkUtils z = getZkUtils();
-		final Set<String> set = new LinkedHashSet<String>(Arrays.asList(topicNames));		
-		return JavaConversions.setAsJavaSet(AdminUtils.fetchTopicMetadataFromZk(JavaConverters.asScalaSetConverter(set).asScala(), z));		
+		final Set<String> set = (topicNames==null || topicNames.length==0) ? topicNames() : new LinkedHashSet<String>(Arrays.asList(topicNames));		
+		final Set<TopicMetadata> meta = JavaConversions.setAsJavaSet(AdminUtils.fetchTopicMetadataFromZk(JavaConverters.asScalaSetConverter(set).asScala(), z));
+		final Map<String, TopicMetadata> map = new HashMap<String, TopicMetadata>(meta.size());
+		for(TopicMetadata tm: meta) {
+			map.put(tm.topic(), tm);
+		}
+		return map;
+	}
+	
+	public Map<String, TopicDefinition> topicDefinitions(final String...topicNames) {
+		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		final ZkUtils z = getZkUtils();		
+		final Map<String, Properties> topicProps = topicProperties();
+		if(topicProps.isEmpty()) return Collections.emptyMap();
+		final String[] targetTopics = (topicNames==null || topicNames.length==0) ? topicProps.keySet().toArray(new String[topicProps.size()]) : topicNames;
+		final Map<String, TopicDefinition> map = new HashMap<String, TopicDefinition>(targetTopics.length);
+		final Map<String, TopicMetadata> meta = topicMetaData(targetTopics);
+		for(Map.Entry<String, TopicMetadata> entry: meta.entrySet()) {
+			final String name = entry.getKey();
+			final TopicMetadata tmeta = entry.getValue();
+			final Properties p = topicProps.get(name);
+			final int partitions = tmeta.partitionMetadata().size();
+			final int replicas = tmeta.partitionMetadata().get(0).replicas().size();
+			final TopicDefinition topicDef = new TopicDefinition(name, partitions, replicas, p);
+			map.put(name, topicDef);
+		}
+		return map;
+	}
+	
+	public String topicDefinitionsJSON(final String...topicNames) {
+		final Map<String, TopicDefinition> defs = topicDefinitions(topicNames);
+		try {
+			return TopicDefinition.OBJ_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(defs.values().toArray(new TopicDefinition[defs.size()]));
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to serialize topic definitions to JSON", ex);
+		}
+		
 	}
 	
 	/**
@@ -516,6 +558,10 @@ public class KafkaTestServer {
 						kts.stop();
 					}
 					System.exit(-1);
+				}
+			}).registerCommand("topics", new Runnable(){
+				public void run() {
+					kts.log.info("Topic JSON:\n{}", kts.topicDefinitionsJSON());
 				}
 			}).run();
 		} catch (Exception ex) {
