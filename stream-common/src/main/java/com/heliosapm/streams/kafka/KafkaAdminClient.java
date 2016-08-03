@@ -57,6 +57,9 @@ import scala.collection.JavaConverters;
  * <p>Description: Pure java wrapper for the scala based KafkaUtils client for issuing administrative operations against a Kafka broker or cluster</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.kafka.KafkaAdminClient</code></p>
+ * TODO: createOrUpdateTopic
+ * TODO: consumer groups:  https://cwiki.apache.org/confluence/display/KAFKA/Committing+and+fetching+consumer+offsets+in+Kafka
+ * 
  */
 
 public class KafkaAdminClient implements Watcher, Closeable {
