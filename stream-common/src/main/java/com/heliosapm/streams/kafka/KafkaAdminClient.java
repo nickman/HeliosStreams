@@ -173,7 +173,8 @@ public class KafkaAdminClient implements Watcher, Closeable {
 	 * @param args None
 	 */
 	public static void main(String[] args) {
-		final KafkaAdminClient client = getClient();
+		final KafkaAdminClient client = getClient("leopard:2181");
+		client.log.info("TOPICS:" + client.topicDefinitionsJSON());
 		StdInCommandHandler.getInstance()
 			.registerCommand("close", new Runnable(){
 				public void run() {
