@@ -22,7 +22,7 @@ import com.heliosapm.streams.tracing.AbstractMetricWriter;
 
 /**
  * <p>Title: ConsoleWriter</p>
- * <p>Description: </p> 
+ * <p>Description: Writes metrics to standard out</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.tracing.writers.ConsoleWriter</code></p>
@@ -34,7 +34,7 @@ public class ConsoleWriter extends AbstractMetricWriter {
 	 * Creates a new ConsoleWriter
 	 */
 	public ConsoleWriter() {
-		super(false);
+		super(false, true);
 	}
 
 	/**
@@ -65,6 +65,7 @@ public class ConsoleWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	protected void startUp() throws Exception {
+		/* No Op */
 	}
 
 	/**
@@ -73,6 +74,7 @@ public class ConsoleWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	protected void shutDown() throws Exception {
+		/* No Op */
 	}
 
 }

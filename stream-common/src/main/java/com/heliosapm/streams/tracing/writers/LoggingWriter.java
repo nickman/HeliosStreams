@@ -114,7 +114,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	 * Creates a new LoggingWriter
 	 */
 	public LoggingWriter() {
-		super(false);
+		super(false, true);
 	}
 	
 	/**

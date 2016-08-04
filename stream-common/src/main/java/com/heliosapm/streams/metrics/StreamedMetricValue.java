@@ -554,9 +554,9 @@ public class StreamedMetricValue extends StreamedMetric {
 	}
 	
 	
-	static StreamedMetricValue readFromStream(final DataInputStream dis) {
-		return new StreamedMetricValue().read(dis);
-	}
+//	static StreamedMetricValue readFromStream(final DataInputStream dis) {
+//		return new StreamedMetricValue().read(dis);
+//	}
 	
 	@Override
 	StreamedMetricValue read(final DataInputStream dis) {		

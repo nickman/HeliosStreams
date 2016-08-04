@@ -52,16 +52,30 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 	
 	/** Indicates if this writer gets metric confirmations */
 	protected final boolean confirmsMetrics;
+	
+	/** Indicates if this writer fully consumes metrics on write before returning */
+	protected final boolean metricsConsumed;
 		
 	/**
 	 * Creates a new AbstractMetricWriter
 	 * @param confirmsMetrics true if writer gets confirmations on metric delivery, false otherwise
+	 * @param metricsConsumed Indicates if this writer fully consumes metrics on write before returning
 	 */
-	protected AbstractMetricWriter(final boolean confirmsMetrics) {
+	protected AbstractMetricWriter(final boolean confirmsMetrics, final boolean metricsConsumed) {
 		log.info("Created MetricWriter [{}]", getClass().getSimpleName());
 		this.confirmsMetrics = confirmsMetrics;
+		this.metricsConsumed = metricsConsumed;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.IMetricWriter#areMetricsConsumed()
+	 */
+	@Override
+	public boolean areMetricsConsumed() {
+		return metricsConsumed;
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.tracing.IMetricWriter#onMetrics(com.heliosapm.streams.metrics.StreamedMetric[])
@@ -117,7 +131,10 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 		metrics.readerIndex(0);
 		final InputStream is = new ByteBufInputStream(metrics);
 		try {
-			onMetrics(StreamedMetric.read(is));
+			for(StreamedMetric sm: StreamedMetric.streamedMetrics(is, true, false)) {
+				onMetrics(sm);
+			}
+			//onMetrics(StreamedMetric.read(is));
 		} finally {
 			try { is.close(); } catch (Exception x) {/* No Op */}
 		}

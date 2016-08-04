@@ -65,28 +65,31 @@ while(true) {
 		try {
 			tracer.seg("sys.fs").pushTs(System.currentTimeMillis()).setSuppressPredicate(IGNORE_NEGATIVE);
 			sigar.getFileSystemList().each() { fs ->
-				try {
-					fsu = sigar.getFileSystemUsage(fs.getDirName());
+				fsu = null;
+				try { fsu = sigar.getFileSystemUsage(fs.getDirName()); } catch (x) {}
+				if(fsu != null) {
 					tracer.pushTags([name : fs.getDirName(), type : fs.getSysTypeName()]);					
-					tracer
-						.pushSeg("avail").trace(fsu.getAvail()).popSeg()
-						.pushSeg("queue").trace(fsu.getDiskQueue()).popSeg()
-						.pushSeg("files").trace(fsu.getFiles()).popSeg()
-						.pushSeg("free").trace(fsu.getFree()).popSeg()
-						.pushSeg("freefiles").trace(fsu.getFreeFiles()).popSeg()
-						.pushSeg("total").trace(fsu.getTotal()).popSeg()
-						.pushSeg("used").trace(fsu.getUsed()).popSeg()
-						.pushSeg("usedperc").trace(fsu.getUsePercent()).popSeg()
-							.pushSeg("bytes")
-						.pushSeg("reads").trace(fsu.getDiskReadBytes()).popSeg()
-						.pushSeg("writes").trace(fsu.getDiskWriteBytes()).popSeg()
-							.popSeg()
-							.pushSeg("ios")
-						.pushSeg("reads").trace(fsu.getDiskReads()).popSeg()
-						.pushSeg("writes").trace(fsu.getDiskWrites()).popSeg()
-						.popSeg();
-				} finally {
-					tracer.popTags(2);
+					try {
+						tracer
+							.pushSeg("avail").trace(fsu.getAvail()).popSeg()
+							.pushSeg("queue").trace(fsu.getDiskQueue()).popSeg()
+							.pushSeg("files").trace(fsu.getFiles()).popSeg()
+							.pushSeg("free").trace(fsu.getFree()).popSeg()
+							.pushSeg("freefiles").trace(fsu.getFreeFiles()).popSeg()
+							.pushSeg("total").trace(fsu.getTotal()).popSeg()
+							.pushSeg("used").trace(fsu.getUsed()).popSeg()
+							.pushSeg("usedperc").trace(fsu.getUsePercent()).popSeg()
+								.pushSeg("bytes")
+							.pushSeg("reads").trace(fsu.getDiskReadBytes()).popSeg()
+							.pushSeg("writes").trace(fsu.getDiskWriteBytes()).popSeg()
+								.popSeg()
+								.pushSeg("ios")
+							.pushSeg("reads").trace(fsu.getDiskReads()).popSeg()
+							.pushSeg("writes").trace(fsu.getDiskWrites()).popSeg()
+							.popSeg();
+					} finally {
+						tracer.popTags(2);
+					}
 				}
 			}
 		} catch (x) {

@@ -66,7 +66,7 @@ public class KafkaSyncWriter extends AbstractMetricWriter {
 	 * Creates a new KafkaSyncWriter
 	 */
 	public KafkaSyncWriter() {
-		super(false);
+		super(false, true);
 	}
 	
 	/**
@@ -74,7 +74,7 @@ public class KafkaSyncWriter extends AbstractMetricWriter {
 	 * @param sync true for sync, false for subclassed async class
 	 */
 	protected KafkaSyncWriter(final boolean sync) {
-		super(sync);
+		super(sync, true);
 	}
 	
 	

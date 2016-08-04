@@ -80,8 +80,8 @@ public class DefaultTracerImpl implements ITracer {
 	private Stack<String> metricNameStack = new Stack<String>();
 	/** The tag stack */
 	private Stack<String[]> tagStack = new Stack<String[]>();	
-	/** The metric tags sorter */
-	private final TreeMap<String, String> tags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
+//	/** The metric tags sorter */
+//	private final TreeMap<String, String> tags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
 	/** The timestamp state in ms time format */
 	private Long msTime = null;
 	/** The max number of traces before an auto-flush */
@@ -191,6 +191,7 @@ public class DefaultTracerImpl implements ITracer {
 	
 	/**
 	 * Creates a new Tracer with an initial metric name and current timestamp
+	 * @param writer The writer to send traced metrics with
 	 */
 	protected DefaultTracerImpl(final IMetricWriter writer) {
 		this.writer = writer;
@@ -639,7 +640,6 @@ public class DefaultTracerImpl implements ITracer {
 			final SortedMap<String, String> outTags;
 			if(tagValues!=null && tagValues.length > 0) {
 				outTags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
-				outTags.putAll(tags);
 				outTags.putAll(buildTags(tagValues));
 			} else {
 				outTags = buildTags();
@@ -673,7 +673,6 @@ public class DefaultTracerImpl implements ITracer {
 			final SortedMap<String, String> outTags;
 			if(tagValues!=null && tagValues.length > 0) {
 				outTags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
-				outTags.putAll(tags);
 				outTags.putAll(buildTags(tagValues));
 			} else {
 				outTags = buildTags();
@@ -1098,7 +1097,7 @@ public class DefaultTracerImpl implements ITracer {
 	public String dump() {
 		final StringBuilder b = new StringBuilder("Tracer State: [");
 		b.append("\n\tMetricName:").append(metricNameStack)
-		.append("\n\tTags:").append(tagStackToString())
+		.append("\n\tTagStack:").append(tagStackToString())
 		.append("\n\tTagKeys:").append(tagKeyStack)
 		.append("\n\tTimestamp:").append(msTime)
 		.append("\n\tSupressPredicate:").append(suppressPredicate)
@@ -1109,6 +1108,10 @@ public class DefaultTracerImpl implements ITracer {
 		return b.append("\n]").toString();
 	}
 	
+	/**
+	 * Renders the tag stack
+	 * @return the tag stack rendered as a flat string
+	 */
 	protected String tagStackToString() {
 		if(tagStack.isEmpty()) return "";
 		final StringBuilder b = new StringBuilder("{");
@@ -1116,7 +1119,7 @@ public class DefaultTracerImpl implements ITracer {
 			if(b.length() > 1) {
 				b.append(", ");
 			}
-			b.append(pair[0]).append("=").append(pair[0]);
+			b.append(pair[0]).append("=").append(pair[1]);
 		}
 		return b.append("}").toString();
 	}

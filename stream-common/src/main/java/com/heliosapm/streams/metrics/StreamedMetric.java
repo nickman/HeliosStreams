@@ -34,6 +34,7 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPInputStream;
 
 import org.apache.kafka.common.serialization.Deserializer;
@@ -42,8 +43,10 @@ import org.apache.kafka.common.serialization.Serializer;
 
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.tracing.TagKeySorter;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.buffer.ByteBufUtil;
 import net.openhft.chronicle.bytes.BytesIn;
 import net.openhft.chronicle.bytes.BytesMarshallable;
@@ -395,6 +398,80 @@ public class StreamedMetric implements BytesMarshallable {
 		}		
 	}
 	
+	
+	/**
+	 * Returns an interator over the StreamMetrics readable from the passed input stream
+	 * @param is The input stream to read from
+	 * @param singleInstance true to return a single instance which is updated each time the iterator returns, 
+	 * false to return a new instance.  // TODO
+	 * @param releaseOnDone true to release the buffer on iterator end
+	 * @return the iterator
+	 */
+	public static Iterable<StreamedMetric> streamedMetrics(final InputStream is, final boolean singleInstance, final boolean releaseOnDone) {
+		final DataInputStream dis;
+		final GZIPInputStream gis;
+		final AtomicInteger metricCount = new AtomicInteger(0);
+		final StreamedMetric sm = singleInstance ? new StreamedMetric() : null;
+		final StreamedMetricValue smv = singleInstance ? new StreamedMetricValue() : null;
+		try {
+			is.mark(5);
+			final int type = is.read();
+			final byte[] metricCountBytes = new byte[4];
+			is.read(metricCountBytes);
+			is.reset();
+			metricCount.set(Utils.fromBytes(metricCountBytes));
+			if(type==1) {
+				gis = new GZIPInputStream(is);
+				dis = new DataInputStream(gis);
+			} else if(type==0) {
+				dis = new DataInputStream(is);
+				gis = null;
+			} else {
+				throw new Exception("Invalid compression indicator byte [" + type + "]");
+			}
+			is.read();
+			is.read(metricCountBytes);
+			return new Iterable<StreamedMetric>() {				
+				@Override
+				public Iterator<StreamedMetric> iterator() {
+					return new Iterator<StreamedMetric>() {
+						@Override
+						public boolean hasNext() {
+							final boolean hasNext = metricCount.decrementAndGet() > -1;
+							if(!hasNext) {
+								if(releaseOnDone) {
+									try { is.close(); } catch (Exception x) {/* No Op */}
+									if(is instanceof ByteBufInputStream) {
+										// FIXME: this is a hack. The buffer used to be accessible ?
+										try { ((ByteBuf)PrivateAccessor.getFieldValue(is, "buffer")).release(); } catch (Exception x) {/* No Op */}
+									}
+								} else {
+									try { is.close(); } catch (Exception x) {/* No Op */}
+								}
+								if(gis!=null) try { gis.close(); } catch (Exception x) {/* No Op */}
+								try { dis.close(); } catch (Exception x) {/* No Op */}
+							}
+							return hasNext;
+						}
+
+						@Override
+						public StreamedMetric next() {
+							return StreamedMetric.readFromStream(dis, sm, smv);
+						}					
+					};
+				}			
+			};			
+		} catch(Exception ex) {
+			throw new RuntimeException("Failed to initialize streams", ex);
+		}
+	}
+
+	
+	/**
+	 * Reads an array of StreamedMetrics from the passed input stream
+	 * @param is the input stream to read from
+	 * @return an array of StreamedMetrics
+	 */
 	public static StreamedMetric[] read(final InputStream is) {
 		DataInputStream dis = null;
 		GZIPInputStream gis = null;
@@ -513,10 +590,47 @@ public class StreamedMetric implements BytesMarshallable {
 	}
 	
 	static StreamedMetric readFromStream(final DataInputStream dis) {
-		return new StreamedMetric().read(dis);
+		return readFromStream(dis, null, null);
+	}
+	
+	static StreamedMetric readFromStream(final DataInputStream dis, final StreamedMetric emptyA, final StreamedMetricValue emptyV) {
+		try {
+			final byte v = dis.readByte();
+			if(v==TYPE_CODE) {
+				if(emptyA!=null) return emptyA.read(dis);
+				return new StreamedMetric().read(dis);
+			}
+			if(emptyV!=null) return emptyV.read(dis);
+			return new StreamedMetricValue().read(dis);
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to read in metric from DataInputStream", ex);
+		}
+	}
+	
+//	public static int write(final ByteBuf buff, final ValueType valueType, final String metricName, final long timestamp, final Map<String, String> tags) {
+//		final int offset = buff.writerIndex();
+//		buff.writeByte(TYPE_CODE);
+//		buff.writeByte(valueType==null ? 0 : valueType.ordinal()+1);
+//		buff.writeLong(timestamp);
+//		BufferManager.writeUTF(metricName, buff);			
+//		buff.writeByte(tags.size());
+//		for(Map.Entry<String, String> entry: tags.entrySet()) {
+//			BufferManager.writeUTF(entry.getKey(), buff);
+//			BufferManager.writeUTF(entry.getValue(), buff);
+//		}		
+//		return buff.writerIndex() - offset;
+//	}
+	
+	/**
+	 * Resets this metric to make it ready for a new read
+	 */
+	void reset() {
+		valueType = null;
+		tags.clear();
 	}
 	
 	StreamedMetric read(final DataInputStream dis) {
+		reset();
 		try {
 			final byte v = dis.readByte();
 			if(v==0) {

@@ -34,6 +34,13 @@ import io.netty.buffer.ByteBuf;
  */
 
 public interface IMetricWriter extends Service {
+	
+	/**
+	 * Indicates if this writer fully consumes written metrics before returning.
+	 * @return true if metrics are fully consumed, false if they may be cached or linger
+	 */
+	public boolean areMetricsConsumed();
+	
 	/**
 	 * Handles the delivery of an array of {@link StreamedMetric} instances
 	 * @param metrics The metrics to deliver

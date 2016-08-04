@@ -125,7 +125,7 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	 * @param confirmsMetrics Indicates if this writer expects metric submission confirmation
 	 */
 	public NetWriter(final Class<C> channelType, final boolean confirmsMetrics) {
-		super(confirmsMetrics);
+		super(confirmsMetrics, false);
 		this.channelType = channelType;
 		registerConnectionStateListener(this);
 	}
