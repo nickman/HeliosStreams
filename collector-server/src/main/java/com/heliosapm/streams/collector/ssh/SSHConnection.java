@@ -19,10 +19,26 @@ under the License.
 package com.heliosapm.streams.collector.ssh;
 
 import java.io.File;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import javax.management.ObjectName;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.JMXManagedScheduler;
+import com.heliosapm.utils.url.URLHelper;
+
+import ch.ethz.ssh2.Connection;
+import ch.ethz.ssh2.ConnectionInfo;
+import ch.ethz.ssh2.ConnectionMonitor;
+import ch.ethz.ssh2.ServerHostKeyVerifier;
 
 /**
  * <p>Title: SSHConnection</p>
@@ -31,15 +47,27 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * <p><code>com.heliosapm.streams.collector.ssh.SSHConnection</code></p>
  */
 
-public class SSHConnection {
+public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKeyVerifier {
 	
 	/** A cache of connections keyed by <b><code>&lt;user&gt@&lt;host&gt:&lt;sshportr&gt</code></b>. */
 	private static final NonBlockingHashMap<String, SSHConnection> connections = new NonBlockingHashMap<String, SSHConnection>();
+	
 	
 	/** Placeholder connection */
 	private static final SSHConnection PLACEHOLDER = new SSHConnection();
 	/** Connection key template */
 	private static final String KEY_TEMPLATE = "%s@%s:%s";
+	
+	/** The throwable message when a normal connection close occurs */
+	private static final String NORMAL_CLOSE_MESSAGE = "Closed due to user request.";
+	
+	/** The reconnect thread pool JMX ObjectName */
+	public static final ObjectName THREAD_POOL_OBJECT_NAME = JMXHelper.objectName("");
+	
+	
+	/** The reconnect thread pool scheduler */	
+	private static final JMXManagedScheduler reconnectScheduler = new JMXManagedScheduler(THREAD_POOL_OBJECT_NAME, "SSHReconnector", 4, true);
+	
 	
 	/** The host to connect to */
 	@JsonProperty(value="host", required=true)
@@ -62,12 +90,37 @@ public class SSHConnection {
 	/** The ssh private key passphrase */
 	@JsonProperty(value="passphrase")
 	protected String passPhrase = null;
+
+	/** The connection key */
+	@JsonIgnore
+	protected final String key;
+	/** The connection log */
+	@JsonIgnore
+	protected final Logger log = LogManager.getLogger(getClass());
+	
+	
+	/** The SSH connection */
+	@JsonIgnore
+	protected final Connection connection;
+	/** The SSH connection's info */
+	@JsonIgnore
+	protected ConnectionInfo connectionInfo = null;
+	/** Indicates if the connection is connected */
+	@JsonIgnore
+	protected final AtomicBoolean connected = new AtomicBoolean(false);
+	/** Indicates if the connection is started */
+	@JsonIgnore
+	protected final AtomicBoolean started = new AtomicBoolean(false);
+	/** The reconnect schedule handle for this connection */
+	@JsonIgnore
+	protected volatile ScheduledFuture<?> scheuduleHandle = null;
 	
 	/**
 	 * Creates a new SSHConnection
 	 */
 	private SSHConnection() {
-		
+		key = null;
+		connection = null;
 	}
 	
 	
@@ -150,6 +203,9 @@ public class SSHConnection {
 		this.sshPort = sshPort;
 		this.user = user;
 		this.password = password;
+		key = toString();
+		connection = new Connection(host, sshPort);
+		connection.addConnectionMonitor(this);
 	}
 
 	/**
@@ -166,6 +222,9 @@ public class SSHConnection {
 		this.user = user;
 		this.privateKey = privateKey;
 		this.passPhrase = passPhrase;
+		key = toString();
+		connection = new Connection(host, sshPort);
+		connection.addConnectionMonitor(this);
 	}
 
 	/**
@@ -182,7 +241,91 @@ public class SSHConnection {
 		this.user = user;
 		this.privateKeyFile = new File(privateKeyFileName);
 		this.passPhrase = passPhrase;
+		key = toString();
+		connection = new Connection(host, sshPort);
+		connection.addConnectionMonitor(this);
 	}
+	
+	/**
+	 * <p>Starts a reconnect attempt</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Runnable#run()
+	 */
+	@Override
+	public void run() {
+		try {
+			connectionInfo = connection.connect(this, 10000, 10000); // FIXME: make this configurable
+			log.info("Connected to [{}], starting authentication", key);
+			if(AuthenticationMethod.auth(this)) {
+				connected.set(true);
+				scheuduleHandle.cancel(false);
+			} else {
+				log.warn("Authentication on SSHConnection [{}] failed", key);
+			}
+		} catch (Exception ex) {
+			if(ex instanceof InterruptedException) {
+				log.info("Reconnect task for [{}] interrupted while running", key);
+			}
+		}
+	}
+	
+	void start() throws Exception {
+		if(started.compareAndSet(false, true)) {
+			scheuduleHandle = reconnectScheduler.scheduleWithFixedDelay(this, 2, 15, TimeUnit.SECONDS);
+		}
+	}
+	
+	void stop() {
+		if(started.compareAndSet(true, false)) {
+			try {
+				if(scheuduleHandle!=null) try { scheuduleHandle.cancel(true); } catch (Exception x) {/* No Op */}
+				scheuduleHandle = null;
+				try { connection.close(); } catch (Exception x) {/* No Op */}
+			} finally {
+				connections.remove(key);
+			}
+		}		
+	}
+	
+	char[] getPrivateKey() {
+		if(privateKey!=null) return privateKey;
+		if(privateKeyFile!=null) {
+			if(privateKeyFile.canRead()) {
+				return URLHelper.getCharsFromURL(URLHelper.toURL(privateKeyFile));
+			}
+		}
+		return null;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see ch.ethz.ssh2.ConnectionMonitor#connectionLost(java.lang.Throwable)
+	 */
+	@Override
+	public void connectionLost(final Throwable reason) {
+		if(connected.compareAndSet(true, false)) {
+			if(reason==null || !started.get() || NORMAL_CLOSE_MESSAGE.equals(reason.getMessage())) {
+				// Normal close
+				log.info("Connection [{}] was closed", key);
+			} else {
+				// Not so normal
+				log.error("Connection [{}] was lost. Starting reconnect task.", key, reason);
+			}
+		}
+	}
+	
+	/**
+	 * FIXME: this should actually do something
+	 * {@inheritDoc}
+	 * @see ch.ethz.ssh2.ServerHostKeyVerifier#verifyServerHostKey(java.lang.String, int, java.lang.String, byte[])
+	 */
+	@Override
+	public boolean verifyServerHostKey(final String hostname, final int port, final String serverHostKeyAlgorithm, final byte[] serverHostKey) throws Exception {
+		log.info("Verifying Host Ket from [{}:{}], Algo: [{}]", hostname, port, serverHostKeyAlgorithm);
+		return true;
+	}
+	
+	
 
 
 	/**
@@ -217,8 +360,7 @@ public class SSHConnection {
 	public String toString() {
 		return String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);
 	}
-
-
+	
 	/**
 	 * {@inheritDoc}
 	 * @see java.lang.Object#hashCode()
@@ -261,6 +403,10 @@ public class SSHConnection {
 			return false;
 		return true;
 	}
+
+
+
+
 	
 	
 }

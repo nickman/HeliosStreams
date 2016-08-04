@@ -644,7 +644,7 @@ public class DefaultTracerImpl implements ITracer {
 			} else {
 				outTags = buildTags();
 			}
-			outTags.putAll(appHostTags);
+			addAppHostTags(outTags);
 			final String mn = buildMetricName();
 			if(suppressPredicate!=null) {
 				state.update(value, timestamp, mn, outTags);
@@ -677,7 +677,7 @@ public class DefaultTracerImpl implements ITracer {
 			} else {
 				outTags = buildTags();
 			}
-			outTags.putAll(appHostTags);
+			addAppHostTags(outTags);
 			final String mn = buildMetricName();
 			if(suppressPredicate!=null) {
 				state.update(value, timestamp, mn, outTags);
@@ -695,6 +695,16 @@ public class DefaultTracerImpl implements ITracer {
 			if(bufferedEvents==maxTracesBeforeFlush) {
 				flush();
 			}
+		}
+	}
+	
+	/**
+	 * Adds the app and host tags if not already present
+	 * @param map The map to add to
+	 */
+	protected void addAppHostTags(final Map<String, String> map) {
+		for(Map.Entry<String, String> entry: appHostTags.entrySet()) {
+			map.putIfAbsent(entry.getKey(), entry.getValue());
 		}
 	}
 	
