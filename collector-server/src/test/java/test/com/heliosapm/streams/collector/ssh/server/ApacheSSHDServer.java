@@ -37,12 +37,14 @@ import org.apache.sshd.server.auth.password.PasswordAuthenticator;
 import org.apache.sshd.server.auth.password.UserAuthPasswordFactory;
 import org.apache.sshd.server.auth.pubkey.PublickeyAuthenticator;
 import org.apache.sshd.server.auth.pubkey.UserAuthPublicKeyFactory;
+import org.apache.sshd.server.forward.AcceptAllForwardingFilter;
 import org.apache.sshd.server.forward.ForwardingFilter;
 import org.apache.sshd.server.keyprovider.AbstractGeneratorHostKeyProvider;
 import org.apache.sshd.server.session.ServerSession;
 import org.apache.sshd.server.shell.ProcessShellFactory;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 
 import test.com.heliosapm.streams.collector.ssh.auth.KeyDirectoryPublickeyAuthenticator;
@@ -61,43 +63,32 @@ import test.com.heliosapm.streams.collector.ssh.keys.UserAwarePublicKey;
 public class ApacheSSHDServer {
 	/** Static class logger */
 	static final Logger LOG = LogManager.getLogger(ApacheSSHDServer.class);
-	/** The server instance */
-	static final AtomicReference<SshServer> server = new AtomicReference<SshServer>(null);
 	
+	/** The singleton instance */
+	private static volatile ApacheSSHDServer instance = null;
+	/** The singleton instance ctor lock */
+	private static final Object lock = new Object();
 	
-	/**
-	 * Launch the sshd server
-	 * @param args None
-	 */
-	public static void main(String...args) {
-		
-		
-		//Logger.getLogger(ChannelSession.class).setLevel(Level.WARN);
-//		LogManager.getLogger("org.apache").setLevel(Level.WARN);
-		//Logger.getLogger(ServerSession.class).setLevel(Level.WARN);
-		//Logger.getLogger(SecurityUtils.class).setLevel(Level.WARN);
-
-		SshServer sshd = server.get();
-		if(sshd==null) {
-			synchronized(server) {
-				sshd = server.get();
-				if(sshd!=null) {
-					LOG.info("Server already running on port [" + sshd.getPort() + "]");
-					return;
+	public static ApacheSSHDServer getInstance() {
+		if(instance==null) {
+			synchronized(lock) {
+				if(instance==null) {
+					instance = new ApacheSSHDServer();
 				}
-				sshd = SshServer.setUpDefaultServer();
-				server.set(sshd);
 			}
-		}		
-
-		LOG.info("Starting SSHd Server");
-		
-		int port = -1;
-		try {
-			port = Integer.parseInt(args[0]);
-		} catch (Exception e) {
-			port = 0;
 		}
+		return instance;
+	}
+	
+	/** The ssh server */
+	protected SshServer sshd = null;
+	/** The ssh server listening port */
+	protected int port = -1;
+	
+	private ApacheSSHDServer() {
+		sshd = SshServer.setUpDefaultServer();
+		LOG.info("Starting SSHd Server");
+		port = ConfigurationHelper.getIntSystemThenEnvProperty("heliosapm.sshd.port", 0);
 		sshd.setPort(port);
 		sshd.setHost("0.0.0.0");
 		//LOG.info("Listening Port [" + port + "]");
@@ -114,45 +105,12 @@ public class ApacheSSHDServer {
 		final AbstractGeneratorHostKeyProvider hostKeyProvider = SecurityUtils.createGeneratorHostKeyProvider(hostKeySerFile.toPath());
 		hostKeyProvider.setAlgorithm("RSA");
 		sshd.setKeyPairProvider(hostKeyProvider);
-		sshd.setPasswordAuthenticator(NO_AUTH);
-		sshd.setPublickeyAuthenticator(NO_KEY_AUTH);
-        sshd.setTcpipForwardingFilter(new ForwardingFilter() {
-            /**
-			 * {@inheritDoc}
-			 * @see org.apache.sshd.server.forward.ForwardingFilter#canForwardAgent(org.apache.sshd.common.session.Session)
-			 */
-			@Override
-			public boolean canForwardAgent(final Session session) {
-				return true;
-			}
-
-			/**
-			 * {@inheritDoc}
-			 * @see org.apache.sshd.server.forward.ForwardingFilter#canForwardX11(org.apache.sshd.common.session.Session)
-			 */
-			@Override
-			public boolean canForwardX11(final Session session) {
-				return true;
-			}
-
-			/**
-			 * {@inheritDoc}
-			 * @see org.apache.sshd.server.forward.ForwardingFilter#canListen(org.apache.sshd.common.util.net.SshdSocketAddress, org.apache.sshd.common.session.Session)
-			 */
-			@Override
-			public boolean canListen(final SshdSocketAddress address, final Session session) {				
-				return true;
-			}
-
-			/**
-			 * {@inheritDoc}
-			 * @see org.apache.sshd.server.forward.ForwardingFilter#canConnect(org.apache.sshd.server.forward.ForwardingFilter.Type, org.apache.sshd.common.util.net.SshdSocketAddress, org.apache.sshd.common.session.Session)
-			 */
-			@Override
-			public boolean canConnect(final Type type, final SshdSocketAddress address, final Session session) {
-				return true;
-			}
-        });
+//		sshd.setPasswordAuthenticator(NO_AUTH);
+//		sshd.setPublickeyAuthenticator(NO_KEY_AUTH);
+		sshd.setPasswordAuthenticator(PW_AUTH);
+		sshd.setPublickeyAuthenticator(KEY_AUTH);
+		
+        sshd.setTcpipForwardingFilter(AcceptAllForwardingFilter.INSTANCE);
         
 //		sshd.setPasswordAuthenticator(new PropFilePasswordAuthenticator("./src/test/resources/auth/password/credentials.properties"));
 //		sshd.setPublickeyAuthenticator(new KeyDirectoryPublickeyAuthenticator("./src/test/resources/auth/keys"));
@@ -184,21 +142,32 @@ public class ApacheSSHDServer {
 		
 		try {
 			sshd.start();
+			port = sshd.getPort();
 			LOG.info("Server started on port [" + sshd.getPort() + "]");
 			StdInCommandHandler.getInstance().run();
 		} catch (Exception e) {
-			e.printStackTrace(System.err);
+			LOG.error("Failed to start SSHD server", e);
+			try { sshd.stop(true); } catch (Exception x) {/* No Op */}
+			instance = null;
 		}
+		
+	}
+	
+	/**
+	 * Launch the sshd server
+	 * @param args None
+	 */
+	public static void main(String...args) {
+		getInstance();
+		StdInCommandHandler.getInstance().run();
 	}
 	
 	/**
 	 * Returns the port of the running server
 	 * @return the port of the running server
 	 */
-	public static int getPort() {
-		SshServer sshd = server.get();
-		if(sshd==null) throw new IllegalStateException("The SSHd server is not running", new Throwable());
-		return sshd.getPort();
+	public int getPort() {
+		return port;
 	}
 	
 	
@@ -235,8 +204,7 @@ public class ApacheSSHDServer {
 	/**
 	 * Removes all authenticators and activates the NO_AUTH 
 	 */
-	public static void resetAuthenticators() {
-		SshServer sshd = server.get();
+	public void resetAuthenticators() {
 		if(sshd==null) throw new IllegalStateException("The SSHd server is not running", new Throwable());
 		sshd.setPasswordAuthenticator(NO_AUTH);
 		sshd.setPublickeyAuthenticator(NO_KEY_AUTH);
@@ -246,8 +214,7 @@ public class ApacheSSHDServer {
 	 * Enables or disables the property file driven password authenticator
 	 * @param active If true, enables the property file driven password authenticator, otherwise disables password based authentication
 	 */
-	public static void activatePasswordAuthenticator(boolean active) {
-		SshServer sshd = server.get();
+	public void activatePasswordAuthenticator(boolean active) {
 		if(sshd==null) throw new IllegalStateException("The SSHd server is not running", new Throwable());
 		if(active) {
 			sshd.setPasswordAuthenticator(PW_AUTH);
@@ -260,8 +227,7 @@ public class ApacheSSHDServer {
 	 * Enables or disables the key based authenticator
 	 * @param active If true, enables the key authenticator, otherwise disables key based authentication
 	 */
-	public static void activateKeyAuthenticator(boolean active) {
-		SshServer sshd = server.get();
+	public void activateKeyAuthenticator(boolean active) {
 		if(sshd==null) throw new IllegalStateException("The SSHd server is not running", new Throwable());
 		if(active) {
 			sshd.setPublickeyAuthenticator(KEY_AUTH);
@@ -275,7 +241,7 @@ public class ApacheSSHDServer {
 	/**
 	 * Stops the SSHd server immediately
 	 */
-	public static void stop() {
+	public void stop() {
 		stop(true);
 	}
 	
@@ -284,31 +250,24 @@ public class ApacheSSHDServer {
 	 * Stops the SSHd server
 	 * @param immediately If true, stops the server immediately, otherwise waits for pending requests.
 	 */
-	public static void stop(boolean immediately) {
-		SshServer sshd = server.get();
+	public void stop(boolean immediately) {
 		if(sshd==null) return;
 		try {
 			sshd.stop(immediately);
-			server.set(null);
+			sshd = null;
+			instance = null;
 		} catch (Exception e) {
 			throw new RuntimeException("Failed to stop SSHd server", e);
 		}		
 	}
 	
-	/**
-	 * Indicates if the server is started
-	 * @return true if the server is started, false otherwise
-	 */
-	public static boolean isStarted() {
-		return server.get()!=null;
-	}
 	
 	/**
 	 * Recycles the server
 	 */
-	public static void restart() {
+	public void restart() {
 		try { stop(); } catch (Exception e) {/* No Op */}
-		main();
+		instance = getInstance();
 	}
 	
 	

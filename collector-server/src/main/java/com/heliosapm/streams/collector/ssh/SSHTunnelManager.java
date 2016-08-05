@@ -18,8 +18,23 @@ under the License.
  */
 package com.heliosapm.streams.collector.ssh;
 
+import java.io.InputStream;
+import java.net.URL;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Set;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.url.URLHelper;
+
+import ch.ethz.ssh2.LocalPortForwarder;
 
 /**
  * <p>Title: SSHTunnelManager</p>
@@ -28,15 +43,33 @@ import org.apache.logging.log4j.Logger;
  * <p><code>com.heliosapm.streams.collector.ssh.SSHTunnelManager</code></p>
  */
 
-public class SSHTunnelManager {
+public class SSHTunnelManager implements SSHConnectionListener {
 	/** The singleton instance */
 	private static volatile SSHTunnelManager instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
 	
+	/** The shareable json object mapper */
+	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+	
+	/** The config key for the URL locations to load the SSH configuration JSON resources */
+	public static final String CONFIG_JSON_URLS = "ssh.configs";
+	/** The default URL locations to load the SSH configuration JSON resources */
+	public static final String[] DEFAULT_JSON_URLS = {};
+	
+	/** An empty connection array const */
+	public static final SSHConnection[] EMPTY_CONN_ARR = {};
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
+	/** The JSON config sources */
+	protected final Set<String> jsonConfigs = new LinkedHashSet<String>();
+	/** Connected connections */
+	protected final NonBlockingHashMap<String, SSHConnection> connectedConnections = new NonBlockingHashMap<String, SSHConnection>(); 
+	/** Disconnected connections */
+	protected final NonBlockingHashMap<String, SSHConnection> disconnectedConnections = new NonBlockingHashMap<String, SSHConnection>(); 
+	/** A map of local port forwards  */
+	protected final NonBlockingHashMap<String, LocalPortForwarder> portForwards = new NonBlockingHashMap<String, LocalPortForwarder>();
 	
 	/**
 	 * Acquires and returns the SSHTunnelManager singleton instance
@@ -57,7 +90,142 @@ public class SSHTunnelManager {
 	 * Creates a new SSHTunnelManager
 	 */
 	private SSHTunnelManager() {
+		int connectionCount = 0;
+		final String[] _jsonConfigs = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_JSON_URLS, DEFAULT_JSON_URLS);
+		if(_jsonConfigs.length > 0) {
+			for(String s: _jsonConfigs) {
+				try {
+					final URL url = URLHelper.toURL(s);
+					final JsonNode node = OBJECT_MAPPER.readTree(url);
+					final SSHConnection[] connections = getConnections(node);
+					connectionCount += connections.length;
+				} catch (Exception ex) {
+					log.warn("Failed to read SSH configs from URL [{}], cause: [{}]", s, ex.toString());
+				}
+			}
+		}
+		log.info("Loaded [{}] SSHConnections", connectionCount);
+	}
+	
+	
+	/**
+	 * Returns the local port bound to the requested remote host and port
+	 * @param connectHost The host to connect to
+	 * @param connectPort The port on the connect host to connect to
+	 * @return the local port to bind to if one wants to connect there
+	 */
+	public int getPortForward(final String connectHost, final int connectPort) {
+		if(connectHost==null || connectHost.trim().isEmpty()) throw new IllegalArgumentException("The passed connect host was null or empty");
+		if(connectPort < 1 || connectPort > 65535) throw new IllegalArgumentException("The requested port number [" + connectPort + "] is invalid");
+		final String key = connectHost.trim() + ":" + connectPort;
+		final LocalPortForwarder lpf = portForwards.get(key);
+		if(lpf==null || lpf == LocalPortForwarder.PLACEHOLDER) throw new RuntimeException("No portforward established to [" + key + "]");
+		return lpf.getLocalPort();
+	}
+	
+	/**
+	 * Creates a new portforward and returns the local port to bind to it on
+	 * @param forwardingHost
+	 * @param sshPort
+	 * @param user
+	 * @param connectHost
+	 * @param connectPort
+	 * @return
+	 */
+	public int createPortForward(final String forwardingHost, final int sshPort, final String user, final String connectHost, final int connectPort) {
+		if(connectHost==null || connectHost.trim().isEmpty()) throw new IllegalArgumentException("The passed connect host was null or empty");
+		if(connectPort < 1 || connectPort > 65535) throw new IllegalArgumentException("The requested port number [" + connectPort + "] is invalid");
 		
+		final String lpfKey = connectHost.trim() + ":" + connectPort;
+		LocalPortForwarder lpf = portForwards.putIfAbsent(lpfKey, LocalPortForwarder.PLACEHOLDER);
+		if(lpf==null || lpf == LocalPortForwarder.PLACEHOLDER) {
+			if(forwardingHost==null || forwardingHost.trim().isEmpty()) throw new IllegalArgumentException("The passed forwarding host was null or empty");
+			if(sshPort < 1 || sshPort > 65535) throw new IllegalArgumentException("The requested forwarding ssh port number [" + sshPort + "] is invalid");
+			if(user==null || user.trim().isEmpty()) throw new IllegalArgumentException("The passed forwarding host user was null or empty");
+			final String forwardKey = String.format(SSHConnection.KEY_TEMPLATE, user, forwardingHost, sshPort);
+			final SSHConnection conn = connectedConnections.get(forwardKey);
+			if(conn==null) throw new IllegalStateException("No connected connection for forwarder [" + forwardKey + "]");
+			lpf = conn.createPortForward(0, forwardingHost, sshPort);
+			portForwards.replace(lpfKey, lpf);
+		}
+		return lpf.getLocalPort();		
+	}
+	
+	/**
+	 * Parses SSHConnections from the passed json node
+	 * @param rootNode the node to read from
+	 * @return an array of SSHConnections
+	 */
+	public static SSHConnection[] getConnections(final JsonNode rootNode) {
+		try {
+			final ArrayNode an = (ArrayNode)rootNode.get("connections");
+			if(an.size()==0) return EMPTY_CONN_ARR;
+			return OBJECT_MAPPER.convertValue(an, SSHConnection[].class);	
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to load SSHConnections", ex);
+		}
+	}
+	
+	/**
+	 * Parses SSHConnections from the JSON read from the passed URL
+	 * @param jsonUrl the URL the json is read from
+	 * @return an array of SSHConnections
+	 */
+	public static SSHConnection[] parseConnections(final URL jsonUrl) {
+		if(jsonUrl==null) throw new IllegalArgumentException("The passed URL was null");		
+		InputStream is = null;
+		try {
+			is = jsonUrl.openStream();
+			final JsonNode rootNode = OBJECT_MAPPER.readTree(is);
+			final ArrayNode an = (ArrayNode)rootNode.get("connections");
+			if(an.size()==0) return EMPTY_CONN_ARR;
+			return OBJECT_MAPPER.convertValue(an, SSHConnection[].class);	
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to load SSHConnections from [" + jsonUrl + "]", ex);
+		} finally {
+			if(is!=null) try { is.close(); } catch (Exception x) {/* No Op */}
+		}
+		
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.ssh.SSHConnectionListener#onStarted(java.lang.String)
+	 */
+	@Override
+	public void onStarted(final String connectionKey) {
+		disconnectedConnections.put(connectionKey, SSHConnection.getConnection(connectionKey));
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.ssh.SSHConnectionListener#onStopped(java.lang.String)
+	 */
+	@Override
+	public void onStopped(final String connectionKey) {
+		connectedConnections.remove(connectionKey);
+		disconnectedConnections.remove(connectionKey);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.ssh.SSHConnectionListener#onConnected(java.lang.String)
+	 */
+	@Override
+	public void onConnected(final String connectionKey) {
+		connectedConnections.put(connectionKey, SSHConnection.getConnection(connectionKey));
+		disconnectedConnections.remove(connectionKey);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.ssh.SSHConnectionListener#onDisconnected(java.lang.String)
+	 */
+	@Override
+	public void onDisconnected(final String connectionKey) {
+		final SSHConnection conn = SSHConnection.getConnection(connectionKey);
+		if(conn!=null) disconnectedConnections.put(connectionKey, SSHConnection.getConnection(connectionKey));
+		connectedConnections.remove(connectionKey);		
 	}
 
 }

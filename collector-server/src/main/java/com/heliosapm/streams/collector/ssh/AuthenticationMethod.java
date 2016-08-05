@@ -24,6 +24,8 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import com.heliosapm.utils.tuples.NVP;
+
 import ch.ethz.ssh2.InteractiveCallback;
 
 /**
@@ -57,6 +59,7 @@ public enum AuthenticationMethod implements Authenticationator {
 		@Override
 		public boolean authenticate(final SSHConnection conn) throws IOException {
 			if(validate(conn)) return true;
+			if(conn.password==null) return false;
 			return conn.connection.authenticateWithKeyboardInteractive(conn.user, iback(conn));
 		}
 	},
@@ -98,14 +101,17 @@ public enum AuthenticationMethod implements Authenticationator {
 	 * @param conn the connection on which to authenticate
 	 * @return true if authentication completed, false otherwise
 	 */
-	public static boolean auth(final SSHConnection conn) {
+	public static NVP<Boolean, AuthenticationMethod> auth(final SSHConnection conn) {
 		for(AuthenticationMethod am: values()) {
 			try {				
 				am.authenticate(conn);
-			} catch (Exception x){/* No Op */}
-			if(conn.connection.isAuthenticationComplete()) return true;
+				if(conn.connection.isAuthenticationComplete()) return new NVP<Boolean, AuthenticationMethod>(true, am);
+			} catch (Exception x){
+				System.err.println("Auth Fail on [" + am + "]:" + x);
+				x.printStackTrace(System.err);
+			}			
 		}
-		return false;
+		return new NVP<Boolean, AuthenticationMethod>(false, null);
 	}
 
 	static {

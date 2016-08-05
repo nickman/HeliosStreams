@@ -19,6 +19,10 @@ under the License.
 package com.heliosapm.streams.collector.ssh;
 
 import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -31,13 +35,16 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedScheduler;
+import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.url.URLHelper;
 
 import ch.ethz.ssh2.Connection;
 import ch.ethz.ssh2.ConnectionInfo;
 import ch.ethz.ssh2.ConnectionMonitor;
+import ch.ethz.ssh2.LocalPortForwarder;
 import ch.ethz.ssh2.ServerHostKeyVerifier;
 
 /**
@@ -56,13 +63,13 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	/** Placeholder connection */
 	private static final SSHConnection PLACEHOLDER = new SSHConnection();
 	/** Connection key template */
-	private static final String KEY_TEMPLATE = "%s@%s:%s";
+	public static final String KEY_TEMPLATE = "%s@%s:%s";
 	
 	/** The throwable message when a normal connection close occurs */
 	private static final String NORMAL_CLOSE_MESSAGE = "Closed due to user request.";
 	
 	/** The reconnect thread pool JMX ObjectName */
-	public static final ObjectName THREAD_POOL_OBJECT_NAME = JMXHelper.objectName("");
+	public static final ObjectName THREAD_POOL_OBJECT_NAME = JMXHelper.objectName("com.heliosapm.ssh:service=ReconnectScheduler");
 	
 	
 	/** The reconnect thread pool scheduler */	
@@ -82,13 +89,13 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	@JsonProperty(value="password")
 	protected String password = null;
 	/** The ssh private key */
-	@JsonProperty(value="privatekey")
+	@JsonProperty(value="pkey")
 	protected char[] privateKey = null;
 	/** The ssh private key file */
-	@JsonProperty(value="privatekeyfile")
+	@JsonProperty(value="pkeyfile")
 	protected File privateKeyFile = null;	
 	/** The ssh private key passphrase */
-	@JsonProperty(value="passphrase")
+	@JsonProperty(value="pphrase")
 	protected String passPhrase = null;
 
 	/** The connection key */
@@ -113,7 +120,13 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	protected final AtomicBoolean started = new AtomicBoolean(false);
 	/** The reconnect schedule handle for this connection */
 	@JsonIgnore
-	protected volatile ScheduledFuture<?> scheuduleHandle = null;
+	protected volatile ScheduledFuture<?> scheduleHandle = null;
+	/** A set of connection listeners */
+	@JsonIgnore
+	protected final Set<SSHConnectionListener> connectionListeners = new CopyOnWriteArraySet<SSHConnectionListener>();
+	/** The notification executor */
+	@JsonIgnore
+	protected final SharedNotificationExecutor notifExecutor = SharedNotificationExecutor.getInstance();
 	
 	/**
 	 * Creates a new SSHConnection
@@ -121,6 +134,31 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	private SSHConnection() {
 		key = null;
 		connection = null;
+	}
+	
+	public static void main(String[] args) {
+		try {
+			log("SSHConnection Test");
+			final int jmxPort = JMXHelper.fireUpJMXMPServer(36636).getAddress().getPort();
+			log("JMXMP Port:" + jmxPort);
+			
+			//SSHConnection conn = SSHConnection.getConnection("localhost", 45803, "fred", "flintstone");
+			SSHConnection conn = SSHConnection.getConnection("localhost", 45803, "fred", URLHelper.getCharsFromURL("./src/test/resources/ssh/auth/keys/fred_rsa"), "the moon is a balloon");
+			conn.connection.connect(conn);
+			log("Connected");
+			log("ConnAuths Available:" + Arrays.toString(conn.connection.getRemainingAuthMethods(conn.user)));
+			log("Authenticated:" + AuthenticationMethod.auth(conn));
+			LocalPortForwarder lpf = conn.connection.createLocalPortForwarder(28374, "127.0.0.1", jmxPort);
+			log("LocalPortForwarder Started:" + lpf);
+			StdInCommandHandler.getInstance().run();
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+		}
+		
+	}
+	
+	public static void log(Object msg) {
+		System.out.println(msg);
 	}
 	
 	/**
@@ -272,6 +310,48 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		connection.addConnectionMonitor(this);
 	}
 	
+	
+	/**
+	 * Creates a port forward to the specified connect host and connect port through this connection
+	 * @param localPort The local binding port
+	 * @param connectHost The host to connect to
+	 * @param connectPort The port to connect to
+	 * @return the created LocalPortForwarder
+	 */
+	LocalPortForwarder createPortForward(final int localPort, final String connectHost, final int connectPort) {
+		if(!connected.get()) throw new IllegalStateException("Failed to create port forward [" + localPort + "-->" + connectHost + ":" + connectPort + "] as connection is closed");
+		if(connectHost==null || connectHost.trim().isEmpty()) throw new IllegalArgumentException("The connect host name was null or empty");
+		if(localPort < 0 || sshPort > 65535) throw new IllegalArgumentException("The local port number [" + localPort + "] is invalid");
+		if(connectPort < 1 || connectPort > 65535) throw new IllegalArgumentException("The connect port number [" + connectPort + "] is invalid");
+		try {
+			return connection.createLocalPortForwarder(localPort, connectHost.trim(), connectPort);
+		} catch (IOException iex) {
+			throw new RuntimeException("Failed to create port forward to [" + connectHost + ":" + connectPort + "]", iex);
+		}
+	}
+	
+	
+	/**
+	 * Registers a connection listener on this connection
+	 * @param listener the listener to register
+	 */
+	public void addConnectionListener(final SSHConnectionListener listener) {
+		if(listener!=null) {
+			connectionListeners.add(listener);
+		}
+	}
+	
+	/**
+	 * Unregisters a connection listener from this connection
+	 * @param listener the listener to unregister
+	 */
+	public void removeConnectionListener(final SSHConnectionListener listener) {
+		if(listener!=null) {
+			connectionListeners.remove(listener);
+		}
+	}
+	
+	
 	/**
 	 * <p>Starts a reconnect attempt</p>
 	 * {@inheritDoc}
@@ -282,9 +362,13 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		try {
 			connectionInfo = connection.connect(this, 10000, 10000); // FIXME: make this configurable
 			log.info("Connected to [{}], starting authentication", key);
-			if(AuthenticationMethod.auth(this)) {
+			if(AuthenticationMethod.auth(this).getKey()) {
 				connected.set(true);
-				scheuduleHandle.cancel(false);
+				if(scheduleHandle!=null) {
+					scheduleHandle.cancel(false);
+					scheduleHandle = null;
+				}
+				fireConnectionConnected();
 			} else {
 				log.warn("Authentication on SSHConnection [{}] failed", key);
 			}
@@ -297,16 +381,18 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	
 	void start() throws Exception {
 		if(started.compareAndSet(false, true)) {
-			scheuduleHandle = reconnectScheduler.scheduleWithFixedDelay(this, 2, 15, TimeUnit.SECONDS);
+			scheduleHandle = reconnectScheduler.scheduleWithFixedDelay(this, 2, 15, TimeUnit.SECONDS);
+			fireConnectionStarted();
 		}
 	}
 	
 	void stop() {
 		if(started.compareAndSet(true, false)) {
 			try {
-				if(scheuduleHandle!=null) try { scheuduleHandle.cancel(true); } catch (Exception x) {/* No Op */}
-				scheuduleHandle = null;
+				if(scheduleHandle!=null) try { scheduleHandle.cancel(true); } catch (Exception x) {/* No Op */}
+				scheduleHandle = null;
 				try { connection.close(); } catch (Exception x) {/* No Op */}
+				fireConnectionStopped();
 			} finally {
 				connections.remove(key);
 			}
@@ -330,6 +416,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	@Override
 	public void connectionLost(final Throwable reason) {
 		if(connected.compareAndSet(true, false)) {
+			fireConnectionDisconnected();
 			if(reason==null || !started.get() || NORMAL_CLOSE_MESSAGE.equals(reason.getMessage())) {
 				// Normal close
 				log.info("Connection [{}] was closed", key);
@@ -376,6 +463,71 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	public String getUser() {
 		return user;
+	}
+	
+	
+	/**
+	 * Notifies all registered listeners that this connection started
+	 */
+	private void fireConnectionStarted() {
+		if(!connectionListeners.isEmpty()) {
+			for(final SSHConnectionListener listener: connectionListeners) {
+				notifExecutor.execute(new Runnable(){
+					@Override
+					public void run() {
+						listener.onStarted(key);
+					}
+				});
+			}
+		}
+	}
+	
+	/**
+	 * Notifies all registered listeners that this connection stopped
+	 */
+	private void fireConnectionStopped() {
+		if(!connectionListeners.isEmpty()) {
+			for(final SSHConnectionListener listener: connectionListeners) {
+				notifExecutor.execute(new Runnable(){
+					@Override
+					public void run() {
+						listener.onStopped(key);
+					}
+				});
+			}
+		}
+	}
+	
+	/**
+	 * Notifies all registered listeners that this connection [re-]connected
+	 */
+	private void fireConnectionConnected() {
+		if(!connectionListeners.isEmpty()) {
+			for(final SSHConnectionListener listener: connectionListeners) {
+				notifExecutor.execute(new Runnable(){
+					@Override
+					public void run() {
+						listener.onConnected(key);
+					}
+				});
+			}
+		}
+	}
+	
+	/**
+	 * Notifies all registered listeners that this connection disconnected
+	 */
+	private void fireConnectionDisconnected() {
+		if(!connectionListeners.isEmpty()) {
+			for(final SSHConnectionListener listener: connectionListeners) {
+				notifExecutor.execute(new Runnable(){
+					@Override
+					public void run() {
+						listener.onDisconnected(key);
+					}
+				});
+			}
+		}
 	}
 
 	/**

@@ -1,0 +1,17 @@
+{
+	"connections" : [
+		{
+			"host" : "localhost",
+			"sshport" : 22,
+			"user" : "fooman",
+			"password" : "foomanpass" 
+		},
+		{
+			"host" : "127.0.0.1",
+			"sshport" : 22,
+			"user" : "fooman",
+			"pkey" : "MIIBugIBAAKBgQDaDWE....",
+			"pphrase" : "secret" 
+		}		
+	]
+}
