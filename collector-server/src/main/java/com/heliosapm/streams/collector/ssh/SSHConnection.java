@@ -123,6 +123,32 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		connection = null;
 	}
 	
+	/**
+	 * Acquires the existing connection for the passed host, port and user, returning null if one does not exist
+	 * @param host The host to connect to
+	 * @param sshPort The sshd listening port
+	 * @param user The user to connect as
+	 * @return the connection or null if one did not exist
+	 */
+	public static SSHConnection getConnection(final String host, final int sshPort, final String user) {
+		if(host==null || host.trim().isEmpty()) throw new IllegalArgumentException("The host name was null or empty");
+		if(user==null || user.trim().isEmpty()) throw new IllegalArgumentException("The user name was null or empty");
+		if(sshPort < 1 || sshPort > 65535) throw new IllegalArgumentException("The ssh port number [" + sshPort + "] is invalid");
+		final String key = String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);
+		return connections.get(key);
+	}
+	
+	/**
+	 * Acquires the existing connection for the host, port and user encoded in the passed key in the format <b><code>&lt;user&gt@&lt;host&gt:&lt;sshportr&gt</code></b>. 
+	 * @param key The connection key
+	 * @return the connection or null if one did not exist
+	 */
+	public static SSHConnection getConnection(final String key) {
+		if(key==null || key.trim().isEmpty()) throw new IllegalArgumentException("The key was null or empty");
+		return connections.get(key.trim());
+	}
+	
+	
 	
 	/**
 	 * Creates a new SSHConnection
