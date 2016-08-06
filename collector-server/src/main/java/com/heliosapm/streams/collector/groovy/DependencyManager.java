@@ -21,7 +21,10 @@ package com.heliosapm.streams.collector.groovy;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.collector.cache.CacheEventListener;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
@@ -32,37 +35,58 @@ import com.heliosapm.utils.reflect.PrivateAccessor;
  * <p>Description: Manages the lifecycle of declared dependencies in a managed script</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.groovy.DependencyManager</code></p>
+ * @param <T> The actual script type
  */
 
-public class DependencyManager implements CacheEventListener {
+public class DependencyManager<T extends ManagedScript> implements CacheEventListener {
 	/** The script to manage dependencies for */
-	protected final ManagedScript script;
+	protected final T script;
+	/** The script fully qualified script name */
+	protected final String scriptName;
+	
+	/** The script's logger */
+	protected final Logger log;
+	
 	/** The global cache service reference */
 	protected final GlobalCacheService cache;
 	/** A map of managed fields in the script keyed by the cache key name */
 	protected final Map<String, Field> depFields = new HashMap<String, Field>();
 	/** A map of the dependency annotation instances on managed fields in the script keyed by the cache key name */
 	protected final Map<String, Dependency> depDefs = new HashMap<String, Dependency>();
+	/** A map of atomic field updaters for updating each field keyed by the cache key name */
+	protected final Map<String, AtomicReferenceFieldUpdater<T, Object>> depUpdaters = new HashMap<String, AtomicReferenceFieldUpdater<T, Object>>();
+	
+	
 	
 	/**
 	 * Creates a new DependencyManager
 	 * @param script The script to manage dependencies for
+	 * @param type The script type
 	 */
-	public DependencyManager(final ManagedScript script) {
+	public DependencyManager(final T script, final Class<T> type) {
 		this.script = script;
+		scriptName = this.script.getClass().getName();
+		log = LogManager.getLogger(type);
+
 		cache = GlobalCacheService.getInstance();
 		try {
 			for(Field f: script.getClass().getDeclaredFields()) {
 				final Dependency d = f.getAnnotation(Dependency.class);
 				if(d!=null) {
-					final String cacheKey = d.cacheKey().trim();
+					final String cacheKey = d.value().trim();
 					depFields.put(cacheKey, f);
 					depDefs.put(cacheKey, d);
+					f.setAccessible(true);
+					final AtomicReferenceFieldUpdater<T, Object> updater =  AtomicReferenceFieldUpdater.newUpdater(type, Object.class, f.getName());
+					depUpdaters.put(cacheKey, updater);
 					final Object o = cache.getOrNotify(cacheKey, d.type(), this, d.timeout(), d.unit());
 					if(o==null) {
 						script.addPendingDependency(cacheKey);
 					} else {
-						PrivateAccessor.setFieldValue(script, f, o);
+						log.info("Seting dependent value [{}] on [{}] from cache entry [{}]", o.getClass().getName(), scriptName, cacheKey);
+						updater.set(script, o);
+						//PrivateAccessor.setFieldValue(script, f.getName(), o);
+						log.info("Dependent value [{}] initialized on [{}] from cache entry [{}]", o.getClass().getName(), scriptName, cacheKey);
 					}
 				}
 			}
@@ -78,6 +102,7 @@ public class DependencyManager implements CacheEventListener {
 		cache.removeCacheEventListener(this);
 		depFields.clear();
 		depDefs.clear();
+		depUpdaters.clear();
 	}
 
 	/**
@@ -86,8 +111,12 @@ public class DependencyManager implements CacheEventListener {
 	 */
 	@Override
 	public void onValueAdded(final String key, final Object value) {
-		// TODO Auto-generated method stub
-		
+		final AtomicReferenceFieldUpdater<T, Object> updater = depUpdaters.get(key);
+		if(updater!=null) {
+			updater.set(script, value);
+			script.removePendingDependency(key);
+			log.info("Dependent value [{}] initialized on [{}] from cache entry [{}]", value.getClass().getName(), scriptName, key);
+		}
 	}
 
 	/**
@@ -96,8 +125,12 @@ public class DependencyManager implements CacheEventListener {
 	 */
 	@Override
 	public void onValueRemoved(final String key, final Object removedValue) {
-		// TODO Auto-generated method stub
-		
+		final AtomicReferenceFieldUpdater<T, Object> updater = depUpdaters.get(key);
+		if(updater!=null) {
+			script.addPendingDependency(key);
+			updater.set(script, null);			
+			log.info("Dependent value removed from [{}] based on cleared cache entry [{}]", scriptName, key);
+		}		
 	}
 
 	/**
@@ -106,8 +139,12 @@ public class DependencyManager implements CacheEventListener {
 	 */
 	@Override
 	public void onValueReplaced(final String key, final Object oldValue, final Object newValue) {
-		// TODO Auto-generated method stub
-		
+		final AtomicReferenceFieldUpdater<T, Object> updater = depUpdaters.get(key);
+		if(updater!=null) {
+			script.removePendingDependency(key);
+			updater.set(script, newValue);
+			log.info("Dependent value [{}] replaced on [{}] from cache entry [{}]", newValue.getClass().getName(), scriptName, key);
+		}				
 	}
 
 }

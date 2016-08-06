@@ -88,7 +88,11 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	/** The configuration key for the groovy compiler auto imports */
 	public static final String CONFIG_AUTO_IMPORTS = "collector.service.groovy.autoimports";
 	/** The default groovy compiler auto imports */
-	public static final String[] DEFAULT_AUTO_IMPORTS = {"import javax.management.*", "import java.lang.management.*"};
+	public static final String[] DEFAULT_AUTO_IMPORTS = {
+			"import javax.management.*", 
+			"import java.lang.management.*",
+			"import com.heliosapm.streams.collector.groovy.*"
+	};
 	
 	
 	/** The expected directory names under the collector-service root */
@@ -100,6 +104,9 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The collector service root directory */
 	protected final File rootDirectory;
+	/** The collector service script directory */
+	protected final File scriptDirectory;
+	
 	/** The lib (jar) directory class loader */
 	protected final URLClassLoader libDirClassLoader;
 	/** The groovy compiler configuration */
@@ -210,6 +217,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		rootDirectory = new File(rootDirName);
 		log.info("Collector Service root directory: [{}]", rootDirectory);
 		rootDirectory.mkdirs();
+		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
+		System.setProperty("helios.collectors.script.root", scriptDirectory.getAbsolutePath());
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
 		initSubDirs();
 		libDirClassLoader = new URLClassLoader(listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
@@ -230,7 +239,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			log.warn("Failed to register ManagedScriptFactory management interface. Will continue without.", ex);
 		}
 		log.info("<<<<< ManagedScriptFactory started. Async script deployment starting now.");
-		sourceFinder = FileFinder.newFileFinder(new File(rootDirectory, "collectors").getAbsolutePath())
+		sourceFinder = FileFinder.newFileFinder(scriptDirectory.getAbsolutePath())
 			.maxDepth(20)
 			.filterBuilder()
 			.caseInsensitive(false)

@@ -150,4 +150,10 @@ public interface ManagedScriptMBean {
 	 * @return the current state of this script
 	 */
 	public String getState();
+	
+	/**
+	 * Returns a map of the values of each field in the script instance
+	 * @return a map of the values of each field in the script instance
+	 */
+	public Map<String, String> printFieldValues();
 }

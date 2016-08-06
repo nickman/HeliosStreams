@@ -20,7 +20,10 @@ package com.heliosapm.streams.collector.groovy;
 
 import static org.codehaus.groovy.ast.ClassHelper.make;
 
+import java.io.File;
 import java.lang.reflect.Modifier;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -40,11 +43,13 @@ import org.codehaus.groovy.ast.expr.ClosureExpression;
 import org.codehaus.groovy.ast.expr.ConstantExpression;
 import org.codehaus.groovy.ast.expr.DeclarationExpression;
 import org.codehaus.groovy.ast.expr.Expression;
+import org.codehaus.groovy.ast.expr.FieldExpression;
 import org.codehaus.groovy.ast.expr.VariableExpression;
 import org.codehaus.groovy.ast.stmt.ExpressionStatement;
 import org.codehaus.groovy.classgen.VariableScopeVisitor;
 import org.codehaus.groovy.control.CompilePhase;
 import org.codehaus.groovy.control.SourceUnit;
+import org.codehaus.groovy.control.io.FileReaderSource;
 import org.codehaus.groovy.transform.ASTTransformation;
 import org.codehaus.groovy.transform.GroovyASTTransformation;
 import org.codehaus.groovy.transform.GroovyASTTransformationClass;
@@ -56,13 +61,14 @@ import groovy.lang.Lazy;
 
 /**
  * <p>Title: VolatileFieldASTTransformation</p>
- * <p>Description: Copied from {@link org.codehaus.groovy.transform.FieldASTTransformation} but modified to additionally make the created field volatile.</p> 
+ * <p>Description: Copied from {@link org.codehaus.groovy.transform.FieldASTTransformation} but modified to keep the annotation on the new field 
+ * and additionally make the created field volatile.</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.groovy.VolatileFieldASTTransformation</code></p>
  */
 @GroovyASTTransformation(phase = CompilePhase.SEMANTIC_ANALYSIS)
 public class VolatileFieldASTTransformation extends ClassCodeExpressionTransformer implements ASTTransformation, groovyjarjarasm.asm.Opcodes {
-    private static final Class<?> MY_CLASS = VolatileField.class;
+    private static final Class<?> MY_CLASS = Dependency.class;
     private static final ClassNode MY_TYPE = make(MY_CLASS);
     private static final ClassNode LAZY_TYPE = make(Lazy.class);
     private static final String MY_TYPE_NAME = "@" + MY_TYPE.getNameWithoutPackage();
@@ -73,8 +79,19 @@ public class VolatileFieldASTTransformation extends ClassCodeExpressionTransform
     private String variableName;
     private FieldNode fieldNode;
     private ClosureExpression currentClosure;
+    
+    public final Path scriptRoot;
+    
 
-    public void visit(ASTNode[] nodes, SourceUnit source) {
+    /**
+	 * Creates a new VolatileFieldASTTransformation
+	 */
+	public VolatileFieldASTTransformation() {
+		super();
+		scriptRoot = Paths.get(System.getProperty("helios.collectors.script.root")).toAbsolutePath().normalize();
+	}
+
+	public void visit(ASTNode[] nodes, SourceUnit source) {
         sourceUnit = source;
         if (nodes.length != 2 || !(nodes[0] instanceof AnnotationNode) || !(nodes[1] instanceof AnnotatedNode)) {
             throw new GroovyBugError("Internal error: expecting [AnnotationNode, AnnotatedNode] but got: " + Arrays.asList(nodes));
@@ -83,7 +100,20 @@ public class VolatileFieldASTTransformation extends ClassCodeExpressionTransform
         AnnotatedNode parent = (AnnotatedNode) nodes[1];
         AnnotationNode node = (AnnotationNode) nodes[0];
         if (!MY_TYPE.equals(node.getClassNode())) return;
-
+        final ClassNode declaringClass = parent.getDeclaringClass();
+        
+        if(source.getSource() instanceof FileReaderSource) {
+        	try {
+            	final File sourceFile = ((FileReaderSource)source.getSource()).getFile();
+            	final Path sourcePath = sourceFile.getAbsoluteFile().toPath();
+            	final String classNameWithPack = scriptRoot.relativize(sourcePath).toString().replace(".groovy", "").replace(File.separatorChar, '.');
+            	declaringClass.setName(classNameWithPack);
+            	System.err.println("### ClassName set to [" + classNameWithPack + "]");
+        	} catch (Exception ex) {
+        		ex.printStackTrace(System.err);
+        	}
+        	
+        }
         if (parent instanceof DeclarationExpression) {
             DeclarationExpression de = (DeclarationExpression) parent;
             ClassNode cNode = de.getDeclaringClass();
@@ -100,9 +130,11 @@ public class VolatileFieldASTTransformation extends ClassCodeExpressionTransform
             VariableExpression ve = de.getVariableExpression();
             variableName = ve.getName();
             // set owner null here, it will be updated by addField
-            final int modifiers = ve.getModifiers() | Modifier.VOLATILE;
+            final int modifiers = ve.getModifiers() | Modifier.VOLATILE | Modifier.PUBLIC;
             fieldNode = new FieldNode(variableName, modifiers, ve.getType(), null, de.getRightExpression());
             fieldNode.setSourcePosition(de);
+            fieldNode.addAnnotation(node);
+            fieldNode.setInitialValueExpression(new FieldExpression(fieldNode));
             cNode.addField(fieldNode);
 
             // GROOVY-4833 : annotations that are not Groovy transforms should be transferred to the generated field

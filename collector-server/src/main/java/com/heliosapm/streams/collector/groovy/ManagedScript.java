@@ -25,6 +25,7 @@ import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -101,6 +102,11 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	protected final CollectorExecutionService executionService;
 	/** The names of pending dependencies */
 	protected final NonBlockingHashSet<String> pendingDependencies = new NonBlockingHashSet<String>();
+	/** The collection runner callable */
+	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable(this);
+	/** The dependency manager for this script */
+	@SuppressWarnings("unchecked")
+	protected final DependencyManager<ManagedScript> dependencyManager; 
 	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
@@ -133,8 +139,10 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/**
 	 * Creates a new ManagedScript
 	 */
+	@SuppressWarnings("unchecked")
 	public ManagedScript() {
 		setBinding(binding);
+		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 		executionService = CollectorExecutionService.getInstance();
 	}
 
@@ -142,9 +150,11 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 * Creates a new ManagedScript
 	 * @param binding The script bindings
 	 */
+	@SuppressWarnings("unchecked")
 	public ManagedScript(final Binding binding) {
 		super(binding);
 		setBinding(this.binding);
+		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 		executionService = CollectorExecutionService.getInstance();
 	}
 	
@@ -228,10 +238,22 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		}
 	}
 	
-	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable(this);
 	
+	
+	/**
+	 * Adds a pending dependency
+	 * @param cacheKey the cache key of the value we're waiting on
+	 */
 	void addPendingDependency(final String cacheKey) {
 		pendingDependencies.add(cacheKey);
+	}
+	
+	/**
+	 * Removes a pending dependency
+	 * @param cacheKey the cache key of the value that has been injected
+	 */
+	void removePendingDependency(final String cacheKey) {
+		pendingDependencies.remove(cacheKey);
 	}
 	
 	/**
@@ -306,6 +328,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			scheduleHandle = null;
 		}
 		bindingMap.clear();
+		dependencyManager.close();
 		if(gcl!=null) {
 			final Class[] classes = gcl.getLoadedClasses();
 			
@@ -592,6 +615,31 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	@Override
 	public String getState() {
 		return state.get().name();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#printFieldValues()
+	 */
+	@Override
+	public Map<String, String> printFieldValues() {
+		final Field[] fields = getClass().getDeclaredFields();
+		final Map<String, String> map = new HashMap<String, String>(fields.length);
+		for(Field f: fields) {
+			final String name = f.getName();
+			final boolean stat = Modifier.isStatic(f.getModifiers());
+			String val = null;
+			try {
+				Object o = stat ? 
+						PrivateAccessor.getStaticFieldValue(getClass(), name) :
+						PrivateAccessor.getFieldValue(f, this);
+				val = o==null ? "<null>" : o.toString();
+			} catch (Exception ex) {
+				val = ex.toString();
+			}
+			map.put(name, val);
+		}
+		return map;
 	}
 	
 }

@@ -28,6 +28,8 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.util.concurrent.TimeUnit;
 
+import org.codehaus.groovy.transform.GroovyASTTransformationClass;
+
 import groovy.transform.AnnotationCollector;
 import groovy.transform.Field;
 
@@ -41,12 +43,13 @@ import groovy.transform.Field;
 @Retention(RUNTIME)
 @Target({ FIELD, LOCAL_VARIABLE, ANNOTATION_TYPE })
 
-@AnnotationCollector({VolatileField.class})
+//@AnnotationCollector({VolatileField.class})
+@GroovyASTTransformationClass("com.heliosapm.streams.collector.groovy.VolatileFieldASTTransformation")
 public @interface Dependency {
 	/**
 	 * The cache key of the value to inject
 	 */
-	public String cacheKey();
+	public String value();
 	
 	/**
 	 * The expected type of the injected value
