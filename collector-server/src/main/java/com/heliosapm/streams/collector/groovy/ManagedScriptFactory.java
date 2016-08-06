@@ -18,11 +18,15 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.beans.PropertyEditor;
+import java.beans.PropertyEditorManager;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -31,11 +35,15 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -49,7 +57,9 @@ import com.google.common.cache.CacheBuilder;
 import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
+import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.enums.Primitive;
 import com.heliosapm.utils.file.FileChangeEvent;
 import com.heliosapm.utils.file.FileChangeEventListener;
 import com.heliosapm.utils.file.FileChangeWatcher;
@@ -58,6 +68,7 @@ import com.heliosapm.utils.file.Filters.FileMod;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.ref.ReferenceService;
 import com.heliosapm.utils.url.URLHelper;
 
@@ -80,6 +91,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	private static volatile ManagedScriptFactory instance;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
+	/** Static class logger */
+	private static final Logger log = LogManager.getLogger(ManagedScriptFactory.class);
 	
 	/** The configuration key for the collector service root directory */
 	public static final String CONFIG_ROOT_DIR = "collector.service.rootdir";
@@ -94,14 +107,26 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			"import com.heliosapm.streams.collector.groovy.*"
 	};
 	
+	/** Cache injection substitution pattern */
+	public static final Pattern CACHE_PATTERN = Pattern.compile("\\$cache\\{(.*?)(?::(\\d+))?(?::(nanoseconds|microseconds|milliseconds|seconds|minutes|hours|days))??\\}");
+	/** Typed value substitution pattern */
+	public static final Pattern TYPED_PATTERN = Pattern.compile("\\$typed\\{(.*?):(.*)\\}");
+	
+	/** Injected field template */
+	public static final String INJECT_TEMPLATE = "@Dependency(value=\"%s\", timeout=%s, unit=%s) def %s;"; 
+	/** The UTF8 char set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
+	/** The platform end of line character */
+	public static final String EOL = System.getProperty("line.separator");
+	
+	
+	
 	
 	/** The expected directory names under the collector-service root */
 	public static final Set<String> DIR_NAMES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
 			"lib", "bin", "conf", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
 	)));
 	
-	/** Instance logger */
-	protected final Logger log = LogManager.getLogger(getClass());
 	/** The collector service root directory */
 	protected final File rootDirectory;
 	/** The collector service script directory */
@@ -250,6 +275,90 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		startScriptDeployer();
 	}
 	
+	/**
+	 * Processes any found dependencies and returns the prejected code
+	 * @param sourceFile The source file to process
+	 * @param bindingMap The forthcoming script's binding map
+	 * @return the [possibly empty] prejected code
+	 */
+	protected static StringBuilder processDependencies(final File sourceFile, final Map<String, Object> bindingMap) {
+		final StringBuilder b = new StringBuilder();
+		final Properties p = readConfig(sourceFile);
+		if(p.isEmpty()) return b;
+		for(final String key: p.stringPropertyNames()) {
+			final String value = p.getProperty(key, "").trim();
+			if(value.isEmpty()) continue;
+			try {				
+				final Matcher m = CACHE_PATTERN.matcher(value);
+				if(m.matches()) {
+					final String t = m.group(2);
+					final String u = m.group(3);
+				    final String cacheKey = m.group(1).trim();
+				    final long timeout = (t==null || t.trim().isEmpty()) ? 0 : Long.parseLong(t.trim());			    
+				    final TimeUnit unit = (u==null || u.trim().isEmpty()) ? TimeUnit.HOURS : TimeUnit.valueOf(u.trim().toUpperCase());
+				    b.append(String.format(INJECT_TEMPLATE, cacheKey, timeout, unit, key)).append(EOL);
+				    continue;
+				}
+			} catch (Exception ex) {
+				log.warn("Failed to process injected property [{}]:[{}]", key, value, ex);
+				continue;
+			}
+			try {				
+				final Matcher m = TYPED_PATTERN.matcher(value);
+				if(m.matches()) {
+					final String type = m.group(1);
+					final String val = m.group(2);
+					if(type==null || type.trim().isEmpty() || val==null || val.trim().isEmpty()) continue;
+				    if(Primitive.ALL_CLASS_NAMES.contains(type.trim())) {
+				    	Class<?> clazz = Primitive.PRIMNAME2PRIMCLASS.get(type.trim());
+				    	PropertyEditor pe = PropertyEditorManager.findEditor(clazz);
+				    	pe.setAsText(val.trim());
+				    	bindingMap.put(key, pe.getValue());
+				    	continue;
+				    }
+				}
+			} catch (Exception ex) {
+				log.warn("Failed to process injected property [{}]:[{}]", key, value, ex);
+				continue;
+			}
+		}
+		return b;
+	}
+	
+	/**
+	 * Groovy source files may have an accompanying config properties file which by convention is
+	 * the same file, except with an extension of <b><code>.properties</code></b> instead of <b><code>.groovy</code></b>.
+	 * Groovy source files may also be symbolic links to a template, which in turn may have it's own configuration properties, similarly named.
+	 * This method attempts to read from both, merges the output with the local config overriding the template's config
+	 * and returns the result.
+	 * @param sourceFile this script's source file
+	 * @return the merged properties
+	 */
+	protected static Properties readConfig(final File sourceFile) {
+		final Path sourcePath = sourceFile.toPath();
+		final Properties p = new Properties();
+		try {
+			final Path linkedSourcePath = sourceFile.toPath().toRealPath();
+			if(!linkedSourcePath.equals(sourcePath)) {
+				final File linkedProps = new File(linkedSourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
+				if(linkedProps.canRead()) {
+					final Properties linkedProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(linkedProps))), UTF8);
+					p.putAll(linkedProperties);
+				}
+			}
+		} catch (Exception x) {/* No Op */} 
+		final File localProps = new File(sourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
+		if(localProps.canRead()) {
+			final Properties localProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(localProps))), UTF8);
+			p.putAll(localProperties);
+		}
+		
+		
+		return p;
+	}
+	
+	
+	
 	
 	/** 
 	 * Starts the script deployer
@@ -264,6 +373,15 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 					@Override
 					public Boolean call() throws Exception {
 						try {
+							final Map<String, Object> bindingMap = new HashMap<String, Object>(128);
+							final StringBuilder b = processDependencies(sourceFile, bindingMap);
+							final ByteBufReaderSource originalCode = new ByteBufReaderSource(sourceFile);
+							final ByteBufReaderSource prejectedCode;
+							if(b.length()>1) {
+								prejectedCode = new ByteBufReaderSource(b, originalCode);
+							} else {
+								prejectedCode = null;
+							}
 							compileScript(sourceFile);
 							return true;
 						} catch (Exception ex) {

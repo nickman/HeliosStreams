@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.beans.PropertyEditor;
+import java.beans.PropertyEditorManager;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -26,11 +28,14 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.charset.Charset;
+import java.nio.file.Path;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
@@ -56,13 +61,17 @@ import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
+import com.heliosapm.utils.collections.Props;
+import com.heliosapm.utils.enums.Primitive;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.ref.MBeanProxy;
 import com.heliosapm.utils.ref.ReferenceService.ReferenceType;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
+import com.heliosapm.utils.url.URLHelper;
 
 import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
@@ -105,8 +114,11 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The collection runner callable */
 	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable(this);
 	/** The dependency manager for this script */
-	@SuppressWarnings("unchecked")
-	protected final DependencyManager<ManagedScript> dependencyManager; 
+	protected final DependencyManager<ManagedScript> dependencyManager;
+	/** The unmodified source buffer */
+	protected ByteBufReaderSource unmodifiedSource = null;
+	/** The injected source buffer */
+	protected ByteBufReaderSource injectedSource = null;
 	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
@@ -135,6 +147,10 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	
 	/** Regex pattern to determine if a schedule directive is build into the source file name */
 	public static final Pattern PERIOD_PATTERN = Pattern.compile(".*\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
+	
+	/** The UTF8 char set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
+
 	
 	/**
 	 * Creates a new ManagedScript
@@ -166,6 +182,11 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	void initialize(final GroovyClassLoader gcl, final File sourceFile, final String rootDirectory) {
 		this.gcl = gcl;
 		this.sourceFile = sourceFile;
+		unmodifiedSource = new ByteBufReaderSource(sourceFile);
+		final StringBuilder prejectedSource = processDependencies();
+		if(prejectedSource.length() > 0) {
+			injectedSource = new ByteBufReaderSource(prejectedSource, unmodifiedSource);
+		}
 		final String name = sourceFile.getName().replace(".groovy", "");
 		final String dir = sourceFile.getParent().replace(rootDirectory, "").replace("\\", "/").replace("/./", "/").replace("/collectors/", "");
 		final Matcher m = PERIOD_PATTERN.matcher(this.sourceFile.getAbsolutePath());
@@ -202,7 +223,20 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		}
 	}
 	
-	private void carryOverAndClose() {
+	
+	
+//	/** Cache injection substitution pattern */
+//	public static final Pattern CACHE_PATTERN = Pattern.compile("\\$cache\\{(.*?)(?::(\\d+))?(?::(nanoseconds|microseconds|milliseconds|seconds|minutes|hours|days))??\\}");
+//	/** Injected field template */
+//	public static final String INJECT_TEMPLATE = "@Dependency(value=\"%s\", timeout=%s, unit=%s) def %s;"; 
+	
+	
+	
+	
+	/**
+	 * Reads the counters from the prior instance of this class, increments this instances counters and closes the prior.
+	 */
+	protected void carryOverAndClose() {
 		final ManagedScriptMBean oldScript = MBeanServerInvocationHandler.newProxyInstance(JMXHelper.getHeliosMBeanServer(), objectName, ManagedScriptMBean.class, false);
 		deploymentId = oldScript.getDeploymentId()+1;
 		totalErrors.add(oldScript.getTotalCollectionErrors());

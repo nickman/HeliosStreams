@@ -11,4 +11,4 @@ sql.eachRow("SELECT TRADE_QUEUE_STATUS_CODE Q, COUNT(*) C FROM ECS.TRADEQUEUE WH
 long elapsed = System.currentTimeMillis() - start;
 log.info("TQ Status - {}, Elapsed: {} ms.", statMap.toString(), elapsed);
 */
-log.info("Time --XX-- {}", sd);
+//log.info("Time --XX-- {}", sd);
