@@ -27,12 +27,15 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -43,6 +46,7 @@ import javax.management.ObjectName;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.codehaus.groovy.reflection.ClassInfo;
 
 import com.codahale.metrics.CachedGauge;
@@ -95,6 +99,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	protected final Binding binding = new Binding(bindingMap);
 	/** The fork join pool to execute collections in */
 	protected final CollectorExecutionService executionService;
+	/** The names of pending dependencies */
+	protected final NonBlockingHashSet<String> pendingDependencies = new NonBlockingHashSet<String>();
 	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
@@ -115,6 +121,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	protected final AtomicLong lastCompleteCollection = new AtomicLong(-1L);
 	/** The elapsed time of the most recent collection */
 	protected final AtomicLong lastCollectionElapsed = new AtomicLong(-1L);
+	/** The current script state */
+	protected final AtomicReference<ScriptState> state = new AtomicReference<ScriptState>(ScriptState.INIT); 
 	
 	/** The deployment sequence id */
 	protected int deploymentId = 0;
@@ -221,6 +229,10 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	}
 	
 	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable(this);
+	
+	void addPendingDependency(final String cacheKey) {
+		pendingDependencies.add(cacheKey);
+	}
 	
 	/**
 	 * {@inheritDoc}
@@ -544,6 +556,15 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	
 	/**
 	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getPendingDependencies()
+	 */
+	@Override
+	public Set<String> getPendingDependencies() {
+		return new HashSet<String>(pendingDependencies); 
+	}
+	
+	/**
+	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLastCollectionDate()
 	 */
 	@Override
@@ -564,5 +585,13 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		return t;
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getState()
+	 */
+	@Override
+	public String getState() {
+		return state.get().name();
+	}
 	
 }

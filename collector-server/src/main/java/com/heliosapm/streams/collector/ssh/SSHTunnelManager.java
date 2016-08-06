@@ -32,6 +32,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 import ch.ethz.ssh2.LocalPortForwarder;
@@ -43,7 +44,7 @@ import ch.ethz.ssh2.LocalPortForwarder;
  * <p><code>com.heliosapm.streams.collector.ssh.SSHTunnelManager</code></p>
  */
 
-public class SSHTunnelManager implements SSHConnectionListener {
+public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManagerMBean {
 	/** The singleton instance */
 	private static volatile SSHTunnelManager instance = null;
 	/** The singleton instance ctor lock */
@@ -107,6 +108,30 @@ public class SSHTunnelManager implements SSHConnectionListener {
 		log.info("Loaded [{}] SSHConnections", connectionCount);
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.ssh.SSHTunnelManagerMBean#loadSSHConfigJson(java.net.URL)
+	 */
+	@Override
+	public int loadSSHConfigJson(final URL jsonUrl) {
+		if(jsonUrl==null) throw new IllegalArgumentException("The passed URL was null");
+		try {
+			final JsonNode node = OBJECT_MAPPER.readTree(jsonUrl);
+			final SSHConnection[] connections = getConnections(node);
+			return connections.length;
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to process SSH config JSON from [" + jsonUrl + "]", ex);
+		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.ssh.SSHTunnelManagerMBean#loadSSHConfigJson(java.lang.String)
+	 */
+	@Override
+	public int loadSSHConfigJson(final String jsonUrl) {
+		return loadSSHConfigJson(URLHelper.toURL(jsonUrl));
+	}
 	
 	/**
 	 * Returns the local port bound to the requested remote host and port
@@ -125,12 +150,12 @@ public class SSHTunnelManager implements SSHConnectionListener {
 	
 	/**
 	 * Creates a new portforward and returns the local port to bind to it on
-	 * @param forwardingHost
-	 * @param sshPort
-	 * @param user
-	 * @param connectHost
-	 * @param connectPort
-	 * @return
+	 * @param forwardingHost The host to connect through
+	 * @param sshPort The ssh port on the forwarding host to connect through
+	 * @param user The user to connect as
+	 * @param connectHost The endpoint host to connect to
+	 * @param connectPort The endpoint port to connect to
+	 * @return the local port to bind to
 	 */
 	public int createPortForward(final String forwardingHost, final int sshPort, final String user, final String connectHost, final int connectPort) {
 		if(connectHost==null || connectHost.trim().isEmpty()) throw new IllegalArgumentException("The passed connect host was null or empty");
@@ -173,19 +198,17 @@ public class SSHTunnelManager implements SSHConnectionListener {
 	 */
 	public static SSHConnection[] parseConnections(final URL jsonUrl) {
 		if(jsonUrl==null) throw new IllegalArgumentException("The passed URL was null");		
-		InputStream is = null;
-		try {
-			is = jsonUrl.openStream();
-			final JsonNode rootNode = OBJECT_MAPPER.readTree(is);
+		final String jsonText = StringHelper.resolveTokens(
+				URLHelper.getStrBuffFromURL(jsonUrl)
+		);
+		try {			
+			final JsonNode rootNode = OBJECT_MAPPER.readTree(jsonText);
 			final ArrayNode an = (ArrayNode)rootNode.get("connections");
 			if(an.size()==0) return EMPTY_CONN_ARR;
 			return OBJECT_MAPPER.convertValue(an, SSHConnection[].class);	
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to load SSHConnections from [" + jsonUrl + "]", ex);
-		} finally {
-			if(is!=null) try { is.close(); } catch (Exception x) {/* No Op */}
-		}
-		
+		}		
 	}
 
 	/**

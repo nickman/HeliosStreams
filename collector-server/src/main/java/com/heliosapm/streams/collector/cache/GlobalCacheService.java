@@ -249,6 +249,34 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	}
 	
 	/**
+	 * Attempts to retrieve the value for the passed cache key. If the value is found, it is returned.
+	 * If the value is not found, the passed listener is registered to get a callback when a value is bound
+	 * to the supplied cache key. If the value is not supplied within the timeout period, the timeout callback will be invoked.
+	 * <b>Timeout not implemented yet</b>.
+	 * @param key The cache key to look up
+	 * @param type The expected type of the cache value
+	 * @param listener The listener to notify if the value is bound yet
+	 * @param timeout The timeout period on waiting for the value to be bound
+	 * @param unit the unit of the timeout
+	 * @return the cached value or null if not bound yet
+	 */
+	public <T> T getOrNotify(final String key, final Class<T> type, final CacheEventListener listener, final long timeout, final TimeUnit unit) {
+		if(key==null || key.trim().isEmpty()) throw new IllegalArgumentException("The passed key was null or empty");
+		final String _key = key.trim();
+		final T t = get(_key);
+		if(t!=null) {
+			if(type!=null) {
+				if(!type.isInstance(t)) throw new RuntimeException("Requested type for key [" + _key + "] was [" + type.getName() + "] but value of type [" + t.getClass().getName() + "]");
+			}
+			return t;
+		}
+		if(listener==null) throw new IllegalArgumentException("The passed listener was null");
+		if(unit==null) throw new IllegalArgumentException("The passed TimeUnit was null");
+		addCacheEventListener(listener, _key);
+		return null;
+	}
+	
+	/**
 	 * Retrieves a value from cache
 	 * @param key The key to retrieve by
 	 * @param createIfNotFound A closure that will create the value if not found in cache

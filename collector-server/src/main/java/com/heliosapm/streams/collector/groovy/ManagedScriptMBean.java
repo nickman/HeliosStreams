@@ -21,6 +21,7 @@ package com.heliosapm.streams.collector.groovy;
 import java.io.IOException;
 import java.util.Date;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * <p>Title: ManagedScriptMBean</p>
@@ -37,7 +38,7 @@ public interface ManagedScriptMBean {
 	public void close() throws IOException;
 	
 	/**
-	 * @return
+	 * @return the median collect time
 	 * @see com.codahale.metrics.Snapshot#getMedian()
 	 */
 	public double getMedianCollectTime();
@@ -137,4 +138,16 @@ public interface ManagedScriptMBean {
 	 * @return Returns the elapsed time in ms. of the last completed collection
 	 */
 	public Long getLastCollectionElapsed();
+	
+	/**
+	 * Returns the pending dependencies that must be satisfied before the script runs
+	 * @return the pending dependencies
+	 */
+	public Set<String> getPendingDependencies();
+	
+	/**
+	 * Returns the current state of this script
+	 * @return the current state of this script
+	 */
+	public String getState();
 }

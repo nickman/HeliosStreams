@@ -313,7 +313,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	
 	/**
 	 * Creates a port forward to the specified connect host and connect port through this connection
-	 * @param localPort The local binding port
+	 * @param localPort The local binding port or zero for an ephemeral port
 	 * @param connectHost The host to connect to
 	 * @param connectPort The port to connect to
 	 * @return the created LocalPortForwarder
@@ -330,6 +330,16 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		}
 	}
 	
+	/**
+	 * Creates a port forward to the same host this connection is to and the specified connect port through this connection
+	 * @param localPort The local binding port or zero for an ephemeral port
+	 * @param connectPort The port to connect to
+	 * @return the created LocalPortForwarder
+	 */
+	LocalPortForwarder createPortForward(final int localPort, final int connectPort) {
+		return createPortForward(localPort, host, connectPort);
+	}
+
 	
 	/**
 	 * Registers a connection listener on this connection
