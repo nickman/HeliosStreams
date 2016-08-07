@@ -80,7 +80,6 @@ public class VolatileFieldASTTransformation extends ClassCodeExpressionTransform
     private FieldNode fieldNode;
     private ClosureExpression currentClosure;
     
-    public final Path scriptRoot;
     
 
     /**
@@ -88,7 +87,6 @@ public class VolatileFieldASTTransformation extends ClassCodeExpressionTransform
 	 */
 	public VolatileFieldASTTransformation() {
 		super();
-		scriptRoot = Paths.get(System.getProperty("helios.collectors.script.root")).toAbsolutePath().normalize();
 	}
 
 	public void visit(ASTNode[] nodes, SourceUnit source) {
@@ -102,18 +100,7 @@ public class VolatileFieldASTTransformation extends ClassCodeExpressionTransform
         if (!MY_TYPE.equals(node.getClassNode())) return;
         final ClassNode declaringClass = parent.getDeclaringClass();
         
-        if(source.getSource() instanceof FileReaderSource) {
-        	try {
-            	final File sourceFile = ((FileReaderSource)source.getSource()).getFile();
-            	final Path sourcePath = sourceFile.getAbsoluteFile().toPath();
-            	final String classNameWithPack = scriptRoot.relativize(sourcePath).toString().replace(".groovy", "").replace(File.separatorChar, '.');
-            	declaringClass.setName(classNameWithPack);
-            	System.err.println("### ClassName set to [" + classNameWithPack + "]");
-        	} catch (Exception ex) {
-        		ex.printStackTrace(System.err);
-        	}
-        	
-        }
+        
         if (parent instanceof DeclarationExpression) {
             DeclarationExpression de = (DeclarationExpression) parent;
             ClassNode cNode = de.getDeclaringClass();

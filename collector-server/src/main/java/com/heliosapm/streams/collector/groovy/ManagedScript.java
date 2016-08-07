@@ -18,8 +18,6 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
-import java.beans.PropertyEditor;
-import java.beans.PropertyEditorManager;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -35,7 +33,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
@@ -61,17 +58,13 @@ import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
-import com.heliosapm.utils.collections.Props;
-import com.heliosapm.utils.enums.Primitive;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
-import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.ref.MBeanProxy;
 import com.heliosapm.utils.ref.ReferenceService.ReferenceType;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
-import com.heliosapm.utils.url.URLHelper;
 
 import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
@@ -94,7 +87,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** This script's dedicated class loader */
 	protected GroovyClassLoader gcl = null;
 	/** This script's source file */
-	protected File sourceFile = null;
+	protected ByteBufReaderSource sourceReader = null;
 	/** This script's ObjectName */
 	protected ObjectName objectName = null;
 	/** The scheduler handle if this script is scheduled */
@@ -104,9 +97,9 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The scheduled execution period unit */
 	protected TimeUnit scheduledPeriodUnit = null;
 	/** The map underlying the binding */
-	protected final Map<String, Object> bindingMap = new HashMap<String, Object>();
+	protected Map<String, Object> bindingMap;
 	/** This script's binding */
-	protected final Binding binding = new Binding(bindingMap);
+	protected Binding binding;
 	/** The fork join pool to execute collections in */
 	protected final CollectorExecutionService executionService;
 	/** The names of pending dependencies */
@@ -115,10 +108,10 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable(this);
 	/** The dependency manager for this script */
 	protected final DependencyManager<ManagedScript> dependencyManager;
-	/** The unmodified source buffer */
-	protected ByteBufReaderSource unmodifiedSource = null;
-	/** The injected source buffer */
-	protected ByteBufReaderSource injectedSource = null;
+	/** The source file */
+	protected File sourceFile = null;
+	/** The linked source file */
+	protected File linkedSourceFile = null; 
 	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
@@ -157,48 +150,48 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@SuppressWarnings("unchecked")
 	public ManagedScript() {
-		setBinding(binding);
 		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 		executionService = CollectorExecutionService.getInstance();
 	}
 
-	/**
-	 * Creates a new ManagedScript
-	 * @param binding The script bindings
-	 */
-	@SuppressWarnings("unchecked")
-	public ManagedScript(final Binding binding) {
-		super(binding);
-		setBinding(this.binding);
-		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
-		executionService = CollectorExecutionService.getInstance();
-	}
+//	/**
+//	 * Creates a new ManagedScript
+//	 * @param binding The script bindings
+//	 */
+//	@SuppressWarnings("unchecked")
+//	public ManagedScript(final Binding binding) {
+//		super(binding);
+//		this.binding = binding;
+//		this.bindingMap = binding.getVariables();
+//		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
+//		executionService = CollectorExecutionService.getInstance();
+//	}
 	
 	/**
 	 * Initializes this script
 	 * @param gcl The class loader
-	 * @param sourceFile The source file
+	 * @param sourceReader The source file
 	 */
-	void initialize(final GroovyClassLoader gcl, final File sourceFile, final String rootDirectory) {
+	void initialize(final GroovyClassLoader gcl, final ByteBufReaderSource sourceReader, final String rootDirectory) {
 		this.gcl = gcl;
-		this.sourceFile = sourceFile;
-		unmodifiedSource = new ByteBufReaderSource(sourceFile);
-		final StringBuilder prejectedSource = processDependencies();
-		if(prejectedSource.length() > 0) {
-			injectedSource = new ByteBufReaderSource(prejectedSource, unmodifiedSource);
-		}
-		final String name = sourceFile.getName().replace(".groovy", "");
-		final String dir = sourceFile.getParent().replace(rootDirectory, "").replace("\\", "/").replace("/./", "/").replace("/collectors/", "");
-		final Matcher m = PERIOD_PATTERN.matcher(this.sourceFile.getAbsolutePath());
+		this.sourceReader = sourceReader;
+		sourceFile = sourceReader.getSourceFile();
+		linkedSourceFile = getLinkedFile();
+		final String name = sourceReader.getSourceFile().getName().replace(".groovy", "");
+		final String dir = sourceReader.getSourceFile().getParent().replace(rootDirectory, "").replace("\\", "/").replace("/./", "/").replace("/collectors/", "");
+		this.bindingMap = sourceReader.getBindingMap();
+		this.binding = new Binding(this.bindingMap);
+		this.bindingMap.putAll(super.getBinding().getVariables());
+		super.setBinding(this.binding);
+		final Matcher m = PERIOD_PATTERN.matcher(this.sourceReader.getSourceFile().getAbsolutePath());
 		if(m.matches()) {
 			final String sch = m.group(1);
 			final NVP<Long, TimeUnitSymbol> schedule = TimeUnitSymbol.period(sch);
 			scheduledPeriod = schedule.getKey();
-			scheduledPeriodUnit = schedule.getValue().unit;
-			scheduleHandle = SharedScheduler.getInstance().scheduleWithFixedDelay(this, 1, scheduledPeriod, scheduledPeriodUnit, this);
+			scheduledPeriodUnit = schedule.getValue().unit;			
 			
 		} else {
-			log.info("No schedule found for collector script [{}]", this.sourceFile);
+			log.info("No schedule found for collector script [{}]", this.sourceReader);
 		}
 		objectName = JMXHelper.objectName(new StringBuilder()
 				.append("com.heliosapm.streams.collector.scripts:dir=")
@@ -221,6 +214,13 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		} catch (Exception ex) {
 			log.warn("Failed to register MBean for ManagedScript [{}]", objectName, ex);
 		}
+		
+		// Script is ready, now schedule it if a schedule was specified
+		// FIXME: need to do something with the initial delay
+		if(scheduledPeriod!=null && pendingDependencies.isEmpty()) {
+			scheduleHandle = SharedScheduler.getInstance().scheduleWithFixedDelay(this, 1, scheduledPeriod, scheduledPeriodUnit, this);
+			log.info("Collection Script scheduled");
+		}
 	}
 	
 	
@@ -231,7 +231,19 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 //	public static final String INJECT_TEMPLATE = "@Dependency(value=\"%s\", timeout=%s, unit=%s) def %s;"; 
 	
 	
-	
+	/**
+	 * Returns the source file's linked file if the file is a link, otherwise returns null
+	 * @return the linked file or null
+	 */
+	protected File getLinkedFile() {
+		try {
+			final Path sourcePath = sourceFile.toPath().normalize();
+			final Path linkedPath = sourcePath.toRealPath();
+			return (sourcePath.equals(linkedPath)) ? null : linkedPath.toFile();
+		} catch (Exception ex) {
+			return null;
+		}
+	}
 	
 	/**
 	 * Reads the counters from the prior instance of this class, increments this instances counters and closes the prior.
@@ -326,12 +338,13 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			consecutiveErrors.increment();
 			totalErrors.increment();
 			lastError.set(System.currentTimeMillis());
-			log.warn("Failed collection on [{}]", sourceFile, ex);
+			log.warn("Failed collection on [{}]", sourceReader, ex);
 		}
 		
 		return null;
 	}
 	
+	@Override
 	public Map<String, String> getBindings() {
 		final Map<String, String> bind = new HashMap<String, String>(bindingMap.size());
 		for(Map.Entry<String, Object> entry: bindingMap.entrySet()) {
@@ -348,7 +361,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public void uncaughtException(final Thread t, final Throwable e) {
-		log.error("Exception thrown in collector [{}]", sourceFile);
+		log.error("Exception thrown in collector [{}]", sourceReader);
 	}
 	
 	/**
@@ -395,7 +408,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 					t.printStackTrace(System.err);
 				}
 			}
-			log.info("Removed [{}] meta classes for GCL for [{}]\n{}", unloaded, sourceFile, b);
+			log.info("Removed [{}] meta classes for GCL for [{}]\n{}", unloaded, sourceReader, b);
 //			gcl.clearCache();
 			if(JMXHelper.isRegistered(objectName)) {
 				try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
@@ -651,6 +664,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		return state.get().name();
 	}
 	
+	
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#printFieldValues()
@@ -674,6 +689,69 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			map.put(name, val);
 		}
 		return map;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getScheduledPeriod()
+	 */
+	@Override
+	public Long getScheduledPeriod() {
+		return scheduledPeriod;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getScheduledPeriodUnit()
+	 */
+	@Override
+	public String getScheduledPeriodUnit() {
+		return scheduledPeriodUnit==null ? null : scheduledPeriodUnit.name();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getSourceFile()
+	 */
+	@Override
+	public File getSourceFile() {
+		return sourceFile;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLinkedSourceFile()
+	 */
+	@Override
+	public File getLinkedSourceFile() {
+		return linkedSourceFile;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#printOriginalSource()
+	 */
+	@Override
+	public String printOriginalSource() {
+		return sourceReader.getOriginalSource();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#printPrejectedSource()
+	 */
+	@Override
+	public String printPrejectedSource() {
+		return sourceReader.getPrejectedSource();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#isPrejected()
+	 */
+	@Override
+	public boolean isPrejected() {		
+		return sourceReader.isPrejected();
 	}
 	
 }

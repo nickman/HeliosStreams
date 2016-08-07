@@ -17,16 +17,17 @@ package com.heliosapm.streams.collector.groovy;
 
 import java.beans.PropertyEditor;
 import java.beans.PropertyEditorManager;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.net.URI;
-import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -42,18 +43,16 @@ import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.enums.Primitive;
-import com.heliosapm.utils.io.NIOHelper;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
-import io.netty.buffer.ByteBufUtil;
 import io.netty.util.ByteProcessor;
 
 /**
  * <p>Title: ByteBufReaderSource</p>
- * <p>Description: </p> 
+ * <p>Description: A functional groovy source code container wrapping and enhancing the original source file</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.groovy.ByteBufReaderSource</code></p>
@@ -62,16 +61,18 @@ import io.netty.util.ByteProcessor;
 public class ByteBufReaderSource implements ReaderSource {
 	/** The original source file  */
 	final File sourceFile;
+	/** The class name that is expected to be compiled from this source */
+	final String className;
 	/** The byte buf containing the original source */
 	final ByteBuf sourceBuffer;
 	/** The byte buf containing the prejected source */
 	final ByteBuf prejectedBuffer;
+	/** Indicates if any preject code was generated */
+	final boolean prejected;
 	/** The bindings map */
-	final Map<String, Object> bindingMap = new HashMap<String, Object>();
-	/** The local script properties */
-	final Properties localProperties = new Properties();
-	/** The linked script properties */
-	final Properties linkedProperties = new Properties();
+	final Map<String, Object> bindingMap = new LinkedHashMap<String, Object>();
+	/** The merged local and linked script properties */
+	final Properties scriptProperties;
 	/** A reference to the global cache service */
 	final GlobalCacheService cache = GlobalCacheService.getInstance(); 
 	
@@ -96,37 +97,57 @@ public class ByteBufReaderSource implements ReaderSource {
 
 	/**
 	 * Creates a new ByteBufReaderSource
-	 * @param sourceFile the original source file
+	 * @param sourceReader the original source file
+	 * @param scriptRootDirectory The script root directory
 	 */
-	public ByteBufReaderSource(final File sourceFile) {
-		this.sourceFile = sourceFile;
-		sourceBuffer = BufferManager.getInstance().directBuffer((int)this.sourceFile.length());
-		ByteBuffer bb = null;
-		try {
-			bb = NIOHelper.load(sourceFile, false);						
-			sourceBuffer.writeBytes(bb);
+	public ByteBufReaderSource(final File sourceFile, final Path scriptRootDirectory) {
+		this.sourceFile = sourceFile;		
+    	final Path sourcePath = sourceFile.getAbsoluteFile().toPath().normalize();
+    	className = scriptRootDirectory.normalize().relativize(sourcePath).toString().replace(".groovy", "").replace(File.separatorChar, '.');
+		scriptProperties = readConfig(sourceFile);
+		sourceBuffer = loadSourceFile();
+		
+		final StringBuilder b = processDependencies();
+		if(b.length()==0) {
+			prejectedBuffer = sourceBuffer;
+			prejected = false;
 			sourceURI = sourceFile.toURI();
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to read source from source file [" + sourceFile + "]", ex);
-		} finally {
-			if(bb!=null) try { NIOHelper.clean(bb); } catch (Exception x) {/* No Op */}
+		} else {
+			b.insert(0, EOL + "// ===== Injected Code =====" + EOL);
+			b.append(EOL + "// =========================" + EOL);
+			prejectedBuffer = BufferManager.getInstance().directBuffer(b.length() + sourceBuffer.readableBytes());
+			prejectedBuffer.writeCharSequence(b, UTF8);
+			prejectedBuffer.writeBytes(sourceBuffer.duplicate().resetReaderIndex());
+			prejected = true;
+			sourceURI = URLHelper.toURI(sourceFile.toURI().toString() + "-prejected");
 		}
 	}
 	
+
 	/**
-	 * Creates a new ByteBufReaderSource which has been modified from the original source
-	 * @param injectedSource the source to inject at the beginning of the source buffer
-	 * @param fileSource the original unmodified code reader
+	 * Loads the source file into a ByteBuf and returns it as a read only buffer
+	 * @return the loaded ByteBuf
 	 */
-	public ByteBufReaderSource(final CharSequence injectedSource, final ByteBufReaderSource fileSource) {
-		final ByteBuf fsourceBuffer = fileSource.sourceBuffer.duplicate().resetReaderIndex();
-		sourceBuffer = BufferManager.getInstance().directBuffer(injectedSource.length(), fsourceBuffer.readableBytes());
-		ByteBufUtil.writeUtf8(sourceBuffer, injectedSource);
-		sourceBuffer.writeBytes(fsourceBuffer);
-		sourceFile = null;
-		sourceURI = URLHelper.toURI(fileSource.sourceFile.toURI().toString() + "-modified");
+	protected ByteBuf loadSourceFile() {
+		ByteBuf buf = BufferManager.getInstance().directBuffer((int)this.sourceFile.length());
+		FileReader fr = null;
+		BufferedReader br = null;
+		String line = null;
+		try {
+			fr = new FileReader(sourceFile);
+			br = new BufferedReader(fr);
+			while((line = br.readLine())!=null) {
+				final String enrichedLine = StringHelper.resolveTokens(line, scriptProperties);
+				buf.writeCharSequence(enrichedLine + EOL, UTF8);
+			}
+			return buf.asReadOnly();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to read source from source file [" + sourceFile + "]", ex);
+		} finally {
+			if(br!=null) try { br.close(); } catch (Exception x) {/* No Op */}
+			if(fr!=null) try { fr.close(); } catch (Exception x) {/* No Op */}
+		}		
 	}
-	
 	
 	/**
 	 * {@inheritDoc}
@@ -134,7 +155,7 @@ public class ByteBufReaderSource implements ReaderSource {
 	 */
 	@Override
 	public Reader getReader() throws IOException {
-		final InputStream is = new ByteBufInputStream(sourceBuffer.duplicate());
+		final InputStream is = new ByteBufInputStream(prejectedBuffer.duplicate());
 		return new InputStreamReader(is, UTF8); 
 	}
 	
@@ -143,6 +164,7 @@ public class ByteBufReaderSource implements ReaderSource {
 	 */
 	public void close() {
 		try { sourceBuffer.release(); } catch (Exception x) {/* No Op */}
+		if(prejected) try { prejectedBuffer.release(); } catch (Exception x) {/* No Op */}
 	}
 
 	/**
@@ -162,7 +184,7 @@ public class ByteBufReaderSource implements ReaderSource {
 	public String getLine(int lineNumber, Janitor janitor) {
 		int start = 0;
 		int eol = 0;
-		final ByteBuf b = sourceBuffer.duplicate().resetReaderIndex();
+		final ByteBuf b = prejectedBuffer.duplicate().resetReaderIndex();
 		for(int i = 0; i < lineNumber; i++) {
 			eol = findEndOfLine(b);
 			if(eol==-1) return null;
@@ -199,16 +221,14 @@ public class ByteBufReaderSource implements ReaderSource {
 	 */
 	@Override
 	public URI getURI() {
-		return sourceFile.toURI();
+		return sourceURI;
 	}
 	
 	/**
 	 * Processes any found dependencies and returns the prejected code
-	 * @param sourceFile The source file to process
-	 * @param bindingMap The forthcoming script's binding map
 	 * @return the [possibly empty] prejected code
 	 */
-	protected static StringBuilder processDependencies(final File sourceFile, final Map<String, Object> bindingMap) {
+	protected StringBuilder processDependencies() {
 		final StringBuilder b = new StringBuilder();
 		final Properties p = readConfig(sourceFile);
 		if(p.isEmpty()) return b;
@@ -258,7 +278,7 @@ public class ByteBufReaderSource implements ReaderSource {
 	 * Groovy source files may also be symbolic links to a template, which in turn may have it's own configuration properties, similarly named.
 	 * This method attempts to read from both, merges the output with the local config overriding the template's config
 	 * and returns the result.
-	 * @param sourceFile this script's source file
+	 * @param sourceReader this script's source file
 	 * @return the merged properties
 	 */
 	protected static Properties readConfig(final File sourceFile) {
@@ -279,9 +299,71 @@ public class ByteBufReaderSource implements ReaderSource {
 			final Properties localProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(localProps))), UTF8);
 			p.putAll(localProperties);
 		}
-		
-		
 		return p;
+	}
+	
+	
+	/**
+	 * Returns the original source, modified only for inline property tokens
+	 * @return the original source
+	 */
+	public String getOriginalSource() {
+		return sourceBuffer.toString(UTF8);
+	}
+	
+	/**
+	 * Returns the prejected source if prejection was performed, 
+	 * otherwise returns the original source, modified only for inline property tokens
+	 * @return the prejected or original source
+	 */
+	public String getPrejectedSource() {
+		return prejectedBuffer.toString(UTF8);
+	}
+	
+
+
+	/**
+	 * Returns the original source file
+	 * @return the original source file
+	 */
+	public File getSourceFile() {
+		return sourceFile;
+	}
+
+
+	/**
+	 * Indicates if the original code was modified for prejection
+	 * @return true if the original code was modified for prejection, false otherwise
+	 */
+	public boolean isPrejected() {
+		return prejected;
+	}
+
+
+	/**
+	 * Returns the script binding map
+	 * @return the script binding map
+	 */
+	public Map<String, Object> getBindingMap() {
+		return bindingMap;
+	}
+
+
+	/**
+	 * Returns the script initialization properties
+	 * @return the script initialization properties
+	 */
+	public Properties getScriptProperties() {
+		return scriptProperties;
+	}
+
+
+	/**
+	 * Returns the class name that is expected to be compiled from this source
+	 * @return the class name
+	 */
+	public String getClassName() {
+		return className;
 	}
 	
 	

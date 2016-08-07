@@ -91,7 +91,7 @@ public class DependencyManager<T extends ManagedScript> implements CacheEventLis
 				}
 			}
 		} catch (Exception ex) {
-			throw new RuntimeException("Failed to scan script [" + script.sourceFile + "] for dependencies", ex);
+			throw new RuntimeException("Failed to scan script [" + script.sourceReader + "] for dependencies", ex);
 		}
 	}
 	

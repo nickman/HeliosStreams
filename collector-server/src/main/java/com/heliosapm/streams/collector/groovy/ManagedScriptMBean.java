@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Date;
 import java.util.Map;
@@ -156,4 +157,47 @@ public interface ManagedScriptMBean {
 	 * @return a map of the values of each field in the script instance
 	 */
 	public Map<String, String> printFieldValues();
+	
+	/**
+	 * Returns the schedule period
+	 * @return the schedule period
+	 */
+	public Long getScheduledPeriod();
+
+	/**
+	 * Returns the schedule period unit
+	 * @return the scheduled period unit
+	 */
+	public String getScheduledPeriodUnit();
+
+	/**
+	 * Returns the original source file
+	 * @return the original source file
+	 */
+	public File getSourceFile();
+
+	/**
+	 * Returns the linked file if this is a symbolic link, otherwise returns null
+	 * @return the linked file if this is a symbolic link, otherwise returns null
+	 */
+	public File getLinkedSourceFile();
+	
+	/**
+	 * Returns the original source
+	 * @return the original source
+	 */
+	public String printOriginalSource();
+	
+	/**
+	 * Returns the prejected source
+	 * @return the prejected source
+	 */
+	public String printPrejectedSource();
+	
+	/**
+	 * Indicates if the source was prejected
+	 * @return true if the source was prejected, false otherwise
+	 */
+	public boolean isPrejected();
+	
 }

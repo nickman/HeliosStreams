@@ -18,8 +18,6 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
-import java.beans.PropertyEditor;
-import java.beans.PropertyEditorManager;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
@@ -35,14 +33,11 @@ import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
@@ -57,9 +52,7 @@ import com.google.common.cache.CacheBuilder;
 import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
-import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
-import com.heliosapm.utils.enums.Primitive;
 import com.heliosapm.utils.file.FileChangeEvent;
 import com.heliosapm.utils.file.FileChangeEventListener;
 import com.heliosapm.utils.file.FileChangeWatcher;
@@ -68,10 +61,11 @@ import com.heliosapm.utils.file.Filters.FileMod;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
-import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.ref.ReferenceService;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.url.URLHelper;
 
+import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyCodeSource;
 import groovy.lang.MetaClassRegistryChangeEvent;
@@ -131,6 +125,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	protected final File rootDirectory;
 	/** The collector service script directory */
 	protected final File scriptDirectory;
+	/** The collector service script path */
+	protected final Path scriptPath;
 	
 	/** The lib (jar) directory class loader */
 	protected final URLClassLoader libDirClassLoader;
@@ -243,6 +239,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		log.info("Collector Service root directory: [{}]", rootDirectory);
 		rootDirectory.mkdirs();
 		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
+		scriptPath = scriptDirectory.toPath();
 		System.setProperty("helios.collectors.script.root", scriptDirectory.getAbsolutePath());
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
 		initSubDirs();
@@ -291,15 +288,6 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 					@Override
 					public Boolean call() throws Exception {
 						try {
-							final Map<String, Object> bindingMap = new HashMap<String, Object>(128);
-							final StringBuilder b = processDependencies(sourceFile, bindingMap);
-							final ByteBufReaderSource originalCode = new ByteBufReaderSource(sourceFile);
-							final ByteBufReaderSource prejectedCode;
-							if(b.length()>1) {
-								prejectedCode = new ByteBufReaderSource(b, originalCode);
-							} else {
-								prejectedCode = null;
-							}
 							compileScript(sourceFile);
 							return true;
 						} catch (Exception ex) {
@@ -361,19 +349,20 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		String errMsg = null;
 		try {
 			log.info("Compiling script [{}]...", sourceName);
-			final GroovyCodeSource gcs = new GroovyCodeSource(source, compilerConfig.getSourceEncoding());
-			
+			final ByteBufReaderSource bSource = new ByteBufReaderSource(source, scriptPath); 
+			final GroovyCodeSource gcs = new GroovyCodeSource(bSource.getReader(), bSource.getClassName(), bSource.getURI().toString());
 			gcs.setCachable(false);
 			final Class<ManagedScript> msClazz = gcl.parseClass(gcs);
 			ReferenceService.getInstance().newWeakReference(msClazz, null);
+			//final ManagedScript ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{new Binding(bSource.getBindingMap())}, Binding.class);
 			final ManagedScript ms = msClazz.newInstance();
-			ms.initialize(gcl, source, rootDirectory.getAbsolutePath());
+			ms.initialize(gcl, bSource, rootDirectory.getAbsolutePath());
 			success = true;
 			managedScripts.put(source, ms);
 			successfulCompiles.increment();
 			compiledScripts.add(sourceName);
 			failedScripts.remove(sourceName);
-			log.info("Successfully Compiled script [{}].", sourceName);
+			log.info("Successfully Compiled script [{}] --> [{}].[{}].", sourceName, msClazz.getPackage().getName(), msClazz.getSimpleName());
 			return ms;
 		} catch (CompilationFailedException cex) {
 			errMsg = "Failed to compile source ["+ source + "]";
@@ -427,7 +416,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		if(imports!=DEFAULT_AUTO_IMPORTS) {
 			applyImports(DEFAULT_AUTO_IMPORTS);
 		}
-		compilerConfig.addCompilationCustomizers(importCustomizer);
+		compilerConfig.addCompilationCustomizers(importCustomizer, new PackageNameCustomizer());
 	}
 	
 	/**
