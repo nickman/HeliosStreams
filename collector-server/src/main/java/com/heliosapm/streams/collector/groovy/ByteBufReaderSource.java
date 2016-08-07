@@ -15,6 +15,8 @@
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.beans.PropertyEditor;
+import java.beans.PropertyEditorManager;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,12 +25,25 @@ import java.io.Reader;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.codehaus.groovy.control.Janitor;
 import org.codehaus.groovy.control.io.ReaderSource;
 
 import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.streams.collector.cache.GlobalCacheService;
+import com.heliosapm.utils.collections.Props;
+import com.heliosapm.utils.enums.Primitive;
 import com.heliosapm.utils.io.NIOHelper;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 import io.netty.buffer.ByteBuf;
@@ -45,16 +60,38 @@ import io.netty.util.ByteProcessor;
  */
 
 public class ByteBufReaderSource implements ReaderSource {
-	/** The original source file which will be null if this is injected code  */
+	/** The original source file  */
 	final File sourceFile;
-	/** The byte buf we're going to store the source in */
+	/** The byte buf containing the original source */
 	final ByteBuf sourceBuffer;
+	/** The byte buf containing the prejected source */
+	final ByteBuf prejectedBuffer;
+	/** The bindings map */
+	final Map<String, Object> bindingMap = new HashMap<String, Object>();
+	/** The local script properties */
+	final Properties localProperties = new Properties();
+	/** The linked script properties */
+	final Properties linkedProperties = new Properties();
+	/** A reference to the global cache service */
+	final GlobalCacheService cache = GlobalCacheService.getInstance(); 
+	
 	/** The URI for this reader */
 	final URI sourceURI;
 	
 	
+	
+	/** Static class logger */
+	private static final Logger log = LogManager.getLogger(ManagedScriptFactory.class);	
 	/** The UTF character set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
+	/** Cache injection substitution pattern */
+	public static final Pattern CACHE_PATTERN = Pattern.compile("\\$cache\\{(.*?)(?::(\\d+))?(?::(nanoseconds|microseconds|milliseconds|seconds|minutes|hours|days))??\\}");
+	/** Typed value substitution pattern */
+	public static final Pattern TYPED_PATTERN = Pattern.compile("\\$typed\\{(.*?):(.*)\\}");
+	/** Injected field template */
+	public static final String INJECT_TEMPLATE = "@Dependency(value=\"%s\", timeout=%s, unit=%s) def %s;"; 
+	/** The platform end of line character */
+	public static final String EOL = System.getProperty("line.separator");
 	
 
 	/**
@@ -164,5 +201,89 @@ public class ByteBufReaderSource implements ReaderSource {
 	public URI getURI() {
 		return sourceFile.toURI();
 	}
+	
+	/**
+	 * Processes any found dependencies and returns the prejected code
+	 * @param sourceFile The source file to process
+	 * @param bindingMap The forthcoming script's binding map
+	 * @return the [possibly empty] prejected code
+	 */
+	protected static StringBuilder processDependencies(final File sourceFile, final Map<String, Object> bindingMap) {
+		final StringBuilder b = new StringBuilder();
+		final Properties p = readConfig(sourceFile);
+		if(p.isEmpty()) return b;
+		for(final String key: p.stringPropertyNames()) {
+			final String value = p.getProperty(key, "").trim();
+			if(value.isEmpty()) continue;
+			try {				
+				final Matcher m = CACHE_PATTERN.matcher(value);
+				if(m.matches()) {
+					final String t = m.group(2);
+					final String u = m.group(3);
+				    final String cacheKey = m.group(1).trim();
+				    final long timeout = (t==null || t.trim().isEmpty()) ? 0 : Long.parseLong(t.trim());			    
+				    final TimeUnit unit = (u==null || u.trim().isEmpty()) ? TimeUnit.HOURS : TimeUnit.valueOf(u.trim().toUpperCase());
+				    b.append(String.format(INJECT_TEMPLATE, cacheKey, timeout, unit, key)).append(EOL);
+				    continue;
+				}
+			} catch (Exception ex) {
+				log.warn("Failed to process injected property [{}]:[{}]", key, value, ex);
+				continue;
+			}
+			try {				
+				final Matcher m = TYPED_PATTERN.matcher(value);
+				if(m.matches()) {
+					final String type = m.group(1);
+					final String val = m.group(2);
+					if(type==null || type.trim().isEmpty() || val==null || val.trim().isEmpty()) continue;
+				    if(Primitive.ALL_CLASS_NAMES.contains(type.trim())) {
+				    	Class<?> clazz = Primitive.PRIMNAME2PRIMCLASS.get(type.trim());
+				    	PropertyEditor pe = PropertyEditorManager.findEditor(clazz);
+				    	pe.setAsText(val.trim());
+				    	bindingMap.put(key, pe.getValue());
+				    	continue;
+				    }
+				}
+			} catch (Exception ex) {
+				log.warn("Failed to process injected property [{}]:[{}]", key, value, ex);
+				continue;
+			}
+		}
+		return b;
+	}
+	
+	/**
+	 * Groovy source files may have an accompanying config properties file which by convention is
+	 * the same file, except with an extension of <b><code>.properties</code></b> instead of <b><code>.groovy</code></b>.
+	 * Groovy source files may also be symbolic links to a template, which in turn may have it's own configuration properties, similarly named.
+	 * This method attempts to read from both, merges the output with the local config overriding the template's config
+	 * and returns the result.
+	 * @param sourceFile this script's source file
+	 * @return the merged properties
+	 */
+	protected static Properties readConfig(final File sourceFile) {
+		final Path sourcePath = sourceFile.toPath();
+		final Properties p = new Properties();
+		try {
+			final Path linkedSourcePath = sourceFile.toPath().toRealPath();
+			if(!linkedSourcePath.equals(sourcePath)) {
+				final File linkedProps = new File(linkedSourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
+				if(linkedProps.canRead()) {
+					final Properties linkedProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(linkedProps))), UTF8);
+					p.putAll(linkedProperties);
+				}
+			}
+		} catch (Exception x) {/* No Op */} 
+		final File localProps = new File(sourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
+		if(localProps.canRead()) {
+			final Properties localProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(localProps))), UTF8);
+			p.putAll(localProperties);
+		}
+		
+		
+		return p;
+	}
+	
+	
 
 }
