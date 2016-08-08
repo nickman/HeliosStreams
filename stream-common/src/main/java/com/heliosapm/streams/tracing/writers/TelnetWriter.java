@@ -58,6 +58,12 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 	/** The response handler */
 	public static final ResponseHandler RESPONSE_HANDLER = new ResponseHandler();
 	
+	/** The config key for the enablement of gzip on submitted metrics */
+	public static final String CONFIG_COMPRESSION = "metricwriter.telnet.compression";
+	/** The default enablement of gzip on submitted metrics */
+	public static final boolean DEFAULT_COMPRESSION = false;
+	
+	
 	/** A streamed metric to string encoder */
 	protected final StreamedMetricEncoder METRIC_ENCODER = new StreamedMetricEncoder();
 	/** The telnet channel initializer */

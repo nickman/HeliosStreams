@@ -28,7 +28,6 @@ import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.collector.cache.CacheEventListener;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
-import com.heliosapm.utils.reflect.PrivateAccessor;
 
 /**
  * <p>Title: DependencyManager</p>

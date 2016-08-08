@@ -143,6 +143,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	
 	/** The UTF8 char set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
+	
+	private static final double NS2MS = 1D / (double)TimeUnit.NANOSECONDS.convert(1, TimeUnit.MILLISECONDS);
 
 	
 	/**
@@ -494,6 +496,10 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		try { close(); } catch (Exception x) {/* No Op */}		
 	}
 	
+	private static double tms(final double val) {
+		return TimeUnit.NANOSECONDS.toMillis((long)val);
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -501,7 +507,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public double getMedianCollectTime() {
-		return timerSnap.getValue().getMedian();
+		return tms(timerSnap.getValue().getMedian());
 	}
 
 	/**
@@ -510,7 +516,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public double get75PctCollectTime() {
-		return timerSnap.getValue().get75thPercentile();
+		return tms(timerSnap.getValue().get75thPercentile());
 	}
 	/**
 	 * {@inheritDoc}
@@ -518,7 +524,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public double get95PctCollectTime() {
-		return timerSnap.getValue().get95thPercentile();
+		return tms(timerSnap.getValue().get95thPercentile());
 	}
 
 	/**
@@ -527,7 +533,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public double get98PctCollectTime() {
-		return timerSnap.getValue().get98thPercentile();
+		return tms(timerSnap.getValue().get98thPercentile());
 	}
 
 	/**
@@ -536,7 +542,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public double get99PctCollectTime() {
-		return timerSnap.getValue().get99thPercentile();
+		return tms(timerSnap.getValue().get99thPercentile());
 	}
 
 	/**
@@ -545,7 +551,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public double get999PctCollectTime() {
-		return timerSnap.getValue().get999thPercentile();
+		return tms(timerSnap.getValue().get999thPercentile());
 	}
 
 	/**
@@ -554,7 +560,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public long getMaxCollectTime() {
-		return timerSnap.getValue().getMax();
+		return TimeUnit.NANOSECONDS.toMillis(timerSnap.getValue().getMax());
 	}
 
 	/**
@@ -563,7 +569,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public double getMeanCollectTime() {
-		return timerSnap.getValue().getMean();
+		return tms(timerSnap.getValue().getMean());
 	}
 
 	/**
@@ -572,7 +578,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public long getMinCollectTime() {
-		return timerSnap.getValue().getMin();
+		return TimeUnit.NANOSECONDS.toMillis(timerSnap.getValue().getMin());
 	}
 	
 

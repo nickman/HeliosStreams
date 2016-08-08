@@ -68,6 +68,7 @@ import com.heliosapm.utils.url.URLHelper;
 import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyCodeSource;
+import groovy.lang.GroovySystem;
 import groovy.lang.MetaClassRegistryChangeEvent;
 import groovy.lang.MetaClassRegistryChangeEventListener;
 import jsr166e.LongAdder;
@@ -175,6 +176,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		if(instance==null) {
 			synchronized(lock) {
 				if(instance==null) {
+					GroovySystem.stopThreadedReferenceManager();
+					GroovySystem.setKeepJavaMetaClasses(false);
 					instance = new ManagedScriptFactory();
 				}
 			}
@@ -320,7 +323,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 * @return the groovy class loader
 	 */
 	public GroovyClassLoader newGroovyClassLoader() {	
-		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, compilerConfig, false);
+		
+		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(new URLClassLoader(libDirClassLoader.getURLs()), compilerConfig, false);
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
 		final long gclId = groovyClassLoaderSerial.incrementAndGet();

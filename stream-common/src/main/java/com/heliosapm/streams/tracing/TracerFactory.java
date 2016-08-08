@@ -16,6 +16,7 @@
 package com.heliosapm.streams.tracing;
 
 import java.lang.reflect.Constructor;
+import java.net.URL;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
@@ -23,8 +24,10 @@ import java.util.concurrent.TimeUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.tracing.groovy.Groovy;
 import com.heliosapm.streams.tracing.groovy.GroovyTracer;
 import com.heliosapm.streams.tracing.writers.LoggingWriter;
@@ -33,7 +36,9 @@ import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
+import com.heliosapm.utils.url.URLHelper;
 
 
 /**
@@ -80,6 +85,7 @@ public class TracerFactory {
 	 * @return the singleton instance
 	 */
 	public static TracerFactory getInstance(final Properties config) {
+		if(config==null) throw new IllegalArgumentException("The passed config properties was null");
 		if(instance==null) {
 			synchronized(lock) {
 				if(instance==null) {
@@ -88,6 +94,21 @@ public class TracerFactory {
 			}
 		}
 		return instance;
+	}
+	
+	/**
+	 * Acquires and returns the singleton instance
+	 * @param jsonConfig The tracer factory configuration json url 
+	 * @return the singleton instance
+	 */
+	public static TracerFactory getInstance(final URL jsonConfig) {
+		if(jsonConfig==null) throw new IllegalArgumentException("The passed json config URL was null");
+		final JsonNode rootNode = JSONOps.parseToNode(
+			StringHelper.resolveTokens(
+				URLHelper.getTextFromURL(jsonConfig)
+			)
+		);
+		
 	}
 	
 	/**

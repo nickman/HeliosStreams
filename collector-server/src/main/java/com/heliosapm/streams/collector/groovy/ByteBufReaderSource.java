@@ -97,7 +97,7 @@ public class ByteBufReaderSource implements ReaderSource {
 
 	/**
 	 * Creates a new ByteBufReaderSource
-	 * @param sourceReader the original source file
+	 * @param sourceFile the original source file
 	 * @param scriptRootDirectory The script root directory
 	 */
 	public ByteBufReaderSource(final File sourceFile, final Path scriptRootDirectory) {
@@ -272,13 +272,17 @@ public class ByteBufReaderSource implements ReaderSource {
 		return b;
 	}
 	
+	/** Regex pattern to match a schedule directive built into the source file name */
+	public static final Pattern PERIOD_PATTERN = Pattern.compile("\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
+	
+	
 	/**
 	 * Groovy source files may have an accompanying config properties file which by convention is
 	 * the same file, except with an extension of <b><code>.properties</code></b> instead of <b><code>.groovy</code></b>.
 	 * Groovy source files may also be symbolic links to a template, which in turn may have it's own configuration properties, similarly named.
 	 * This method attempts to read from both, merges the output with the local config overriding the template's config
 	 * and returns the result.
-	 * @param sourceReader this script's source file
+	 * @param sourceFile this script's source file
 	 * @return the merged properties
 	 */
 	protected static Properties readConfig(final File sourceFile) {
@@ -294,11 +298,18 @@ public class ByteBufReaderSource implements ReaderSource {
 				}
 			}
 		} catch (Exception x) {/* No Op */} 
-		final File localProps = new File(sourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
-		if(localProps.canRead()) {
-			final Properties localProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(localProps))), UTF8);
+		final File exactMatchFileProps = new File(sourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
+		final File noSchedFileProps = new File(sourcePath.toFile().getAbsolutePath().replace(sourceFile.getName(), PERIOD_PATTERN.matcher(sourceFile.getName()).replaceAll(".properties")));
+		if(noSchedFileProps.canRead()) {
+			final Properties rp = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(noSchedFileProps))), UTF8);
+			p.putAll(rp);
+		}
+		
+		if(exactMatchFileProps.canRead()) {
+			final Properties localProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(exactMatchFileProps))), UTF8);
 			p.putAll(localProperties);
 		}
+		
 		return p;
 	}
 	
