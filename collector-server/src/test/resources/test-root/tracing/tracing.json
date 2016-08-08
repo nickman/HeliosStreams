@@ -3,8 +3,8 @@
 		{
 			"writer" : "com.heliosapm.streams.tracing.writers.LoggingWriter",
 			"configs" : {
-				"metricwriter.logging.filename" : "/tmp/stream-metrics/streams.logfile.${jvm.pid}.log",
-				"metricwriter.logging.ra" : "true"
+				"metricwriter.logging.filename" : "/tmp/stream-metrics/streams.logfile.log",
+				"metricwriter.logging.ra" : "false"
 			}
 		},
 		{
@@ -34,5 +34,6 @@
 				"metricwriter.kafka.interceptor.classes" : "com.heliosapm.streams.common.kafka.interceptor.MonitoringProducerInterceptor"
 			}
 		}
+		
 	]	
 }

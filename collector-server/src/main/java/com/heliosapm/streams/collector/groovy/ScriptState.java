@@ -28,14 +28,10 @@ package com.heliosapm.streams.collector.groovy;
 public enum ScriptState {
 	/** The initial state of a newly created script */
 	INIT,
-	/** Script is terminally broken */
-	BROKEN,
 	/** Script execution is paused */
 	PAUSED,
 	/** Script is in steady state */
 	OK,
-	/** Script is collecting */
-	COLLECTING,
 	/** Script is waiting for dependency injection */
 	WAITING;
 }

@@ -16,7 +16,7 @@
 package com.heliosapm.streams.tracing;
 
 import java.io.IOException;
-import java.lang.reflect.Constructor;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
@@ -40,7 +40,6 @@ import com.google.common.base.Predicate;
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
-import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.tracing.deltas.DeltaManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -105,7 +104,7 @@ public class DefaultTracerImpl implements ITracer {
 	protected Predicate<PredicateTrace> suppressPredicate = null;
 	
 	/** The writer that delivers the buffered metrics to an end-point */
-	protected final IMetricWriter writer;
+	protected volatile IMetricWriter writer;
 	
 	// ===============================================================================
 	// Push/Pop for Tags and Tracer State
@@ -139,6 +138,10 @@ public class DefaultTracerImpl implements ITracer {
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
+	
+	void updateWriter(final IMetricWriter writer) {
+		this.writer = writer;
+	}
 	
 	/**
 	 * <p>Title: TracerState</p>
@@ -279,17 +282,24 @@ public class DefaultTracerImpl implements ITracer {
 	 * @return a tag map 
 	 */
 	protected SortedMap<String, String> buildTags(final String...tagValues) {
-		if(tagValues!=null && tagValues.length > 0 && tagKeyStack.size() != tagValues.length) {
-			throw new IllegalStateException("TagValue & Tag Key Stack Mismatch. TagKeyStack: " + tagKeyStack.size() + ", TagValues: " + tagValues.length) ;
-		}
-		final TreeMap<String, String> tmap = new TreeMap<String, String>(TagKeySorter.INSTANCE); 
-//		tags.clear();
-		if(tagValues != null) {
-			final String[] tagKeys = tagKeyStack.toArray(new String[0]);
-			for(int i = 0; i < tagKeys.length; i++) {
-				tmap.put(tagKeys[i], tagValues[i]);
+		final TreeMap<String, String> tmap = new TreeMap<String, String>(TagKeySorter.INSTANCE);
+		if(tagValues!=null && tagValues.length > 0) {
+			final int tks = tagKeyStack.size();
+			if(tagValues.length > 0 && tks != tagValues.length) {
+				log.error("TagValue & Tag Key Stack Mismatch. TagKeyStack: [{}], TagValues: [{}]", tagKeyStack, Arrays.toString(tagValues));
+				throw new IllegalStateException("TagValue & Tag Key Stack Mismatch. TagKeyStack: " + tagKeyStack.size() + ", TagValues: " + tagValues.length) ;
 			}
-		}		
+			 
+			final String[] tagKeys = tagKeyStack.toArray(new String[tks]);			
+			for(int i = 0; i < tagValues.length; i++) {		
+				try {
+					if(tagKeys[i].isEmpty() || tagValues[i].isEmpty()) continue;
+					tmap.put(tagKeys[i], tagValues[i]);
+				} catch (Exception ex) {
+					log.error("Failed to build tag pair: [{}]:[{}]", tagKeys[i], tagValues[i]);
+				}
+			}
+		}
 		for(String[] pair: tagStack) {
 			tmap.put(pair[0], pair[1]);
 		}
@@ -477,7 +487,7 @@ public class DefaultTracerImpl implements ITracer {
 				if(key==null) continue;
 				final String k = key.trim();
 				if(k.isEmpty()) continue;
-				tagKeyStack.push(k);
+				tagKeyStack.addLast(k);
 			}
 		}
 		return this;

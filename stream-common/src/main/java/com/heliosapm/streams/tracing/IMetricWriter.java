@@ -42,6 +42,12 @@ public interface IMetricWriter extends Service {
 	public boolean areMetricsConsumed();
 	
 	/**
+	 * Indicates if metric delivery is confirmed by callback or if metric writes are fire-n-forget
+	 * @return true if metric delivery is confirmed by callback, false if metric writes are fire-n-forget
+	 */
+	public boolean areMetricsConfirmed();
+	
+	/**
 	 * Handles the delivery of an array of {@link StreamedMetric} instances
 	 * @param metrics The metrics to deliver
 	 */

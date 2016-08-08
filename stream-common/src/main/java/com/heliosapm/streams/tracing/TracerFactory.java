@@ -20,22 +20,26 @@ import java.net.URL;
 import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.tracing.groovy.Groovy;
 import com.heliosapm.streams.tracing.groovy.GroovyTracer;
 import com.heliosapm.streams.tracing.writers.LoggingWriter;
+import com.heliosapm.streams.tracing.writers.MultiWriter;
 import com.heliosapm.streams.tracing.writers.NetWriter;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.url.URLHelper;
@@ -61,8 +65,8 @@ public class TracerFactory {
 	public static final String DEFAULT_WRITER_CLASS = LoggingWriter.class.getName();
 	
 	
-	/** Instance logger */
-	protected final Logger log = LogManager.getLogger(getClass());
+	/** Static class logger */
+	protected static final Logger log = LogManager.getLogger(TracerFactory.class);
 	
 	
 	/** The groovy tracer ctor */
@@ -77,7 +81,7 @@ public class TracerFactory {
 		.build();
 	
 	/** The configured writer */
-	private final IMetricWriter writer;
+	private volatile IMetricWriter writer;
 	
 	/**
 	 * Acquires and returns the singleton instance
@@ -102,13 +106,82 @@ public class TracerFactory {
 	 * @return the singleton instance
 	 */
 	public static TracerFactory getInstance(final URL jsonConfig) {
+		if(instance==null) {
+			synchronized(lock) {
+				if(instance==null) {
+					final Properties p = writerConfigProperties(jsonConfig);
+					initConfigListener(jsonConfig);
+					instance = new TracerFactory(p);
+				}
+			}
+		}
+		return instance;		
+	}
+	
+	static Properties writerConfigProperties(final URL jsonConfig) {
 		if(jsonConfig==null) throw new IllegalArgumentException("The passed json config URL was null");
 		final JsonNode rootNode = JSONOps.parseToNode(
 			StringHelper.resolveTokens(
 				URLHelper.getTextFromURL(jsonConfig)
 			)
 		);
+		final Properties p = new Properties();
+		final ArrayNode writersNode = (ArrayNode)rootNode.get("writers");
+		if(writersNode.size()==0) {
+			log.warn("No MetricWriters defined in config [{}]",  jsonConfig);
+		} else {
+			if(writersNode.size()==1) {
+				JsonNode writerNode = writersNode.get(0);
+				p.setProperty(CONFIG_WRITER_CLASS, writerNode.get("writer").textValue().trim());
+				if(writerNode.has("configs")) {
+					p.putAll(JSONOps.parseToObject(writerNode.get("configs"), Properties.class));
+				}
+			} else {
+				final StringBuilder b = new StringBuilder();
+				for(JsonNode writerNode: writersNode) {
+					b.append(writerNode.get("writer").textValue().trim()).append(",");
+					if(writerNode.has("configs")) {
+						p.putAll(JSONOps.parseToObject(writerNode.get("configs"), Properties.class));
+					}					
+				}
+				b.deleteCharAt(b.length()-1);
+				p.setProperty(MultiWriter.CONFIG_WRITER_CLASSES, b.toString());
+				p.setProperty(CONFIG_WRITER_CLASS, MultiWriter.class.getName());
+			}
+		}
+		return p;
 		
+	}
+	
+	static void initConfigListener(final URL configUrl) {
+		final AtomicLong lastModified = new AtomicLong(URLHelper.getLastModified(configUrl));
+		SharedScheduler.getInstance().scheduleWithFixedDelay(new Runnable(){
+			@Override
+			public void run() {				
+				try {
+					final long last = URLHelper.getLastModified(configUrl);
+					if(last > lastModified.get()) {
+						log.info("Refreshing TracerFactory MetricWriter Config...");
+						lastModified.set(last);
+						final Properties p = writerConfigProperties(configUrl);
+						final IMetricWriter writer = createWriter(p);
+						writer.start();
+						final IMetricWriter oldWriter = instance.writer;
+						try {
+							oldWriter.stopAsync();
+						} catch (Exception x) {/* No Op */}
+						instance.writer = writer;
+						for(ITracer tracer: instance.threadTracers.asMap().values()) {
+							((DefaultTracerImpl)tracer).updateWriter(writer);
+						}
+						log.info("TracerFactory Refreshed.");
+					}
+					
+				} catch (Exception ex) {
+					log.error("Failed to refresh tracer factory configuration from [{}]", configUrl, ex);
+				}
+			}
+		}, 15, 5, TimeUnit.SECONDS);
 	}
 	
 	/**
@@ -130,9 +203,7 @@ public class TracerFactory {
 	@SuppressWarnings("unchecked")
 	private TracerFactory(final Properties config) {
 		try {
-			final String writerClassName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_WRITER_CLASS, DEFAULT_WRITER_CLASS, config);
-			writer = (IMetricWriter)PrivateAccessor.createNewInstance(Class.forName(writerClassName), new Object[0]);
-			writer.configure(config);
+			writer = createWriter(config);
 			writer.start();
 			writer.awaitRunning(10, TimeUnit.SECONDS);
 			if(Groovy.isGroovyAvailable()) {
@@ -149,6 +220,22 @@ public class TracerFactory {
 			}
 		} catch (Exception ex) {
 			throw new IllegalArgumentException("Failed to configure TracerFactory", ex);
+		}
+	}
+
+	/**
+	 * Creates a new IMetricWriter from the passed properties
+	 * @param config The configuration properties
+	 * @return the new writer
+	 */
+	static IMetricWriter createWriter(final Properties config) {
+		try {
+			final String writerClassName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_WRITER_CLASS, DEFAULT_WRITER_CLASS, config);
+			final IMetricWriter writer = (IMetricWriter)PrivateAccessor.createNewInstance(Class.forName(writerClassName), new Object[0]);
+			writer.configure(config);
+			return writer;
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to create new IMetricWriter", ex);
 		}
 	}
 	
@@ -182,7 +269,7 @@ public class TracerFactory {
 		System.setProperty(CONFIG_WRITER_CLASS, "com.heliosapm.streams.tracing.writers.TelnetWriter");
 		System.setProperty(NetWriter.CONFIG_REMOTE_URIS, "localhost:4242");
 //		final ITracer tracer = TracerFactory.getInstance(null).getTracer();
-		final GroovyTracer tracer = (GroovyTracer)TracerFactory.getInstance(null).getTracer();
+		final GroovyTracer tracer = (GroovyTracer)TracerFactory.getInstance(new Properties()).getTracer();
 		log("Done");
 		StdInCommandHandler.getInstance().run();
 	}

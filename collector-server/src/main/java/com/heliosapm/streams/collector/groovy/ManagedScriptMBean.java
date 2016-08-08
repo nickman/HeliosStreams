@@ -200,4 +200,24 @@ public interface ManagedScriptMBean {
 	 */
 	public boolean isPrejected();
 	
+	/**
+	 * Returns the compile time for this script in ms.
+	 * @return the compile time for this script in ms.
+	 */
+	public long getCompileTime();
+	
+	/**
+	 * Indicates if this script is scheduled for execution
+	 * @return true if this script is scheduled for execution, false otherwise
+	 */
+	public boolean isScheduleActive();
+	
+	/**
+	 * Returns the elapsed time in seconds until the next time this script is executed,
+	 * or null if it is not scheduled for execution. 
+	 * @return the elased time in seconds until the next time this script is executed
+	 */
+	public Long getTimeUntilNextCollect();
+	
+	
 }

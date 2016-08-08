@@ -22,7 +22,6 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.Thread.UncaughtExceptionHandler;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -37,6 +36,7 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
@@ -55,9 +55,12 @@ import org.codehaus.groovy.reflection.ClassInfo;
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
+import com.heliosapm.streams.collector.TimeoutService;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
+import com.heliosapm.streams.tracing.ITracer;
+import com.heliosapm.streams.tracing.TracerFactory;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
@@ -70,8 +73,8 @@ import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovySystem;
 import groovy.lang.Script;
+import io.netty.util.Timeout;
 import jsr166e.LongAdder;
-import jsr166y.ForkJoinTask;
 
 /**
  * <p>Title: ManagedScript</p>
@@ -105,13 +108,16 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The names of pending dependencies */
 	protected final NonBlockingHashSet<String> pendingDependencies = new NonBlockingHashSet<String>();
 	/** The collection runner callable */
-	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable(this);
+	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable();
 	/** The dependency manager for this script */
 	protected final DependencyManager<ManagedScript> dependencyManager;
 	/** The source file */
 	protected File sourceFile = null;
 	/** The linked source file */
 	protected File linkedSourceFile = null; 
+	
+	/** The compile time for this script */
+	protected long compileTime = -1L;
 	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
@@ -123,7 +129,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		}
 	};
 	/** A counter for the number of consecutive collection errors */ 
-	protected final LongAdder consecutiveErrors = new LongAdder();
+	protected final AtomicLong consecutiveErrors = new AtomicLong();
 	/** A counter for the total number of collection errors */
 	protected final LongAdder totalErrors = new LongAdder();
 	/** The timestamp of the most recent collection error */
@@ -133,7 +139,9 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The elapsed time of the most recent collection */
 	protected final AtomicLong lastCollectionElapsed = new AtomicLong(-1L);
 	/** The current script state */
-	protected final AtomicReference<ScriptState> state = new AtomicReference<ScriptState>(ScriptState.INIT); 
+	protected final AtomicReference<ScriptState> state = new AtomicReference<ScriptState>(ScriptState.INIT);
+	/** flag indicating if rescheduling can occur */
+	protected final AtomicBoolean canReschedule = new AtomicBoolean(false);
 	
 	/** The deployment sequence id */
 	protected int deploymentId = 0;
@@ -173,17 +181,19 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 * Initializes this script
 	 * @param gcl The class loader
 	 * @param sourceReader The source file
+	 * @param compileTime The compile time for this script in ms.
 	 */
-	void initialize(final GroovyClassLoader gcl, final ByteBufReaderSource sourceReader, final String rootDirectory) {
+	void initialize(final GroovyClassLoader gcl, final ByteBufReaderSource sourceReader, final String rootDirectory, final long compileTime) {
 		this.gcl = gcl;
+		this.compileTime = compileTime;
 		this.sourceReader = sourceReader;
 		sourceFile = sourceReader.getSourceFile();
 		linkedSourceFile = getLinkedFile();
 		final String name = sourceReader.getSourceFile().getName().replace(".groovy", "");
 		final String dir = sourceReader.getSourceFile().getParent().replace(rootDirectory, "").replace("\\", "/").replace("/./", "/").replace("/collectors/", "");
-		this.bindingMap = sourceReader.getBindingMap();
-		this.binding = new Binding(this.bindingMap);
-		this.bindingMap.putAll(super.getBinding().getVariables());
+		bindingMap = sourceReader.getBindingMap();
+		binding = new Binding(this.bindingMap);
+		bindingMap.putAll(super.getBinding().getVariables());		
 		super.setBinding(this.binding);
 		final Matcher m = PERIOD_PATTERN.matcher(this.sourceReader.getSourceFile().getAbsolutePath());
 		if(m.matches()) {
@@ -204,6 +214,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		collectionTimer = SharedMetricsRegistry.getInstance().timer("collection.dir=" + dir + ".name=" + name);		
 		bindingMap.put("globalCache", GlobalCacheService.getInstance());
 		bindingMap.put("log", LogManager.getLogger("collectors." + dir.replace('/', '.') + "." + name));
+		
 		if(JMXHelper.isRegistered(objectName)) {
 			carryOverAndClose();
 			try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
@@ -220,7 +231,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		// Script is ready, now schedule it if a schedule was specified
 		// FIXME: need to do something with the initial delay
 		if(scheduledPeriod!=null && pendingDependencies.isEmpty()) {
-			scheduleHandle = SharedScheduler.getInstance().scheduleWithFixedDelay(this, 1, scheduledPeriod, scheduledPeriodUnit, this);
+			canReschedule.set(true);
+			scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);			
 			log.info("Collection Script scheduled");
 		}
 	}
@@ -269,20 +281,56 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		try { oldScript.close(); } catch (Exception x) {/* No Op */}
 	}
 	
-	private static class CollectionRunnerCallable implements Callable<Void> {
-		protected final WeakReference<ManagedScript> ref;
-		
-		CollectionRunnerCallable(ManagedScript ms) {
-			ref = new WeakReference<ManagedScript>(ms);
-		}
+	private class CollectionRunnerCallable implements Callable<Void> {
+		final TimeoutService timeoutService = TimeoutService.getInstance();
 		
 		@Override
 		public Void call() throws Exception {
-			final ManagedScript ms = ref.get();
-			if(ms!=null) {
-				ms.run();
+			try {
+				final Timeout txout = timeoutService.timeout(5, TimeUnit.SECONDS, new Runnable(){
+					final Thread me = Thread.currentThread();
+					@Override
+					public void run() {
+						me.interrupt();
+						log.warn("Task interrupted after timeout");
+					}
+				});
+				final long elapsed = scriptExec();
+				txout.cancel();
+				lastCollectionElapsed.set(elapsed);
+				collectionTimer.update(elapsed, TimeUnit.MILLISECONDS);
+				consecutiveErrors.set(0L);
+				lastCompleteCollection.set(System.currentTimeMillis());
+			} catch (Exception iex) {
+				consecutiveErrors.incrementAndGet();
+				totalErrors.increment();
+				lastError.set(System.currentTimeMillis());
+				if(iex instanceof InterruptedException) {
+					log.warn("Collect Task Execution Interrupted");
+				} else {
+					log.error("Task Execution Failed", iex);
+				}
+			} finally {
+				if(pendingDependencies.isEmpty()) {
+					canReschedule.set(true);
+					scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);					
+				} else {
+					log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
+				}
 			}
 			return null;
+		}
+		
+		protected long scriptExec() {
+			final ITracer tracer = TracerFactory.getInstance().getTracer();			
+			bindingMap.put("tracer", tracer);
+			try {
+				final long start = System.currentTimeMillis();
+				run();			
+				return System.currentTimeMillis() - start;
+			} finally {
+				tracer.flush();
+			}
 		}
 	}
 	
@@ -294,6 +342,12 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	void addPendingDependency(final String cacheKey) {
 		pendingDependencies.add(cacheKey);
+		canReschedule.set(false);
+		if(scheduleHandle != null) {
+			scheduleHandle.cancel(true);
+			scheduleHandle = null;
+		}
+
 	}
 	
 	/**
@@ -302,6 +356,10 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	void removePendingDependency(final String cacheKey) {
 		pendingDependencies.remove(cacheKey);
+		if(pendingDependencies.isEmpty()) {
+			canReschedule.set(true);
+			scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);			
+		}
 	}
 	
 	/**
@@ -310,42 +368,14 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public Void call() throws Exception {
-		try {
-			final long start = System.currentTimeMillis();
-			final ForkJoinTask<Void> task = executionService.submit(runCallable);
-			
-			//Context ctx = collectionTimer.time();
-//			final ForkJoinTask<Void> task = executionService.submit(new Callable<Void>(){
-//				@Override
-//				public Void call() throws Exception {		
-//					run();
-//					return null;
-//				}
-//			});
-			try {
-				task.get(5, TimeUnit.SECONDS);
-				final long endTime = System.currentTimeMillis();
-				lastCompleteCollection.set(endTime);
-				final long elapsed = endTime - start;
-				lastCollectionElapsed.set(elapsed);
-				collectionTimer.update(elapsed, TimeUnit.MILLISECONDS);
-			} catch (InterruptedException iex) {
-				log.warn("Collect Task Execution Interrupted");
-			} catch (Exception ex) {
-				log.error("Task Execution Failed", ex);
-				try { task.cancel(true); } catch (Exception x) {/* No Op */}
-			}
-			consecutiveErrors.reset();
-		} catch (Exception ex) {
-			consecutiveErrors.increment();
-			totalErrors.increment();
-			lastError.set(System.currentTimeMillis());
-			log.warn("Failed collection on [{}]", sourceReader, ex);
-		}
-		
+		executionService.submit(runCallable);
 		return null;
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getBindings()
+	 */
 	@Override
 	public Map<String, String> getBindings() {
 		final Map<String, String> bind = new HashMap<String, String>(bindingMap.size());
@@ -440,7 +470,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
         Iterator it = (Iterator) globalClassSetItems.getClass().getDeclaredMethod("iterator").invoke(globalClassSetItems);
 
         while (it.hasNext()) {
-            Object classInfo = it.next();
+            it.next();
             Object clazz = clazzField.get("ClassInfo");
             removeFromGlobalClassValue.invoke(globalClassValue, clazz);
         }
@@ -609,7 +639,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@Override
 	public long getConsecutiveCollectionErrors() {
-		return consecutiveErrors.longValue();
+		return consecutiveErrors.get();
 	}
 
 	/**
@@ -758,6 +788,34 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	@Override
 	public boolean isPrejected() {		
 		return sourceReader.isPrejected();
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getCompileTime()
+	 */
+	@Override
+	public long getCompileTime() {
+		return compileTime;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#isScheduleActive()
+	 */
+	@Override
+	public boolean isScheduleActive() {
+		return scheduleHandle != null;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getTimeUntilNextCollect()
+	 */
+	@Override
+	public Long getTimeUntilNextCollect() {
+		return scheduleHandle != null ? scheduleHandle.getDelay(TimeUnit.SECONDS) : null; 
 	}
 	
 }

@@ -23,22 +23,18 @@ import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.nio.charset.Charset;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -52,6 +48,7 @@ import com.google.common.cache.CacheBuilder;
 import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
+import com.heliosapm.streams.tracing.TracerFactory;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.file.FileChangeEvent;
 import com.heliosapm.utils.file.FileChangeEventListener;
@@ -62,10 +59,8 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.ref.ReferenceService;
-import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.url.URLHelper;
 
-import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyCodeSource;
 import groovy.lang.GroovySystem;
@@ -99,27 +94,14 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	public static final String[] DEFAULT_AUTO_IMPORTS = {
 			"import javax.management.*", 
 			"import java.lang.management.*",
-			"import com.heliosapm.streams.collector.groovy.*"
+			"import com.heliosapm.streams.collector.groovy.*",
+			"import groovy.transform.*"
 	};
-	
-	/** Cache injection substitution pattern */
-	public static final Pattern CACHE_PATTERN = Pattern.compile("\\$cache\\{(.*?)(?::(\\d+))?(?::(nanoseconds|microseconds|milliseconds|seconds|minutes|hours|days))??\\}");
-	/** Typed value substitution pattern */
-	public static final Pattern TYPED_PATTERN = Pattern.compile("\\$typed\\{(.*?):(.*)\\}");
-	
-	/** Injected field template */
-	public static final String INJECT_TEMPLATE = "@Dependency(value=\"%s\", timeout=%s, unit=%s) def %s;"; 
-	/** The UTF8 char set */
-	public static final Charset UTF8 = Charset.forName("UTF8");
-	/** The platform end of line character */
-	public static final String EOL = System.getProperty("line.separator");
-	
-	
 	
 	
 	/** The expected directory names under the collector-service root */
 	public static final Set<String> DIR_NAMES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
-			"lib", "bin", "conf", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
+			"lib", "bin", "conf", "tracing", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
 	)));
 	
 	/** The collector service root directory */
@@ -128,6 +110,11 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	protected final File scriptDirectory;
 	/** The collector service script path */
 	protected final Path scriptPath;
+	/** The collector service tracing config directory */
+	protected final File tracingDirectory;
+	
+	/** The configured tracing factory */
+	protected final TracerFactory tracerFactory;
 	
 	/** The lib (jar) directory class loader */
 	protected final URLClassLoader libDirClassLoader;
@@ -242,6 +229,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		log.info("Collector Service root directory: [{}]", rootDirectory);
 		rootDirectory.mkdirs();
 		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
+		tracingDirectory = new File(rootDirectory, "tracing").getAbsoluteFile();
+		tracerFactory = initTracing(tracingDirectory);
 		scriptPath = scriptDirectory.toPath();
 		System.setProperty("helios.collectors.script.root", scriptDirectory.getAbsolutePath());
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
@@ -276,6 +265,13 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	}
 	
 	
+	private static TracerFactory initTracing(final File trcConfigDir) {
+		final File jsonFile = new File(trcConfigDir, "tracing.json");
+		if(!jsonFile.canRead()) {
+			throw new IllegalStateException("No tracing json defined at [" + jsonFile + "]");
+		}
+		return TracerFactory.getInstance(URLHelper.toURL(jsonFile));
+	}
 	
 	
 	/** 
@@ -324,19 +320,22 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 */
 	public GroovyClassLoader newGroovyClassLoader() {	
 		
-		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(new URLClassLoader(libDirClassLoader.getURLs()), compilerConfig, false);
+		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, compilerConfig, false);
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
 		final long gclId = groovyClassLoaderSerial.incrementAndGet();
-		ReferenceService.getInstance().newWeakReference(groovyClassLoader, new Runnable(){
-			public void run() {
-				log.info("GroovyClassLoader #{} Unloaded", gclId);
-			}
-		}); 
+		ReferenceService.getInstance().newWeakReference(groovyClassLoader, groovyClassLoaderUnloader(gclId)); 
 //		groovyClassLoaders.put(gclId, groovyClassLoader);		
 		return groovyClassLoader;
 	}
 	
+	private static Runnable groovyClassLoaderUnloader(final long gclId) {
+		return new Runnable(){
+			public void run() {
+				log.info("GroovyClassLoader #{} Unloaded", gclId);
+			}
+		};
+	}
 	
 	
 	/**
@@ -347,6 +346,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	public ManagedScript compileScript(final File source) {
 		if(source==null) throw new IllegalArgumentException("The passed source file was null");
 		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
+		final long startTime = System.currentTimeMillis();
 		final String sourceName = source.getAbsolutePath().replace(rootDirectory.getAbsolutePath(), "");
 		final GroovyClassLoader gcl = newGroovyClassLoader();
 		boolean success = false;
@@ -360,13 +360,15 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			ReferenceService.getInstance().newWeakReference(msClazz, null);
 			//final ManagedScript ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{new Binding(bSource.getBindingMap())}, Binding.class);
 			final ManagedScript ms = msClazz.newInstance();
-			ms.initialize(gcl, bSource, rootDirectory.getAbsolutePath());
+			final long elapsedTime = System.currentTimeMillis() - startTime;
+			ms.initialize(gcl, bSource, rootDirectory.getAbsolutePath(), elapsedTime);
 			success = true;
 			managedScripts.put(source, ms);
 			successfulCompiles.increment();
 			compiledScripts.add(sourceName);
 			failedScripts.remove(sourceName);
-			log.info("Successfully Compiled script [{}] --> [{}].[{}].", sourceName, msClazz.getPackage().getName(), msClazz.getSimpleName());
+			
+			log.info("Successfully Compiled script [{}] --> [{}].[{}] in [{}] ms.", sourceName, msClazz.getPackage().getName(), msClazz.getSimpleName(), elapsedTime);
 			return ms;
 		} catch (CompilationFailedException cex) {
 			errMsg = "Failed to compile source ["+ source + "]";

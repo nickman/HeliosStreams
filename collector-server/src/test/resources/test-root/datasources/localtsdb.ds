@@ -1,7 +1,7 @@
 dataSourceClassName=org.postgresql.ds.PGPoolingDataSource
 dataSource.user=tsdb
 dataSource.password=tsdb
-dataSource.url=jdbc:postgresql://localhost:5432/tsdb
+dataSource.url=jdbc:postgresql://localhost:5432/tsdb?ApplicationName=collector-server
 connectionTimeout=10000
 idleTimeout=120000
 minimumIdle=3

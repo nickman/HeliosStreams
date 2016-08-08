@@ -78,6 +78,15 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 	
 	/**
 	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.IMetricWriter#areMetricsConfirmed()
+	 */
+	@Override
+	public boolean areMetricsConfirmed() {
+		return confirmsMetrics;
+	}
+	
+	/**
+	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.tracing.IMetricWriter#onMetrics(com.heliosapm.streams.metrics.StreamedMetric[])
 	 */
 	@Override
@@ -121,7 +130,15 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 	protected abstract void doMetrics(final StreamedMetric... metrics);
 
 	
-
+	/**
+	 * {@inheritDoc}
+	 * @see com.google.common.util.concurrent.AbstractIdleService#toString()
+	 */
+	@Override
+	public String toString() {
+		return getClass().getSimpleName();
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.tracing.IMetricWriter#onMetrics(io.netty.buffer.ByteBuf)
