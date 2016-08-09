@@ -135,9 +135,10 @@ public class MultiWriter extends AbstractMetricWriter {
 	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#onMetrics(io.netty.buffer.ByteBuf)
 	 */
 	@Override
-	public void onMetrics(ByteBuf metrics) {		
+	public void onMetrics(final ByteBuf metrics) {		
 		for(IMetricWriter imw : subWriters) {
 			imw.onMetrics(metrics);
+			metrics.resetReaderIndex();
 		}		
 	}
 

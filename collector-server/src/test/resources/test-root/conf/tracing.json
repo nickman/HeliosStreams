@@ -1,14 +1,22 @@
 {
 	"writers" : [
 		{
+			"writer" : "com.heliosapm.streams.tracing.writers.TelnetWriter",
+			"configs" : {
+				"metricwriter.net.remotes" : "localhost:4242",
+				"metricwriter.net.group.threads" : 4,
+				"metricwriter.net.eventloop.threads" : 8
+			}
+		}	
+	],
+	"inactive" : [
+		{
 			"writer" : "com.heliosapm.streams.tracing.writers.LoggingWriter",
 			"configs" : {
 				"metricwriter.logging.filename" : "/tmp/stream-metrics/streams.logfile.log",
 				"metricwriter.logging.ra" : "false"
 			}
-		}
-	],
-	"inactive" : [
+		},	
 		{
 			"writer" : "com.heliosapm.streams.tracing.writers.TelnetWriter",
 			"configs" : {

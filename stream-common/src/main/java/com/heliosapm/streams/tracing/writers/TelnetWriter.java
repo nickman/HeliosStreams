@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.tracing.writers;
 
+import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.List;
@@ -146,14 +147,12 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 			if(msg==null) return;
 			if(msg instanceof ByteBuf) {
 				final ByteBuf buff = (ByteBuf)msg;
-				final StreamedMetric[] values = StreamedMetricValue.read(new ByteBufInputStream(buff));
-				if(values.length > 0) {
-					final StringBuilder b = new StringBuilder(values.length * 128);
-					for(StreamedMetric sm: values) {
-						b.append(sm.toOpenTSDBString()).append(EOL);
-					}
-					out.add(b);
+				final StringBuilder b = new StringBuilder();
+				final InputStream is = new ByteBufInputStream(buff);
+				for(StreamedMetric sm: StreamedMetric.streamedMetrics(is, true, false)) {
+					b.append(sm.toOpenTSDBString()).append(EOL);
 				}
+				out.add(b);
 			} else if(msg instanceof StreamedMetric) {
 				out.add(((StreamedMetric)msg).toOpenTSDBString());
 			} else if(msg instanceof StreamedMetric[]) {

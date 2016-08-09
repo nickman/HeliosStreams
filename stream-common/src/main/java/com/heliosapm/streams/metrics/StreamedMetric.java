@@ -25,6 +25,7 @@
 package com.heliosapm.streams.metrics;
 
 import java.io.DataInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.Collections;
@@ -441,7 +442,6 @@ public class StreamedMetric implements BytesMarshallable {
 		GZIPInputStream gis = null;
 		final Set<StreamedMetric> metrics;
 		try {
-			is.mark(5);
 			final int type = is.read();
 			final byte[] metricCountBytes = new byte[4];
 			is.read(metricCountBytes);

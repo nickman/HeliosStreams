@@ -987,9 +987,9 @@ public class DefaultTracerImpl implements ITracer {
 		if(bufferedEvents > 0) {
 			final ElapsedTime et = SystemClock.startClock();
 			outBuffer.setInt(COUNT_OFFSET, bufferedEvents);
-			final ByteBuf bufferCopy = bufferFactory.buffer(outBuffer.readableBytes() + 5);
-			bufferCopy.writeByte(0);
-			bufferCopy.writeInt(bufferedEvents);
+			final ByteBuf bufferCopy = bufferFactory.buffer(outBuffer.readableBytes());
+//			bufferCopy.writeByte(0);
+//			bufferCopy.writeInt(bufferedEvents);
 			bufferCopy.writeBytes(outBuffer);
 			outBuffer.resetReaderIndex();
 			outBuffer.writerIndex(START_DATA_OFFSET);
