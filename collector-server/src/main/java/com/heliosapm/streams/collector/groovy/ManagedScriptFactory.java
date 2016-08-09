@@ -263,7 +263,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		log.info(">>>>> Starting ManagedScriptFactory...");
 		final String rootDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROOT_DIR, DEFAULT_ROOT_DIR);		
 		rootDirectory = new File(rootDirName);
-		initSubDirs();
+		initSubDirs(rootDirectory);
 		log.info("Collector Service root directory: [{}]", rootDirectory);
 		rootDirectory.mkdirs();
 		libDirectory = new File(rootDirectory, "lib");
@@ -451,8 +451,9 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 
 	/**
 	 * Creates any missing subdirectories
+	 * @param rootDirectory The root directory
 	 */
-	private void initSubDirs() {
+	public static void initSubDirs(final File rootDirectory) {
 		for(String dirName: DIR_NAMES) {
 			final File f = new File(rootDirectory, dirName);
 			if(!f.isDirectory()) {

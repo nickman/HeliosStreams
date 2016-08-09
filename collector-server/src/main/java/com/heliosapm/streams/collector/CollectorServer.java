@@ -36,6 +36,7 @@ public class CollectorServer {
 			"--root=<directory name> : Sets the root directory of the collector server. If not supplied, this will be the current directory. " +
 			"--jmxmp=<jmxmp listening port> : Sets the port that the JMXMP listener will listen on. If not supplied, defaults to 3456 " +
 			"--log4j2=<log4j2 xml config> : Sets the file location of a custom log4j2 XML configuration file. If not supplied, defaults to the internal default location. " +
+			"--init : Initializes the root directory" + 
 			"--help : Prints these options. ";
 
 
@@ -48,6 +49,7 @@ public class CollectorServer {
 	 * If not supplied, defaults to <b><code>3456</code></b></li>
 	 * 	<li><b>--log4j2=&lt;log4j2 xml config&gt;</b> : Sets the file location of a custom log4j2 XML configuration file.
 	 * If not supplied, defaults to the internal default location.</li>
+	 * 	<li><b>--init</b> : Initializes the root directory</li>
 	 * 	<li><b>--help</b> : Prints these options.</li>
 	 * </ul>
 	 */
@@ -61,7 +63,23 @@ public class CollectorServer {
 		 
 		final String rootDir = findArg("--root=", new File(".").toPath().normalize().toFile().getAbsolutePath(), args);
 		System.out.println("Helios CollectorServer Root Directory: [" + rootDir + "]");
+		final File rootDirectory = new File(rootDir);
+		if(!rootDirectory.isDirectory()) {
+			if(rootDirectory.isFile()) {
+				System.err.println("Specified root directory [" + rootDirectory + "] is a file");
+				System.exit(-1);				
+			} else if(!rootDirectory.exists()) {
+				if(!rootDirectory.mkdirs()) {
+					System.err.println("Failed to create root directory [" + rootDirectory + "]");
+					System.exit(-1);
+				}
+			}
+		}
 		System.setProperty(ManagedScriptFactory.CONFIG_ROOT_DIR, rootDir);
+		if(findArg("--init", null, args) != null) {
+			initDir(rootDirectory);
+		}
+		
 		final int jmxmpPort = findArg("--jmxmp=", 3456, args);
 		final String log4jLoc = findArg("--log4j2=", null, args);
 		if(log4jLoc!=null) {
@@ -75,6 +93,10 @@ public class CollectorServer {
 		JMXHelper.fireUpJMXMPServer(jmxmpPort);
 		ManagedScriptFactory.getInstance();
 		StdInCommandHandler.getInstance().run();
+	}
+	
+	private static void initDir(final File rootDirectory) {
+		ManagedScriptFactory.initSubDirs(rootDirectory);
 	}
 	
 	
