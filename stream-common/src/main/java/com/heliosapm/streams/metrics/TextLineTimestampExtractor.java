@@ -29,6 +29,10 @@ import org.apache.kafka.streams.processor.TimestampExtractor;
  * <p><code>com.heliosapm.streams.metrics.TextLineTimestampExtractor</code></p>
  */
 public class TextLineTimestampExtractor implements TimestampExtractor {
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.kafka.streams.processor.TimestampExtractor#extract(org.apache.kafka.clients.consumer.ConsumerRecord)
+	 */
 	@Override
 	public long extract(final ConsumerRecord<Object, Object> record) {
 		try {
