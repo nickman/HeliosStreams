@@ -20,8 +20,6 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.kafka.streams.processor.TimestampExtractor;
-
 /**
  * <p>Title: Utils</p>
  * <p>Description: Static utility methods</p> 
@@ -32,9 +30,6 @@ import org.apache.kafka.streams.processor.TimestampExtractor;
 
 public class Utils {
 	
-	/** The text line timestamp extractor */
-	public static final TimestampExtractor TEXT_TS_EXTRACTOR = new TextLineTimestampExtractor();
-
 	//  [<value-type>,]<timestamp>, [<value>,] <metric-name>, <host>, <app> [,<tagkey1>=<tagvalue1>,<tagkeyn>=<tagvaluen>]
 	
 	

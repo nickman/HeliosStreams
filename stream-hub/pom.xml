@@ -312,16 +312,16 @@
 				</executions>
 				<configuration>
 				  <forceCreation>true</forceCreation>
-           <archive>
-               <manifest>
-                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
-                   <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
-                   <addClasspath>true</addClasspath>
-               </manifest>
-               <manifestEntries>
-	               <Main-Class>com.heliosapm.streams.StreamHubBoot</Main-Class>
-               </manifestEntries>
-           </archive>
+		           <archive>
+		               <manifest>
+		                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+		                   <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+		                   <addClasspath>true</addClasspath>
+		               </manifest>
+		               <manifestEntries>
+			               <Main-Class>com.heliosapm.streams.StreamHubBoot</Main-Class>
+		               </manifestEntries>
+		           </archive>
 				  
 				</configuration>
 	    </plugin>

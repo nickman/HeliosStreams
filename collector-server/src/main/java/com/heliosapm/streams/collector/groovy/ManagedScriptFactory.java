@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.streams.collector.groovy;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Constructor;
@@ -43,6 +44,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.jar.JarFile;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -119,11 +121,16 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	/** The expected directory names under the collector-service root */
 	public static final Set<String> DIR_NAMES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
-			"tmp", "lib", "bin", "conf", "tracing", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
+			"templates", "tmp", "lib", "bin", "conf", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
 	)));
 	
 	/** The collector service root directory */
 	protected final File rootDirectory;
+	/** The 3rd party lib directory */
+	protected final File libDirectory;
+	/** The 3rd party JDBC lib directory */
+	protected final File jdbcLibDirectory;
+	
 	/** The collector service script directory */
 	protected final File scriptDirectory;
 	/** The collector service fixture directory */
@@ -135,8 +142,6 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	/** The collector service script path */
 	protected final Path scriptPath;
-	/** The collector service tracing config directory */
-	protected final File tracingDirectory;
 	
 	/** The configured plus the default auto imports */
 	protected final Set<String> autoImports = new NonBlockingHashSet<String>();
@@ -258,20 +263,24 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		log.info(">>>>> Starting ManagedScriptFactory...");
 		final String rootDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROOT_DIR, DEFAULT_ROOT_DIR);		
 		rootDirectory = new File(rootDirName);
+		initSubDirs();
 		log.info("Collector Service root directory: [{}]", rootDirectory);
 		rootDirectory.mkdirs();
+		libDirectory = new File(rootDirectory, "lib");
+		jdbcLibDirectory = new File(libDirectory, "jdbc");
+		jdbcLibDirectory.mkdir();
 		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
 		fixtureDirectory = new File(rootDirectory, "fixtures").getAbsoluteFile();
-		tracingDirectory = new File(rootDirectory, "tracing").getAbsoluteFile();
 		confDirectory = new File(rootDirectory, "conf").getAbsoluteFile();
 		tmpDirectory = new File(rootDirectory, "tmp").getAbsoluteFile();		
-		tracerFactory = initTracing(tracingDirectory);
+		tracerFactory = initTracing(confDirectory);
 		scriptPath = scriptDirectory.toPath();
 		
 		System.setProperty("helios.collectors.script.root", scriptDirectory.getAbsolutePath());
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
-		initSubDirs();
-		libDirClassLoader = new URLClassLoader(listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
+		
+		libDirClassLoader = new URLClassLoader(listLibJarUrls(libDirectory, new HashSet<URL>()));
+		loadJDBCDrivers();
 				//HeliosURLClassLoader.getOrCreateLoader(getClass().getSimpleName() + "LibClassLoader", listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));
 //		ServiceLoader<Driver> sl = ServiceLoader.load(Driver.class, libDirClassLoader);
 //		for(Driver d: sl) {
@@ -452,6 +461,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 				}
 			}
 		}		
+		
 	}
 	
 	private void customizeCompiler() {
@@ -534,6 +544,26 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	}
 	
 	
+	private void loadJDBCDrivers() {
+		final File[] jdbcDrivers = jdbcLibDirectory.listFiles(new FileFilter(){
+			@Override
+			public boolean accept(final File f) {
+				return f.isFile() && f.getName().endsWith(".jar");
+			}
+		});
+		if(jdbcDrivers.length > 0) {
+			final Instrumentation instr = LocalAgentInstaller.getInstrumentation();
+			for(File f : jdbcDrivers) {
+				try {
+					final JarFile jar = new JarFile(f, false);
+					instr.appendToSystemClassLoaderSearch(jar);
+				} catch (Exception ex) {
+					log.error("Failed to load JDBC jar file [{}]",  f, ex);
+				}
+			}
+		}
+	}
+	
 	private URL[] listLibJarUrls(final File dir, final Set<URL> accum) {
 		final Set<URL> _accum = accum==null ? new HashSet<URL>() : accum;
 		for(File f: dir.listFiles()) {
@@ -541,6 +571,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 				listLibJarUrls(f, _accum);
 			} else {
 				if(f.getName().toLowerCase().endsWith(".jar")) {
+					if(f.getParent().equals(libDirectory)) continue;
 					final URL jarUrl = URLHelper.toURL(f.getAbsolutePath());
 					_accum.add(jarUrl);
 					log.info("Adding [{}] to classpath", jarUrl);

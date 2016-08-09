@@ -37,10 +37,6 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPInputStream;
 
-import org.apache.kafka.common.serialization.Deserializer;
-import org.apache.kafka.common.serialization.Serde;
-import org.apache.kafka.common.serialization.Serializer;
-
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.tracing.TagKeySorter;
 import com.heliosapm.utils.reflect.PrivateAccessor;
@@ -85,38 +81,6 @@ public class StreamedMetric implements BytesMarshallable {
 	
 	/** The type code for this metric type */
 	public static final byte TYPE_CODE = 0;
-	
-	
-	/** The Streamed Metric Serde */
-	public static final Serde<StreamedMetric> SERDE = new Serde<StreamedMetric>() {
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Serde#deserializer()
-		 */
-		@Override
-		public Deserializer<StreamedMetric> deserializer() {			
-			return new StreamedMetricDeserializer();
-		}
-		
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Serde#serializer()
-		 */
-		@Override
-		public Serializer<StreamedMetric> serializer() {			
-			return new StreamedMetricSerializer();
-		}
-
-		@Override
-		public void configure(final Map<String, ?> configs, final boolean isKey) {
-			/* No Op */
-		}
-
-		@Override
-		public void close() {
-			/* No Op */			
-		}
-	};
 	
 
 	/**

@@ -6,10 +6,6 @@
 				"metricwriter.logging.filename" : "/tmp/stream-metrics/streams.logfile.log",
 				"metricwriter.logging.ra" : "false"
 			}
-		},
-		{
-			"writer" : "com.heliosapm.streams.tracing.writers.ConsoleWriter"
-			
 		}
 	],
 	"inactive" : [
@@ -33,6 +29,10 @@
 				"metricwriter.kafka.topics" : "tsdb.metrics.st",
 				"metricwriter.kafka.interceptor.classes" : "com.heliosapm.streams.common.kafka.interceptor.MonitoringProducerInterceptor"
 			}
+		},
+		{
+			"writer" : "com.heliosapm.streams.tracing.writers.ConsoleWriter"
+			
 		}
 		
 	]	

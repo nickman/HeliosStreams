@@ -18,6 +18,44 @@
 	
     <dependencies>
       
+		<dependency>				
+			<groupId>com.heliosapm.utils</groupId>
+			<artifactId>heliosutils</artifactId>
+		</dependency>
+
+		      <dependency>
+						<groupId>org.codehaus.groovy</groupId>
+						<artifactId>groovy-all</artifactId>
+						<!-- <classifier>indy</classifier> -->
+						<version>${groovy.version}</version>
+						<scope>compile</scope>
+		      </dependency>
+
+	    <dependency>
+	      <groupId>com.google.guava</groupId>
+	      <artifactId>guava</artifactId>
+	      <scope>compile</scope>
+	    </dependency>
+
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-core</artifactId>
+		  <version>${jackson.version}</version>
+		  <scope>compile</scope>
+		</dependency>
+		
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-annotations</artifactId>
+		  <scope>compile</scope>
+		</dependency>
+		
+		
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-databind</artifactId>
+		  <scope>compile</scope>
+		</dependency>
       
 		<dependency>
 		    <groupId>junit</groupId>
@@ -54,11 +92,13 @@
 		</dependency>
 		-->
 		
+		<!-- 
 		<dependency>
 		  <groupId>org.postgresql</groupId>
 		  <artifactId>postgresql</artifactId>
 		  <version>9.4-1201-jdbc41</version>		
 		</dependency>
+		-->
 
 		<dependency>
 		    <groupId>com.heliosapm.streams</groupId>
@@ -379,6 +419,16 @@
 		<version>${jar-plugin.version}</version>
 		<configuration>
 		  <forceCreation>true</forceCreation>
+           <archive>
+               <manifest>
+                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                   <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                   <addClasspath>true</addClasspath>
+               </manifest>
+               <manifestEntries>
+	               <Main-Class>com.heliosapm.streams.collector.CollectorServer</Main-Class>
+               </manifestEntries>
+           </archive>		  		  
 		</configuration>
 	    </plugin>
 	    <plugin>
