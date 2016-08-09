@@ -232,11 +232,14 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		}
 		
 		// Script is ready, now schedule it if a schedule was specified
-		// FIXME: need to do something with the initial delay
-		if(scheduledPeriod!=null && pendingDependencies.isEmpty()) {
-			canReschedule.set(true);
-			scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);			
-			log.info("Collection Script scheduled");
+		if(scheduledPeriod!=null) {
+			if(pendingDependencies.isEmpty()) {
+				canReschedule.set(true);
+				scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);			
+				log.info("Collection Script scheduled");
+			} else {
+				log.info("Script not scheduled. Waiting on {}", pendingDependencies);
+			}
 		}
 	}
 	

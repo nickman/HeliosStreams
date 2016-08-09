@@ -97,6 +97,8 @@ public class CollectorServer {
 	
 	private static void initDir(final File rootDirectory) {
 		ManagedScriptFactory.initSubDirs(rootDirectory);
+		System.out.println("Initialized directory [" + rootDirectory + "]");
+		System.exit(0);
 	}
 	
 	

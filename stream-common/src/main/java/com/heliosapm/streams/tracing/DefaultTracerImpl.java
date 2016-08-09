@@ -242,6 +242,15 @@ public class DefaultTracerImpl implements ITracer {
 //		tags.clear();		
 		return this;
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "ITracer[" + writer.toString() + "]";
+	}
 
 	/**
 	 * {@inheritDoc}
