@@ -179,6 +179,7 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 			} else {
 				log.warn("Unknown type submitted: [{}]", msg.getClass().getName());
 			}
+			ctx.channel().flush();
 			if(log.isDebugEnabled() && !out.isEmpty()) {
 				for(Object s: out) {
 					log.debug("Out Metric:\n[{}]", s);
