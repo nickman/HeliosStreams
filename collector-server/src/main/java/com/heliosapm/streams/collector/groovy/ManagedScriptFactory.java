@@ -21,46 +21,64 @@ package com.heliosapm.streams.collector.groovy;
 import java.io.File;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.control.messages.WarningMessage;
+import org.springframework.context.annotation.Import;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
+import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
+import com.heliosapm.streams.collector.ssh.SSHConnection;
+import com.heliosapm.streams.collector.ssh.SSHTunnelManager;
 import com.heliosapm.streams.tracing.TracerFactory;
+import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.file.FileChangeEvent;
 import com.heliosapm.utils.file.FileChangeEventListener;
 import com.heliosapm.utils.file.FileChangeWatcher;
 import com.heliosapm.utils.file.FileFinder;
+import com.heliosapm.utils.file.FileHelper;
 import com.heliosapm.utils.file.Filters.FileMod;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.ref.ReferenceService;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.url.URLHelper;
 
+import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyCodeSource;
 import groovy.lang.GroovySystem;
@@ -101,17 +119,27 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	/** The expected directory names under the collector-service root */
 	public static final Set<String> DIR_NAMES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
-			"lib", "bin", "conf", "tracing", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
+			"tmp", "lib", "bin", "conf", "tracing", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
 	)));
 	
 	/** The collector service root directory */
 	protected final File rootDirectory;
 	/** The collector service script directory */
 	protected final File scriptDirectory;
+	/** The collector service fixture directory */
+	protected final File fixtureDirectory;
+	/** The collector service conf directory */
+	protected final File confDirectory;
+	/** The collector service tmp directory where the compiler puts runtime artifacts */
+	protected final File tmpDirectory;
+	
 	/** The collector service script path */
 	protected final Path scriptPath;
 	/** The collector service tracing config directory */
 	protected final File tracingDirectory;
+	
+	/** The configured plus the default auto imports */
+	protected final Set<String> autoImports = new NonBlockingHashSet<String>();
 	
 	/** The configured tracing factory */
 	protected final TracerFactory tracerFactory;
@@ -129,7 +157,9 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	/** The JDBC data source manager to provide DB connections */
 	protected JDBCDataSourceManager jdbcDataSourceManager = null;
 	/** The collector execution thread pool */
-	protected final CollectorExecutionService collectorExecutionService; 
+	protected final CollectorExecutionService collectorExecutionService;
+	/** The base bindings to supply to all compiled scripts */
+	protected final Map<String, Object> globalBindings = new ConcurrentHashMap<String, Object>();
 	
 	/** A counter of successful compilations */
 	protected final LongAdder successfulCompiles = new LongAdder();
@@ -179,10 +209,12 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		getInstance();
 		StdInCommandHandler.getInstance()
 			.registerCommand("gc", new Runnable(){
+				@Override
 				public void run() {
 					System.gc();
 				}
 			}).registerCommand("cls", new Runnable(){
+				@Override
 				public void run() {
 //					final Map<String, int[]> map = new HashMap<String, int[]>();
 					final StringBuilder b = new StringBuilder("======== GCL Loaded Classes:");
@@ -229,9 +261,13 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		log.info("Collector Service root directory: [{}]", rootDirectory);
 		rootDirectory.mkdirs();
 		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
+		fixtureDirectory = new File(rootDirectory, "fixtures").getAbsoluteFile();
 		tracingDirectory = new File(rootDirectory, "tracing").getAbsoluteFile();
+		confDirectory = new File(rootDirectory, "conf").getAbsoluteFile();
+		tmpDirectory = new File(rootDirectory, "tmp").getAbsoluteFile();		
 		tracerFactory = initTracing(tracingDirectory);
 		scriptPath = scriptDirectory.toPath();
+		
 		System.setProperty("helios.collectors.script.root", scriptDirectory.getAbsolutePath());
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
 		initSubDirs();
@@ -242,6 +278,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 //			log.info("Loaded Driver: [{}]", d.getClass().getName());
 //		}
 //		Thread.currentThread().setContextClassLoader(libDirClassLoader);
+		FileHelper.cleanDir(tmpDirectory);
 		MetaClassRegistryCleaner.createAndRegister();
 //		GroovySystem.setKeepJavaMetaClasses(false);
 //		GroovySystem.stopThreadedReferenceManager();
@@ -312,15 +349,24 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	
 	
-	
-	
 	/**
 	 * Creates a new groovy class loader for a new managed script
 	 * @return the groovy class loader
 	 */
-	public GroovyClassLoader newGroovyClassLoader() {	
+	public GroovyClassLoader newGroovyClassLoader() {
+		return newGroovyClassLoader(null);
+	}
+	
+	
+	/**
+	 * Creates a new groovy class loader for a new managed script
+	 * @param altConfig An optional alternate compiler configuration. If null, uses the factory's default config
+	 * @return the groovy class loader
+	 */
+	public GroovyClassLoader newGroovyClassLoader(final CompilerConfiguration altConfig) {	
 		
-		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, compilerConfig, false);
+		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, (altConfig==null ? compilerConfig : altConfig), false);
+		groovyClassLoader.addURL(URLHelper.toURL(fixtureDirectory));
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
 		final long gclId = groovyClassLoaderSerial.incrementAndGet();
@@ -331,6 +377,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	private static Runnable groovyClassLoaderUnloader(final long gclId) {
 		return new Runnable(){
+			@Override
 			public void run() {
 				log.info("GroovyClassLoader #{} Unloaded", gclId);
 			}
@@ -361,7 +408,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			//final ManagedScript ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{new Binding(bSource.getBindingMap())}, Binding.class);
 			final ManagedScript ms = msClazz.newInstance();
 			final long elapsedTime = System.currentTimeMillis() - startTime;
-			ms.initialize(gcl, bSource, rootDirectory.getAbsolutePath(), elapsedTime);
+			ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
 			success = true;
 			managedScripts.put(source, ms);
 			successfulCompiles.increment();
@@ -408,30 +455,56 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	}
 	
 	private void customizeCompiler() {
-		compilerConfig.setDebug(true);
-		compilerConfig.setMinimumRecompilationInterval(5);
-		compilerConfig.setRecompileGroovySource(true);
-		compilerConfig.setOptimizationOptions(Collections.singletonMap("indy", true));
-		compilerConfig.setScriptBaseClass(ManagedScript.class.getName());
-		compilerConfig.setTargetDirectory(rootDirectory);
-		compilerConfig.setTolerance(0);
-		compilerConfig.setVerbose(true);
-		compilerConfig.setWarningLevel(WarningMessage.PARANOIA);
-		final String[] imports = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_AUTO_IMPORTS, DEFAULT_AUTO_IMPORTS);
-		applyImports(imports);
-		if(imports!=DEFAULT_AUTO_IMPORTS) {
-			applyImports(DEFAULT_AUTO_IMPORTS);
+		final File compilerPropsFile = new File(confDirectory, "compiler.properties");
+		if(compilerPropsFile.canRead()) {
+			final String propsStr = URLHelper.getTextFromFile(compilerPropsFile);
+			final String resolvedPropsStr = StringHelper.resolveTokens(propsStr);
+			final Properties p = Props.strToProps(resolvedPropsStr);
+			compilerConfig.configure(p);
+		} else {
+			compilerConfig.setDebug(true);
+			compilerConfig.setMinimumRecompilationInterval(5);
+			compilerConfig.setRecompileGroovySource(false);
+			compilerConfig.setOptimizationOptions(Collections.singletonMap("indy", true));
+			compilerConfig.setTolerance(100);
+			compilerConfig.setVerbose(true);
+			compilerConfig.setWarningLevel(WarningMessage.NONE);
+			
 		}
+		compilerConfig.setScriptBaseClass(ManagedScript.class.getName());
+		compilerConfig.setTargetDirectory(tmpDirectory);
+
+		final String[] imports = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_AUTO_IMPORTS, DEFAULT_AUTO_IMPORTS);
+		Collections.addAll(autoImports, DEFAULT_AUTO_IMPORTS);
+		if(imports!=DEFAULT_AUTO_IMPORTS) {
+			Collections.addAll(autoImports, imports);
+		}
+		if(fixtureDirectory.isDirectory()) {
+			compilerConfig.getClasspath().add(fixtureDirectory.getAbsolutePath() + "/");
+			for(File f: fixtureDirectory.listFiles()) {
+				if(f.isDirectory()) {
+//					autoImports.add("import " + f.getName() + ";");
+				}
+			}
+		}
+		applyImports(false);
 		compilerConfig.addCompilationCustomizers(importCustomizer, new PackageNameCustomizer());
 	}
 	
+	
+	
 	/**
 	 * Applies the configured imports to the compiler configuration
+	 * @param reset Clears the existing imports before adding
 	 * @param impCustomizer The import customizer to add the imports to
 	 * @param imps  The imports to add
 	 */
-	private void applyImports(final String...imps) {		
-		for(String imp: imps) {
+	@SuppressWarnings("unchecked")
+	private synchronized void applyImports(final boolean reset) {	
+		if(reset) {
+			((List<Import>)PrivateAccessor.getFieldValue(importCustomizer, "imports")).clear();
+		}
+		for(String imp: autoImports) {
 			String _imp = imp.trim().replaceAll("\\s+", " ");
 			if(!_imp.startsWith("import")) {
 				log.warn("Unrecognized import [", imp, "]"); 
@@ -498,6 +571,94 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			}
 		});
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#launchConsole()
+	 */
+	@Override
+	public void launchConsole() {
+		launchConsole(null);
+	}
+	
+	
+	
+	
+	private Map<String, Object> getGlobalBindings() {
+		if(globalBindings.isEmpty()) {
+			synchronized(globalBindings) {
+				if(globalBindings.isEmpty()) {
+					globalBindings.put("globalCache", GlobalCacheService.getInstance());
+					globalBindings.put("dsManager", jdbcDataSourceManager);
+					globalBindings.put("tunnelManager", SSHTunnelManager.getInstance());
+					globalBindings.put("sshconn", SSHConnection.class);
+					globalBindings.put("mbs", JMXHelper.getHeliosMBeanServer());
+					globalBindings.put("jmxHelper", JMXHelper.class);
+					globalBindings.put("urlHelper", URLHelper.class);
+					globalBindings.put("stringHelper", StringHelper.class);					
+				}
+			}
+		}
+		return new HashMap<String, Object>(globalBindings);		
+		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#launchConsole(java.lang.String)
+	 */
+	@Override
+	public void launchConsole(final String fileName) {
+		final CompilerConfiguration cc = new CompilerConfiguration(CompilerConfiguration.DEFAULT);		
+		cc.addCompilationCustomizers(importCustomizer);
+		final GroovyClassLoader consoleClassLoader = newGroovyClassLoader(cc);
+		try {
+			final Class<?> clazz = Class.forName("groovy.ui.Console");
+			Constructor<?> ctor = clazz.getDeclaredConstructor(ClassLoader.class, Binding.class);
+			final Map<String, Object> bmap = getGlobalBindings();
+			bmap.put("log", LogManager.getLogger("groovy.ui.Console"));
+			final Binding binding = new Binding(bmap);
+			final Object console = ctor.newInstance(consoleClassLoader, binding);
+			final Method method = console.getClass()
+				.getDeclaredMethod("run");
+			final CountDownLatch launchLatch = new CountDownLatch(1);
+			final Throwable[] launchFail = new Throwable[1];
+			final Thread t = new Thread("HeliosGroovyConsoleThread") {
+				@Override
+				public void run() {
+					
+					try {
+						method.invoke(console);
+						
+						final String _fileName = (fileName==null || fileName.trim().isEmpty() || !new File(fileName.trim()).canRead()) ? null : fileName.trim(); 
+						if(_fileName!=null) {
+							File f = new File(_fileName);
+							clazz.getDeclaredMethod("loadScriptFile", File.class).invoke(console, f);
+						}
+					} catch (Throwable t) {
+						launchFail[0] = t;
+					} finally {
+						launchLatch.countDown();
+					}
+				}
+			};
+			t.setDaemon(true);
+			t.start();
+			if(!launchLatch.await(5, TimeUnit.SECONDS)) {
+				throw new RuntimeException("Timed out waiting for console launch");
+			}
+			if(launchFail[0]!=null) {
+				throw new RuntimeException("Console launch failed", launchFail[0]);
+			}
+		} catch (Exception e) {
+			log.error("Failed to launch console", e);
+			if(e.getCause()!=null) {
+				log.error("Failed to launch console cause", e.getCause());
+			}
+			throw new RuntimeException("Failed to launch console", e);
+		}		
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -623,6 +784,168 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	public int getFailedScriptCount() {
 		return failedScripts.size();
 	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getAutoImports()
+	 */
+	@Override
+	public Set<String> getAutoImports() {
+		return new HashSet<String>(autoImports);
+	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#addAutoImport(java.lang.String)
+	 */
+	@Override
+	public Set<String> addAutoImport(final String importStatement) {
+		if(importStatement==null || importStatement.trim().isEmpty()) throw new IllegalArgumentException("The passed importStatement was null or empty");
+		if(autoImports.add(importStatement.trim())) {
+			applyImports(true);
+		}
+		return getAutoImports();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#removeAutoImport(java.lang.String)
+	 */
+	@Override
+	public Set<String> removeAutoImport(String importStatement) {
+		if(importStatement==null || importStatement.trim().isEmpty()) throw new IllegalArgumentException("The passed importStatement was null or empty");
+		if(autoImports.remove(importStatement.trim())) {
+			applyImports(true);
+		}
+		return getAutoImports();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#clearAutoImports()
+	 */
+	@Override
+	public void clearAutoImports() {
+		autoImports.clear();
+		applyImports(true);		
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getWarningLevel()
+	 */
+	@Override
+	public int getWarningLevel() {
+		return compilerConfig.getWarningLevel();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#setWarningLevel(int)
+	 */
+	@Override
+	public void setWarningLevel(final int level) {
+		compilerConfig.setWarningLevel(level);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getSourceEncoding()
+	 */
+	@Override
+	public String getSourceEncoding() {
+		return compilerConfig.getSourceEncoding();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getTargetDirectory()
+	 */
+	@Override
+	public File getTargetDirectory() {
+		return compilerConfig.getTargetDirectory();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getClasspath()
+	 */
+	@Override
+	public List<String> getClasspath() {
+		return compilerConfig.getClasspath();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#isVerbose()
+	 */
+	@Override
+	public boolean isVerbose() {
+		return compilerConfig.getVerbose();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#setVerbose(boolean)
+	 */
+	@Override
+	public void setVerbose(final boolean verbose) {
+		compilerConfig.setVerbose(verbose);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#isDebug()
+	 */
+	@Override
+	public boolean isDebug() {
+		return compilerConfig.getDebug();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#setDebug(boolean)
+	 */
+	@Override
+	public void setDebug(final boolean debug) {
+		compilerConfig.setDebug(debug);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getTolerance()
+	 */
+	@Override
+	public int getTolerance() {
+		return compilerConfig.getTolerance();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#setTolerance(int)
+	 */
+	@Override
+	public void setTolerance(final int tolerance) {
+		compilerConfig.setTolerance(tolerance);
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getTargetBytecode()
+	 */
+	@Override
+	public String getTargetBytecode() {
+		return compilerConfig.getTargetBytecode();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#getOptimizationOptions()
+	 */
+	@Override
+	public Map<String, Boolean> getOptimizationOptions() {
+		return compilerConfig.getOptimizationOptions();
+	}
 
 }

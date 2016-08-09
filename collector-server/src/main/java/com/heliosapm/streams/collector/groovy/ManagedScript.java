@@ -180,10 +180,11 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/**
 	 * Initializes this script
 	 * @param gcl The class loader
+	 * @param baseBindings A map of objects to add to the bindings for this script
 	 * @param sourceReader The source file
 	 * @param compileTime The compile time for this script in ms.
 	 */
-	void initialize(final GroovyClassLoader gcl, final ByteBufReaderSource sourceReader, final String rootDirectory, final long compileTime) {
+	void initialize(final GroovyClassLoader gcl, final Map<String, Object> baseBindings, final ByteBufReaderSource sourceReader, final String rootDirectory, final long compileTime) {
 		this.gcl = gcl;
 		this.compileTime = compileTime;
 		this.sourceReader = sourceReader;
@@ -194,6 +195,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		bindingMap = sourceReader.getBindingMap();
 		binding = new Binding(this.bindingMap);
 		bindingMap.putAll(super.getBinding().getVariables());		
+		bindingMap.putAll(baseBindings);
 		super.setBinding(this.binding);
 		final Matcher m = PERIOD_PATTERN.matcher(this.sourceReader.getSourceFile().getAbsolutePath());
 		if(m.matches()) {
@@ -211,8 +213,9 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 				.append(",name=")
 				.append(name)
 		);
-		collectionTimer = SharedMetricsRegistry.getInstance().timer("collection.dir=" + dir + ".name=" + name);		
-		bindingMap.put("globalCache", GlobalCacheService.getInstance());
+		collectionTimer = SharedMetricsRegistry.getInstance().timer("collection.dir=" + dir + ".name=" + name);
+		
+//		bindingMap.put("globalCache", GlobalCacheService.getInstance());
 		bindingMap.put("log", LogManager.getLogger("collectors." + dir.replace('/', '.') + "." + name));
 		
 		if(JMXHelper.isRegistered(objectName)) {

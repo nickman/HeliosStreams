@@ -132,7 +132,7 @@
 		      <dependency>
 						<groupId>org.codehaus.groovy</groupId>
 						<artifactId>groovy-all</artifactId>
-						<classifier>indy</classifier>
+						<!-- <classifier>indy</classifier> -->
 						<version>${groovy.version}</version>
 						<scope>provided</scope>
 		      </dependency>

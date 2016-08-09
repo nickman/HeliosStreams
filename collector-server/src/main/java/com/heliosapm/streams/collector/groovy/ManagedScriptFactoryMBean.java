@@ -18,6 +18,9 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.io.File;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import javax.management.ObjectName;
@@ -83,5 +86,121 @@ public interface ManagedScriptFactoryMBean {
 	 * @return the number of managed scripts
 	 */
 	public long getManagedScriptCount();	
+	
+	/**
+	 * Returns the script compiler's auto imports
+	 * @return the script compiler's auto imports
+	 */
+	public Set<String> getAutoImports();
+	
+	/**
+	 * Adds an auto import statement and returns the new config
+	 * @param importStatement The import statement to add
+	 * @return the new set after this op is invoked
+	 */
+	public Set<String> addAutoImport(final String importStatement);
+	
+	/**
+	 * Removed an auto import statement and returns the new config
+	 * @param importStatement The import statement to remove
+	 * @return the new set after this op is invoked
+	 */
+	public Set<String> removeAutoImport(final String importStatement);
+	
+	/**
+	 * Clears the auto imports
+	 */
+	public void clearAutoImports();
+	
+	/**
+	 * Launches the swing groovy console
+	 */
+	public void launchConsole();
+
+	
+	/**
+	 * Launches the swing groovy console and loads the passed file
+	 * @param fileName the file to load
+	 */
+	public void launchConsole(final String fileName);
+	
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getWarningLevel()
+	 */
+	public int getWarningLevel();
+
+	/**
+	 * @param level
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#setWarningLevel(int)
+	 */
+	public void setWarningLevel(int level);
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getSourceEncoding()
+	 */
+	public String getSourceEncoding();
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getTargetDirectory()
+	 */
+	public File getTargetDirectory();
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getClasspath()
+	 */
+	public List<String> getClasspath();
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getVerbose()
+	 */
+	public boolean isVerbose();
+
+	/**
+	 * @param verbose
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#setVerbose(boolean)
+	 */
+	public void setVerbose(boolean verbose);
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getDebug()
+	 */
+	public boolean isDebug();
+
+	/**
+	 * @param debug
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#setDebug(boolean)
+	 */
+	public void setDebug(boolean debug);
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getTolerance()
+	 */
+	public int getTolerance();
+
+	/**
+	 * @param tolerance
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#setTolerance(int)
+	 */
+	public void setTolerance(int tolerance);
+
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getTargetBytecode()
+	 */
+	public String getTargetBytecode();
+
+	/**
+	 * @return
+	 * @see org.codehaus.groovy.control.CompilerConfiguration#getOptimizationOptions()
+	 */
+	public Map<String, Boolean> getOptimizationOptions();
 
 }
