@@ -20,6 +20,7 @@ package test.com.heliosapm.streams.collector.ssh.auth;
 
 import java.io.File;
 import java.security.PublicKey;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -84,6 +85,7 @@ public class KeyDirectoryPublickeyAuthenticator implements org.apache.sshd.serve
 		if(!keyDir.isDirectory()) throw new IllegalArgumentException("The passed file [" + keyDir + "] is not a directory.", new Throwable());
 		this.keyDir = keyDir;	
 		int loaded = 0;
+		final Map<String, String> userKeys = new HashMap<String, String>();
 		for(File f: keyDir.listFiles()) {
 			if(f.getName().contains("rsa") || f.getName().contains("dsa")) {
 				if(f.getName().toLowerCase().endsWith(".pub")) {
@@ -95,6 +97,7 @@ public class KeyDirectoryPublickeyAuthenticator implements org.apache.sshd.serve
 							pks.put(pubKey.getUserName(), userPks);
 						}
 						userPks.add(pubKey.getPublicKey());
+						userKeys.put(pubKey.getUserName(), f.getName());
 						//log.info("Added [" + pubKey + "]");
 					} catch (Exception e) {
 						log.warn("Failed to load public key in file [" + f.getAbsolutePath() + "]", e);
@@ -105,7 +108,7 @@ public class KeyDirectoryPublickeyAuthenticator implements org.apache.sshd.serve
 		for(Set<PublicKey> upks: pks.values()) {
 			loaded += upks.size();
 		}
-		log.info("Loaded [" + loaded + "] keys for [" + pks.size() + "] users to auth provider");
+		log.info("Loaded [" + loaded + "] keys for [" + pks.size() + "] users to auth provider\n" + userKeys);
 		keyPairProvider = SecurityUtils.createFileKeyPairProvider();
 	}
 

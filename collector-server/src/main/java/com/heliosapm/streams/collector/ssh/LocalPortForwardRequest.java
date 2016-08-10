@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.collector.ssh;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * <p>Title: LocalPortForwardRequest</p>
  * <p>Description: Represents an SSH local port forward configuration</p> 
@@ -27,6 +29,17 @@ package com.heliosapm.streams.collector.ssh;
 
 public class LocalPortForwardRequest {
 
+	/** The local port, defaults to zero for an ephremeral port */
+	@JsonProperty(value="localport", defaultValue="0")
+	protected int localPort = -1;
+	/** The remote port to tunnel to */
+	@JsonProperty(value="remoteport")
+	protected int remotePort = -1;
+	/** The remote host to tunnel to */
+	@JsonProperty(value="remotehost")
+	protected String remoteHost = null;
+	
+	
 	/**
 	 * Creates a new LocalPortForwardRequest
 	 */

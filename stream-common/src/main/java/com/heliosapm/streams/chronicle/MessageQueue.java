@@ -247,6 +247,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		printConfig();
 		if(IS_WIN) {  // FIXME: pull this out of ctor
 			pendingDeleteThread = new Thread(queueName + "RolledFileDeleter") {
+				@Override
 				public void run() {
 					while(keepRunning.get()) {
 						try { Thread.currentThread().join(60000); } catch (Exception x) {/* No Op */}
@@ -385,6 +386,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		final int batchSize = 100;
 		final boolean compressed = mq.compression;
 		final Thread producer = new Thread() {
+			@Override
 			public void run() {
 				log("Producer Thread Started");
 				try {
@@ -415,6 +417,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		producer.start();
 		final AtomicBoolean closed = new AtomicBoolean(false);
 		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
+			@Override
 			public void run() {
 				if(closed.compareAndSet(false, true)) {
 					mq.log.info(">>>>> Stopping MessageQueue...");
@@ -444,6 +447,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	 * {@inheritDoc}
 	 * @see java.lang.Runnable#run()
 	 */
+	@Override
 	public void run() {
 		final ExcerptTailer tailer = queue.createTailer();
 		final ByteBufMarshallable smm = new ByteBufMarshallable(compression); 

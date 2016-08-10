@@ -238,7 +238,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 				scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);			
 				log.info("Collection Script scheduled");
 			} else {
-				log.info("Script not scheduled. Waiting on {}", pendingDependencies);
+				log.info("\n ================================ \n Script [{}} not scheduled. \nWaiting on {}", this.sourceFile, pendingDependencies);
 			}
 		}
 	}
@@ -364,7 +364,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		pendingDependencies.remove(cacheKey);
 		if(pendingDependencies.isEmpty()) {
 			canReschedule.set(true);
-			scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);			
+			scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);
+			log.info("\n ================================ \n Waiting script [{}} scheduled. All dependencies complete.", this.sourceFile);
 		}
 	}
 	

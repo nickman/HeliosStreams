@@ -26,6 +26,7 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.management.ObjectName;
 
@@ -39,6 +40,7 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedScheduler;
 import com.heliosapm.utils.jmx.SharedNotificationExecutor;
+import com.heliosapm.utils.tuples.NVP;
 import com.heliosapm.utils.url.URLHelper;
 
 import ch.ethz.ssh2.Connection;
@@ -62,6 +64,8 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	
 	/** Placeholder connection */
 	private static final SSHConnection PLACEHOLDER = new SSHConnection();
+	/** to string template */
+	public static final String TOSTRING_TEMPLATE = "%s@%s:%s, cto:%s, kto:%s";
 	/** Connection key template */
 	public static final String KEY_TEMPLATE = "%s@%s:%s";
 	
@@ -70,6 +74,11 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	
 	/** The reconnect thread pool JMX ObjectName */
 	public static final ObjectName THREAD_POOL_OBJECT_NAME = JMXHelper.objectName("com.heliosapm.ssh:service=ReconnectScheduler");
+	
+	/** The default connect timeout in ms. */
+	public static final int DEFAULT_CONNECT_TIMEOUT = 10000;
+	/** The default kex timeout in ms. */
+	public static final int DEFAULT_KEX_TIMEOUT = 10000;
 	
 	
 	/** The reconnect thread pool scheduler */	
@@ -97,24 +106,35 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	/** The ssh private key passphrase */
 	@JsonProperty(value="pphrase")
 	protected String passPhrase = null;
+	/** The ssh connect timeout in ms. */
+	@JsonProperty(value="connectTimeout", defaultValue="" + DEFAULT_CONNECT_TIMEOUT)
+	protected int connectTimeout = 10000;
+	/** The ssh kex (key verification) timeout in ms. */
+	@JsonProperty(value="kexTimeout", defaultValue="" + DEFAULT_KEX_TIMEOUT)
+	protected int kexTimeout = 10000;
 
 	/** The connection key */
 	@JsonIgnore
-	protected final String key;
+	protected String key = null;
 	/** The connection log */
 	@JsonIgnore
 	protected final Logger log = LogManager.getLogger(getClass());
 	
+	/** The authentication method used to authenticate */
+	@JsonIgnore
+	protected AtomicReference<AuthenticationMethod> authMethod  = new AtomicReference<AuthenticationMethod>(null); 
+	
+	
 	
 	/** The SSH connection */
 	@JsonIgnore
-	protected final Connection connection;
+	protected Connection connection = null;
 	/** The SSH connection's info */
 	@JsonIgnore
 	protected ConnectionInfo connectionInfo = null;
 	/** Indicates if the connection is connected */
 	@JsonIgnore
-	protected final AtomicBoolean connected = new AtomicBoolean(false);
+	protected final AtomicBoolean connected = new AtomicBoolean(false);	
 	/** Indicates if the connection is started */
 	@JsonIgnore
 	protected final AtomicBoolean started = new AtomicBoolean(false);
@@ -267,7 +287,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		this.sshPort = sshPort;
 		this.user = user;
 		this.password = password;
-		key = toString();
+		key = String.format(KEY_TEMPLATE, user, host, sshPort);
 		connection = new Connection(host, sshPort);
 		connection.addConnectionMonitor(this);
 	}
@@ -286,7 +306,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		this.user = user;
 		this.privateKey = privateKey;
 		this.passPhrase = passPhrase;
-		key = toString();
+		key = String.format(KEY_TEMPLATE, user, host, sshPort);
 		connection = new Connection(host, sshPort);
 		connection.addConnectionMonitor(this);
 	}
@@ -305,7 +325,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		this.user = user;
 		this.privateKeyFile = new File(privateKeyFileName);
 		this.passPhrase = passPhrase;
-		key = toString();
+		key = String.format(KEY_TEMPLATE, user, host, sshPort);
 		connection = new Connection(host, sshPort);
 		connection.addConnectionMonitor(this);
 	}
@@ -363,6 +383,64 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	
 	
 	/**
+	 * Indicates if this connection is connected
+	 * @return true if this connection is connected, false otherwise
+	 */
+	public boolean isConnected() {
+		return connected.get();
+	}
+	
+	/**
+	 * Indicates if this connection is authenticated
+	 * @return true if this connection is authenticated, false otherwise
+	 */
+	public boolean isAuthenticated() {
+		return connected.get() && connection.isAuthenticationComplete();
+	}
+	
+	/**
+	 * Issues a connect with no auth if the connection is not connected 
+	 */
+	public void connect() {
+		if(connection==null) {
+			connection = new Connection(host, sshPort);
+			connection.addConnectionMonitor(this);
+			key = String.format(KEY_TEMPLATE, user, host, sshPort);
+		}
+		if(connected.compareAndSet(false, true)) {
+			try {
+				connectionInfo = connection.connect(this, connectTimeout, kexTimeout);				
+			} catch (Exception ex) {
+				try { connection.close(); } catch (Exception x) {/* No Op */}
+				connected.set(false);
+				throw new RuntimeException("Failed to connect [" + this + "]", ex);
+			} 
+		}
+	}
+	
+	
+	
+	/**
+	 * Attempts to authenticate this connection
+	 */
+	public void authenticate() {
+		connect();			
+		log.info("Connected to [{}], starting authentication", key);
+		final NVP<Boolean, AuthenticationMethod> authResult = AuthenticationMethod.auth(this); 
+		if(authResult.getKey()) {
+			authMethod.set(authResult.getValue());
+			if(scheduleHandle!=null) {
+				scheduleHandle.cancel(false);
+				scheduleHandle = null;
+			}
+			fireConnectionConnected();
+		} else {
+			authMethod.set(null);
+			log.warn("Authentication on SSHConnection [{}] failed", key);
+		}		
+	}
+	
+	/**
 	 * <p>Starts a reconnect attempt</p>
 	 * {@inheritDoc}
 	 * @see java.lang.Runnable#run()
@@ -370,18 +448,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	@Override
 	public void run() {
 		try {
-			connectionInfo = connection.connect(this, 10000, 10000); // FIXME: make this configurable
-			log.info("Connected to [{}], starting authentication", key);
-			if(AuthenticationMethod.auth(this).getKey()) {
-				connected.set(true);
-				if(scheduleHandle!=null) {
-					scheduleHandle.cancel(false);
-					scheduleHandle = null;
-				}
-				fireConnectionConnected();
-			} else {
-				log.warn("Authentication on SSHConnection [{}] failed", key);
-			}
+			authenticate();
 		} catch (Exception ex) {
 			if(ex instanceof InterruptedException) {
 				log.info("Reconnect task for [{}] interrupted while running", key);
@@ -425,6 +492,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	@Override
 	public void connectionLost(final Throwable reason) {
+		authMethod.set(null);
 		if(connected.compareAndSet(true, false)) {
 			fireConnectionDisconnected();
 			if(reason==null || !started.get() || NORMAL_CLOSE_MESSAGE.equals(reason.getMessage())) {
@@ -546,7 +614,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	@Override
 	public String toString() {
-		return String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);
+		return String.format(TOSTRING_TEMPLATE, user.trim(), host.trim(), sshPort, connectTimeout, kexTimeout);
 	}
 	
 	/**
@@ -592,8 +660,48 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		return true;
 	}
 
+	/**
+	 * Returns the connection timeout in ms.
+	 * @return the connection timeout in ms.
+	 */
+	public int getConnectTimeout() {
+		return connectTimeout;
+	}
+
+	/**
+	 * Sets the connection timeout in ms.
+	 * @param connectTimeout the connect timeout to set
+	 */
+	public void setConnectTimeout(final int connectTimeout) {
+		if(connectTimeout < 0) throw new IllegalArgumentException("The connection timeout [" + connectTimeout + "] is invalid");
+		this.connectTimeout = connectTimeout;
+	}
+
+	/**
+	 * Returns the kex timeout in ms.
+	 * @return the kex timeout in ms.
+	 */
+	public int getKexTimeout() {
+		return kexTimeout;
+	}
+
+	/**
+	 * Sets the kex timeout in ms.
+	 * @param kexTimeout the kex timeout to set
+	 */
+	public void setKexTimeout(int kexTimeout) {
+		if(kexTimeout < 0) throw new IllegalArgumentException("The kex timeout [" + connectTimeout + "] is invalid");
+		this.kexTimeout = kexTimeout;
+	}
 
 
+	/**
+	 * Returns the authentication method used to authenticate or null if not authenticated
+	 * @return the authentication method used to authenticate or null if not authenticated
+	 */
+	public AuthenticationMethod getAuthenticationMethod() {
+		return authMethod.get();
+	}
 
 	
 	

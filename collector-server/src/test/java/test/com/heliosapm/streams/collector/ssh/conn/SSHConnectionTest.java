@@ -19,17 +19,20 @@ import java.io.File;
 import java.net.URL;
 import java.util.Arrays;
 
-import org.junit.Test;
 import org.junit.Assert;
+import org.junit.Ignore;
+import org.junit.Test;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.heliosapm.streams.collector.ssh.SSHConnection;
 import com.heliosapm.streams.collector.ssh.SSHTunnelManager;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
+import com.heliosapm.utils.url.URLHelper;
 
 import test.com.heliosapm.streams.collector.BaseTest;
+import test.com.heliosapm.streams.collector.ssh.server.ApacheSSHDServer;
 
 /**
  * <p>Title: SSHConnectionTest</p>
@@ -42,6 +45,8 @@ import test.com.heliosapm.streams.collector.BaseTest;
 public class SSHConnectionTest extends BaseTest {
 	/** The resource path of the test json */
 	public static final String TEST_JSON = "ssh/json/connections.json";
+	/** The system property to set or get the test SSHD server's listening port */
+	public static final String SSHD_PORT_PROP = "heliosapm.sshd.port";
 	/** A reference to the tunnel manager */
 	protected static final SSHTunnelManager tunnelManager = SSHTunnelManager.getInstance();
 	
@@ -52,14 +57,69 @@ public class SSHConnectionTest extends BaseTest {
 	@SuppressWarnings("static-method")
 	@Test
 	public void testBasicConnUnmarshall() throws Exception {
-		final URL url = SSHConnectionTest.class.getClassLoader().getResource(TEST_JSON);
-		log("Test JSON URL:" + url);
-		final SSHConnection[] connections = tunnelManager.parseConnections(url);
-		log(Arrays.deepToString(connections));
-		final ArrayNode nodes = (ArrayNode)OBJECT_MAPPER.readTree(url).get("connections");
-		Assert.assertEquals("Number of conns != number of json nodes", nodes.size(), connections.length);
-		for(int i = 0; i < connections.length; i++) {
-			validateConnection(connections[i], nodes.get(i));
+		try {
+			System.setProperty(SSHD_PORT_PROP, "22");
+			final URL url = SSHConnectionTest.class.getClassLoader().getResource(TEST_JSON);
+			log("Test JSON URL:" + url);
+			final SSHConnection[] connections = SSHTunnelManager.parseConnections(url);
+			log(Arrays.deepToString(connections));
+			final ArrayNode nodes = (ArrayNode)OBJECT_MAPPER.readTree(
+				StringHelper.resolveTokens(
+					URLHelper.getTextFromURL(url)
+				)
+			).get("connections");
+			Assert.assertEquals("Number of conns != number of json nodes", nodes.size(), connections.length);
+			for(int i = 0; i < connections.length; i++) {
+				validateConnection(connections[i], nodes.get(i));
+			}
+		} finally {
+			System.clearProperty(SSHD_PORT_PROP);
+		}
+	}
+	
+	/**
+	 * Tests loading an array of SSHConnections from JSON and establishing a basic connection
+	 * @throws Exception thrown on any error
+	 */
+	@SuppressWarnings("static-method")
+	@Test
+	public void testBasicConnects() throws Exception {
+		final ApacheSSHDServer sshdServer = ApacheSSHDServer.getInstance(); 
+		try {			
+			final URL url = SSHConnectionTest.class.getClassLoader().getResource(TEST_JSON);
+			final SSHConnection[] connections = SSHTunnelManager.parseConnections(url);
+			log(Arrays.deepToString(connections));
+			for(int i = 0; i < connections.length; i++) {
+				connections[i].connect();
+				Assert.assertTrue("Not connected: [" + connections[i] + "]", connections[i].isConnected());
+			}
+		} finally {
+			sshdServer.stop(true);
+			System.clearProperty(SSHD_PORT_PROP);
+		}
+	}
+	
+	/**
+	 * Tests loading an array of SSHConnections from JSON and establishing a basic connection
+	 * @throws Exception thrown on any error
+	 */
+	@SuppressWarnings("static-method")
+	@Test
+	public void testBasicConnectAndAuthenticate() throws Exception {
+		final ApacheSSHDServer sshdServer = ApacheSSHDServer.getInstance();
+		sshdServer.activateKeyAuthenticator(true);
+		sshdServer.activatePasswordAuthenticator(true);
+		try {			
+			final URL url = SSHConnectionTest.class.getClassLoader().getResource(TEST_JSON);
+			final SSHConnection[] connections = SSHTunnelManager.parseConnections(url);
+			log(Arrays.deepToString(connections));
+			for(int i = 0; i < connections.length; i++) {
+				connections[i].authenticate();
+				Assert.assertTrue("Not authenticated: [" + connections[i] + "]", connections[i].isAuthenticated());
+			}
+		} finally {
+			sshdServer.stop(true);
+			System.clearProperty(SSHD_PORT_PROP);
 		}
 	}
 	
@@ -80,6 +140,16 @@ public class SSHConnectionTest extends BaseTest {
 			if(jsonNode.has("pkey")) Assert.assertArrayEquals("Mismatched pkey on connection vs. json on [" + conn + "]", jsonNode.get("pkey").textValue().toCharArray(), (char[])PrivateAccessor.getFieldValue(conn, "privateKey"));
 			if(jsonNode.has("pphrase")) Assert.assertEquals("Mismatched passphrase on connection vs. json on [" + conn + "]", jsonNode.get("pphrase").textValue(), PrivateAccessor.getFieldValue(conn, "passPhrase"));
 			if(jsonNode.has("pkeyfile")) Assert.assertEquals("Mismatched passphrase on connection vs. json on [" + conn + "]", new File(jsonNode.get("pkeyfile").textValue()), (PrivateAccessor.getFieldValue(conn, "privateKeyFile")));
+			if(jsonNode.has("connectTimeout")) {
+				Assert.assertEquals("Mismatched connectTimeout on connection vs. json on [" + conn + "]", jsonNode.get("connectTimeout").longValue(), ((Integer)(PrivateAccessor.getFieldValue(conn, "connectTimeout"))).intValue());
+			} else {
+				Assert.assertEquals("Mismatched connectTimeout on connection vs. default on [" + conn + "]", SSHConnection.DEFAULT_CONNECT_TIMEOUT, ((Integer)(PrivateAccessor.getFieldValue(conn, "connectTimeout"))).intValue());
+			}
+			if(jsonNode.has("kexTimeout")) {
+				Assert.assertEquals("Mismatched connectTimeout on connection vs. json on [" + conn + "]", jsonNode.get("kexTimeout").longValue(), ((Integer)(PrivateAccessor.getFieldValue(conn, "kexTimeout"))).intValue());
+			} else {
+				Assert.assertEquals("Mismatched kexTimeout on connection vs. default on [" + conn + "]", SSHConnection.DEFAULT_KEX_TIMEOUT, ((Integer)(PrivateAccessor.getFieldValue(conn, "kexTimeout"))).intValue());
+			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw ex;

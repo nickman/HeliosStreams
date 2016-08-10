@@ -191,6 +191,8 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 		}
 	}
 	
+	
+	
 	/**
 	 * Parses SSHConnections from the JSON read from the passed URL
 	 * @param jsonUrl the URL the json is read from
@@ -207,6 +209,7 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 			if(an.size()==0) return EMPTY_CONN_ARR;
 			return OBJECT_MAPPER.convertValue(an, SSHConnection[].class);	
 		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
 			throw new RuntimeException("Failed to load SSHConnections from [" + jsonUrl + "]", ex);
 		}		
 	}

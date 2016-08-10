@@ -99,7 +99,8 @@ public class ApacheSSHDServer {
 		userAuthFactories.add(new UserAuthPasswordFactory());		
 		userAuthFactories.add(new UserAuthPublicKeyFactory());
 		//sshd.setUserAuthFactories(userAuthFactories);
-		final File hostKeySerFile = new File(new File(System.getProperty("java.io.tmpdir")),"hostkey.ser");
+		
+		final File hostKeySerFile = new File(new File(System.getProperty("java.io.tmpdir")),"hostkey-" + System.currentTimeMillis() + ".ser");
 		hostKeySerFile.deleteOnExit();
 		//final SimpleGeneratorHostKeyProvider hostKeyProvider = new SimpleGeneratorHostKeyProvider(hostKeySerFile);
 		final AbstractGeneratorHostKeyProvider hostKeyProvider = SecurityUtils.createGeneratorHostKeyProvider(hostKeySerFile.toPath());
@@ -143,8 +144,8 @@ public class ApacheSSHDServer {
 		try {
 			sshd.start();
 			port = sshd.getPort();
-			LOG.info("Server started on port [" + sshd.getPort() + "]");
-			StdInCommandHandler.getInstance().run();
+			System.setProperty("heliosapm.sshd.port", "" + port);
+			LOG.info("Server started on port [" + sshd.getPort() + "]");			
 		} catch (Exception e) {
 			LOG.error("Failed to start SSHD server", e);
 			try { sshd.stop(true); } catch (Exception x) {/* No Op */}

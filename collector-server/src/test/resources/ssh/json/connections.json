@@ -2,16 +2,17 @@
 	"connections" : [
 		{
 			"host" : "localhost",
-			"sshport" : 22,
-			"user" : "fooman",
-			"password" : "foomanpass" 
+			"sshport" : ${heliosapm.sshd.port},
+			"user" : "fred",
+			"password" : "flintstone",
+			"connectTimeout" : 7500,
+			"kexTimeout" : 5000
 		},
 		{
 			"host" : "127.0.0.1",
-			"sshport" : 22,
-			"user" : "fooman",
-			"pkey" : "MIIBugIBAAKBgQDaDWE....",
-			"pphrase" : "secret" 
+			"sshport" : ${heliosapm.sshd.port},
+			"user" : "sillysally",
+			"pkeyfile" : "./src/test/resources/ssh/auth/keys/sillysally_dsa"
 		}		
 	]
 }

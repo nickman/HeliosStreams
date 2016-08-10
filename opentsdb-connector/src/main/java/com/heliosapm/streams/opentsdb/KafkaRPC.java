@@ -223,12 +223,21 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		monitoringInterceptor = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_KAFKA_MONITOR, DEFAULT_KAFKA_MONITOR, rpcConfig);
 		compression = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_COMPRESS_QWRITES, DEFAULT_COMPRESS_QWRITES, rpcConfig);
 		messageQueue = MessageQueue.getInstance(getClass().getSimpleName(), this, rpcConfig);
+		
 		if(monitoringInterceptor) {
 			Props.appendToValue("interceptor.classes", MonitoringConsumerInterceptor.class.getName(), ",", rpcConfig);
 		}
-//		consumerConfig.putAll(Props.extractOrEnv(CONFIG_PREFIX, rpcConfig, true));
+		InterceptorInstaller.filter(false, rpcConfig);
+//		
+		consumerConfig.putAll(Props.extractOrEnv(CONFIG_PREFIX, rpcConfig, true));
 		metricManager.addExtraTag("mode", syncAdd ? "sync" : "async");		
 		printConfig();
+//		try {
+//			final Class<?> consumerClazz = Class.forName("org.apache.kafka.clients.consumer.KafkaConsumer");
+//			final Class<?> interceptorClazz = Class.forName("org.apache.kafka.clients.consumer.KafkaConsumer");
+//		} catch (Exception ex) {
+//			throw new RuntimeException(ex);
+//		}
 		consumer = new KafkaConsumer<String, ByteBuf>(rpcConfig, new StringDeserializer(), new ByteBufDeserializer());
 		
 		subThread = new Thread(this, "KafkaSubscriptionThread");
