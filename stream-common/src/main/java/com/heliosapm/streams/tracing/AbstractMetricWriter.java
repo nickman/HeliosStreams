@@ -22,11 +22,14 @@ import java.io.InputStream;
 import java.util.Collection;
 import java.util.Properties;
 
+import javax.management.ObjectName;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.google.common.util.concurrent.AbstractIdleService;
 import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.utils.jmx.JMXHelper;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -50,11 +53,17 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 	/** A counter of failed metrics  */
 	protected final LongAdder failedMetrics = new LongAdder();
 	
+	/** The configuration properties */
+	protected Properties config = null;
+	
 	/** Indicates if this writer gets metric confirmations */
 	protected final boolean confirmsMetrics;
 	
 	/** Indicates if this writer fully consumes metrics on write before returning */
 	protected final boolean metricsConsumed;
+	/** The JMX ObjectName for this writer */
+	protected final ObjectName objectName = JMXHelper.objectName(String.format(OBJECT_NAME_TEMPLATE, getClass().getSimpleName()));
+	
 		
 	/**
 	 * Creates a new AbstractMetricWriter
@@ -217,6 +226,10 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 	@Override
 	public void start() throws Exception {
 		startAsync();
+		try { if(JMXHelper.isRegistered(objectName)) JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
+		try { JMXHelper.registerMBean(this, objectName); } catch (Exception ex) {
+			log.warn("Failed to register Writer's JMX Management interface. Will continue without.", ex);
+		}
 	}
 
 	/**
@@ -226,6 +239,7 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 	@Override
 	public void stop() {
 		stopAsync();
+		try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
 	}
 
 	/**
@@ -246,4 +260,59 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 		return true;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#isConfirmedMetrics()
+	 */
+	@Override
+	public boolean isConfirmedMetrics() {		
+		return confirmsMetrics;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getState()
+	 */
+	@Override
+	public String getState() {		
+		return state().name();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getSentMetrics()
+	 */
+	@Override
+	public long getSentMetrics() {
+		return sentMetrics.longValue();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getPendingMetrics()
+	 */
+	@Override
+	public long getPendingMetrics() {
+		return getMetricsPending();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getDroppedMetrics()
+	 */
+	@Override
+	public long getDroppedMetrics() {
+		return failedMetrics.longValue();
+	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getConfiguration()
+	 */
+	@Override
+	public Properties getConfiguration() {		
+		return config;
+	}
+	
 }

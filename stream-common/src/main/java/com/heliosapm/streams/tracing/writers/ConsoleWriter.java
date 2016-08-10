@@ -76,5 +76,16 @@ public class ConsoleWriter extends AbstractMetricWriter {
 	protected void shutDown() throws Exception {
 		/* No Op */
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getCustomState()
+	 */
+	@Override
+	public String getCustomState() {
+		final StringBuilder b = new StringBuilder();
+		return b.toString();
+	}
+	
 
 }

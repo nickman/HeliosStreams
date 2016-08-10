@@ -209,7 +209,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	public static void main(String[] args) {
 		System.setProperty(CONFIG_ROOT_DIR, "./src/test/resources/test-root");
-		JMXHelper.fireUpJMXMPServer(3456);
+		JMXHelper.fireUpJMXMPServer("0.0.0.0:3456");
 		final Instrumentation instr = LocalAgentInstaller.getInstrumentation();
 		getInstance();
 		StdInCommandHandler.getInstance()

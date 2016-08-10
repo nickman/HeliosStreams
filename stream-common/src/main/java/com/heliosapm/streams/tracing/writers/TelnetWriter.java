@@ -145,21 +145,25 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 		@Override
 		protected void encode(final ChannelHandlerContext ctx, final Object msg, final List<Object> out) throws Exception {
 			if(msg==null) return;
+			int sent = 0;
 			if(msg instanceof ByteBuf) {
 				final ByteBuf buff = (ByteBuf)msg;
 				final StringBuilder b = new StringBuilder();
 				final InputStream is = new ByteBufInputStream(buff);
 				for(StreamedMetric sm: StreamedMetric.streamedMetrics(is, true, false)) {
 					b.append(sm.toOpenTSDBString()).append(EOL);
+					sent++;
 				}
 				out.add(b);
 			} else if(msg instanceof StreamedMetric) {
 				out.add(((StreamedMetric)msg).toOpenTSDBString());
+				sent++;
 			} else if(msg instanceof StreamedMetric[]) {
 				final StreamedMetric[] values = (StreamedMetric[])msg;
 				final StringBuilder b = new StringBuilder(values.length * 128);
 				for(StreamedMetric sm: values) {
 					b.append(sm.toOpenTSDBString()).append(EOL);
+					sent++;
 				}
 				out.add(b);				
 			}  else if(msg instanceof Collection) {
@@ -169,6 +173,7 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 					for(Object o: objects) {
 						if(o != null && (o instanceof StreamedMetric)) {
 							b.append(((StreamedMetric)o).toOpenTSDBString()).append(EOL);
+							sent++;
 						}
 					}
 					if(b.length()>0) {
@@ -178,6 +183,7 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 			} else {
 				log.warn("Unknown type submitted: [{}]", msg.getClass().getName());
 			}
+			sentMetrics.add(sent);
 			ctx.channel().flush();
 			if(log.isDebugEnabled() && !out.isEmpty()) {
 				for(Object s: out) {

@@ -123,7 +123,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	public void configure(Properties config) {				
-		
+		this.config = config;
 		final String loggerName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOGGER_NAME, null, config);
 		
 		if(loggerName==null || !LogManager.getContext(true).hasLogger(loggerName)) {
@@ -361,5 +361,16 @@ public class LoggingWriter extends AbstractMetricWriter {
 		appender.stop();
 		System.err.println("Appender Stopped");
 		
+	}
+
+	/**
+	 * TODO: implement
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getCustomState()
+	 */
+	@Override
+	public String getCustomState() {
+		final StringBuilder b = new StringBuilder();
+		return b.toString();
 	}
 }

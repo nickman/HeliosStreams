@@ -80,7 +80,7 @@ public class CollectorServer {
 			initDir(rootDirectory);
 		}
 		
-		final int jmxmpPort = findArg("--jmxmp=", 3456, args);
+		final String jmxmpIface = findArg("--jmxmp=", "0.0.0.0:3456", args);
 		final String log4jLoc = findArg("--log4j2=", null, args);
 		if(log4jLoc!=null) {
 			final File f = new File(log4jLoc);
@@ -90,7 +90,7 @@ public class CollectorServer {
 				System.err.println("Cannot read log4j2 config file [" + log4jLoc + "]. Falling back to default.");
 			}
 		}
-		JMXHelper.fireUpJMXMPServer(jmxmpPort);
+		JMXHelper.fireUpJMXMPServer(jmxmpIface);
 		ManagedScriptFactory.getInstance();
 		StdInCommandHandler.getInstance().run();
 	}

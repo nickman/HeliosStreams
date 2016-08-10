@@ -69,6 +69,7 @@ public class MultiWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	public void configure(final Properties config) {
+		this.config = config;
 		final StringBuilder name = new StringBuilder(getClass().getSimpleName()).append("[");
 		writerClasses = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_WRITER_CLASSES, DEFAULT_WRITER_CLASSES, config);
 		if(writerClasses.length==0) {
@@ -214,6 +215,15 @@ public class MultiWriter extends AbstractMetricWriter {
 			m += imw.getSendErrors();
 		}
 		return m;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getCustomState()
+	 */
+	@Override
+	public String getCustomState() {
+		return "No state.";
 	}
 	
 	

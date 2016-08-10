@@ -18,8 +18,10 @@ under the License.
  */
 package com.heliosapm.streams.tracing.writers;
 
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.Properties;
 import java.util.Set;
@@ -62,6 +64,9 @@ import io.netty.util.concurrent.UnorderedThreadPoolEventExecutor;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.tracing.writers.NetWriter</code></p>
  * @param <C> The type of netty channel implemented by this writer
+ * TODO:
+ * 		optional storage of metrics while waiting for an open connection
+ * 		implement JMX management interface
  */
 
 public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter implements RejectedExecutionHandler, ConnectionStateSupplier, ConnectionStateListener {
@@ -118,6 +123,8 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	/** The reconnect thread */
 	protected Thread reconnectThread = null;
 	
+	/** An array of the configured remote URIs to connect to */
+	protected String[] remotes = {};
 	
 	/**
 	 * Creates a new NetWriter
@@ -130,29 +137,70 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 		registerConnectionStateListener(this);
 	}
 	
-	private class DelayedReconnect implements Delayed {
+//	public static void main(String[] args) {
+//		log("DelayedReconnect Test");
+//		final DelayQueue<DelayedReconnect> Q = new DelayQueue<DelayedReconnect>();
+//		try {
+//			Q.put(new DelayedReconnect("In 10 Secs", 10000));
+//			Q.put(new DelayedReconnect("In 5 Secs", 5000));
+//			int pulled = 0;
+//			while(!Q.isEmpty()) {
+//				DelayedReconnect dr = Q.take();
+//				if(dr==null) break;
+//				pulled++;
+//				log("\t----->[" + new Date() + "] DR:" + dr);
+//			}
+//			log("Pulled:" + pulled);
+//		} catch (Exception ex) {
+//			ex.printStackTrace(System.err);
+//		}
+//		
+//	}
+//	
+//	public static void log(Object msg) {
+//		System.out.println(msg);
+//	}
+	
+	private static class DelayedReconnect implements Delayed {
 		private final String uri;
-		private final long now = System.currentTimeMillis() + 60000;
+		private final long expireTime; // = System.currentTimeMillis() + 60000;  // FIXME: configurable
 		
 		/**
 		 * Creates a new DelayedReconnect
 		 * @param uri the URI to reconnect to
+		 * @param expireInMs The expiration from now in ms.
 		 */
-		public DelayedReconnect(String uri) {			
+		public DelayedReconnect(final String uri, final long expireInMs) {			
 			this.uri = uri;
+			expireTime = System.currentTimeMillis() + expireInMs;
+		}
+		
+		/**
+		 * Creates a new DelayedReconnect with an expiry of 60 seconds.
+		 * @param uri the URI to reconnect to
+		 */
+		public DelayedReconnect(final String uri) {
+			this(uri, 60000);
+		}
+		
+		public String toString() {
+			return "DelayedReconnect[" + uri + ", " + new Date(expireTime) + "]";
 		}
 
 		@Override
 		public int compareTo(final Delayed o) {
 			final Long myDelay = getDelay(TimeUnit.MILLISECONDS);
-			final long odelay = o.getDelay(TimeUnit.MILLISECONDS);
+			final Long odelay = o.getDelay(TimeUnit.MILLISECONDS);
 			if(myDelay.equals(odelay)) return -1;
 			return myDelay.compareTo(odelay);
 		}
 
 		@Override
-		public long getDelay(final TimeUnit unit) {
-			return TimeUnit.MILLISECONDS.convert(now - System.currentTimeMillis(), unit);
+		public long getDelay(final TimeUnit unit) {			
+			final long until = expireTime - System.currentTimeMillis();
+			final long delay = unit.convert(until, TimeUnit.MILLISECONDS);
+//			log("[" + this + "] Unit:" + unit + ", Delay:" + delay + ", MS:" + until);
+			return delay;
 		}
 
 		/**
@@ -163,7 +211,6 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 		public int hashCode() {
 			final int prime = 31;
 			int result = 1;
-			result = prime * result + getOuterType().hashCode();
 			result = prime * result + ((uri == null) ? 0 : uri.hashCode());
 			return result;
 		}
@@ -181,8 +228,6 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 			if (getClass() != obj.getClass())
 				return false;
 			DelayedReconnect other = (DelayedReconnect) obj;
-			if (!getOuterType().equals(other.getOuterType()))
-				return false;
 			if (uri == null) {
 				if (other.uri != null)
 					return false;
@@ -191,12 +236,6 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 			return true;
 		}
 
-		private NetWriter getOuterType() {
-			return NetWriter.this;
-		}
-		
-		
-		
 	}
 	
 	
@@ -206,7 +245,8 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	 */
 	@Override
 	public void configure(final Properties config) {
-		final String[] remotes = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_REMOTE_URIS, DEFAULT_REMOTE_URIS, config);
+		this.config = config;
+		remotes = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_REMOTE_URIS, DEFAULT_REMOTE_URIS, config);
 		Collections.addAll(remoteUris,  remotes);
 		channelGroupThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_EXEC_THREADS, DEFAULT_EXEC_THREADS, config);
 		eventLoopThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ELOOP_THREADS, DEFAULT_ELOOP_THREADS, config);
@@ -430,22 +470,24 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	@Override
 	protected void doMetrics(final Collection<StreamedMetric> metrics) {
 		if(metrics==null || metrics.isEmpty()) return;
+		final int size = metrics.size();
 		if(!connectionsAvailable.get()) {
-			// FIXME: drop counter
+			failedMetrics.add(size);
 			return;
 		}
-		final int size = metrics.size();
+		
 		boolean complete = false;
 		for(Channel ch: channels) {
 			final ChannelFuture cf = ch.writeAndFlush(metrics).syncUninterruptibly();
 			if(cf.isSuccess()) {
 				complete = true;
+				sentMetrics.add(size);
 				break;
 			}
 		}
 		if(!complete) {
-			this.failedMetrics.add(size);
-		}
+			failedMetrics.add(size);
+		} 
 	}
 
 	/**
@@ -455,17 +497,17 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	@Override
 	protected void doMetrics(final StreamedMetric... metrics) {
 		if(metrics==null || metrics.length==0) return;
+		final int size = metrics.length;
 		if(!connectionsAvailable.get()) {
-			// FIXME: drop counter
+			failedMetrics.add(size);
 			return;
 		}
-		
-		final int size = metrics.length;
 		boolean complete = false;
 		for(Channel ch: channels) {
 			final ChannelFuture cf = ch.writeAndFlush(metrics).syncUninterruptibly();
 			if(cf.isSuccess()) {
 				complete = true;
+				sentMetrics.add(size);
 				break;
 			}
 		}
@@ -528,6 +570,19 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 		if(!shutdown) {
 			log.warn("\n\t=====================\n\t{} Disconnected !\n\t=====================\n");
 		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getCustomState()
+	 */
+	@Override
+	public String getCustomState() {
+		final StringBuilder b = new StringBuilder();
+		b.append("Remotes:").append(Arrays.toString(remotes));
+		b.append("\nConnected:").append(channels.size());
+		b.append("\nDisconnected:").append(disconnected.size());
+		return b.toString();
 	}
 	
 }

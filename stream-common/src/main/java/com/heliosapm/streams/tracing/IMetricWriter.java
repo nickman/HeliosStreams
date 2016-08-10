@@ -33,7 +33,7 @@ import io.netty.buffer.ByteBuf;
  * <p><code>com.heliosapm.streams.tracing.IMetricWriter</code></p>
  */
 
-public interface IMetricWriter extends Service {
+public interface IMetricWriter extends Service, MetricWriterMXBean {
 	
 	/**
 	 * Indicates if this writer fully consumes written metrics before returning.

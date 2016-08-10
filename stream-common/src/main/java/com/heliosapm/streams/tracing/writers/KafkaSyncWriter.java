@@ -85,6 +85,7 @@ public class KafkaSyncWriter extends AbstractMetricWriter {
 	@Override
 	public void configure(final Properties config) {
 		super.configure(config);
+		this.config = config;
 		final Properties nonKafkaProps = Props.extract(CONFIG_PREFIX, config, false, true);
 		topics = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_TOPICS, DEFAULT_TOPICS, nonKafkaProps);
 		shutdownTime = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_SHUTDOWN_TIME, DEFAULT_SHUTDOWN_TIME, nonKafkaProps);
@@ -147,5 +148,17 @@ public class KafkaSyncWriter extends AbstractMetricWriter {
 			producer.close(shutdownTime, TimeUnit.SECONDS);
 		}
 	}
+	
+	/**
+	 * TODO: implement
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.MetricWriterMXBean#getCustomState()
+	 */
+	@Override
+	public String getCustomState() {
+		final StringBuilder b = new StringBuilder();
+		return b.toString();
+	}
+	
 
 }
