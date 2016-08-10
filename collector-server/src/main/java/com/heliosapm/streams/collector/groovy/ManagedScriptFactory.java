@@ -102,7 +102,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
 	/** Static class logger */
-	private static final Logger log = LogManager.getLogger(ManagedScriptFactory.class);
+	private final Logger log = LogManager.getLogger(ManagedScriptFactory.class);
 	
 	/** The configuration key for the collector service root directory */
 	public static final String CONFIG_ROOT_DIR = "collector.service.rootdir";
@@ -388,7 +388,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		return new Runnable(){
 			@Override
 			public void run() {
-				log.info("GroovyClassLoader #{} Unloaded", gclId);
+				instance.log.info("GroovyClassLoader #{} Unloaded", gclId);
 			}
 		};
 	}
@@ -458,7 +458,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			final File f = new File(rootDirectory, dirName);
 			if(!f.isDirectory()) {
 				if(!f.mkdir()) {
-					log.warn("Failed to create subdirectory [{}]", f);
+					System.err.println("Failed to create subdirectory [" + f + "]");
 				}
 			}
 		}		
