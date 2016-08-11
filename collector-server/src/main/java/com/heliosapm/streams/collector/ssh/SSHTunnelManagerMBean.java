@@ -36,18 +36,5 @@ public interface SSHTunnelManagerMBean {
 	/** The JMX ObjectName this MBean is registered with */
 	public static final ObjectName OBJECT_NAME = JMXHelper.objectName("com.heliosapm.ssh:service=SSHTunnelManager");
 	
-	/**
-	 * Loads the SSH configuration read from the JSON at the passed URL
-	 * @param jsonUrl The url to read the json config from
-	 * @return the number of connections loaded
-	 */
-	public int loadSSHConfigJson(final URL jsonUrl);
-	
-	/**
-	 * Loads the SSH configuration read from the JSON at the passed URL
-	 * @param jsonUrl The url to read the json config from
-	 * @return the number of connections loaded
-	 */
-	public int loadSSHConfigJson(final String jsonUrl);
 	
 }

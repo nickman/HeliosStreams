@@ -96,13 +96,35 @@ public enum AuthenticationMethod implements Authenticationator {
 		return SSH_NAMES_ARR.clone();
 	}
 	
+	
+	/**
+	 * Returns a set of the AuthenticationMethods matching the supplied SSH authentication method names.
+	 * @param sshAuthMethods an array of SSH authentication method names
+	 * @return a [possibly empty] set of AuthenticationMethods 
+	 */
+	public static Set<AuthenticationMethod> getAvailableMethods(final String...sshAuthMethods) {
+		final  Set<AuthenticationMethod> set = EnumSet.of(AuthenticationMethod.NONE);
+		if(sshAuthMethods!=null) {
+			for(String s: sshAuthMethods) {
+				if(s==null) continue;
+				AuthenticationMethod am = SSHNAME2ENUM.get(s.trim());
+				if(am!=null) {
+					set.add(am);
+				}
+			}
+		}
+		return set;
+		
+	}
+	
 	/**
 	 * Authenticates the passed connection
 	 * @param conn the connection on which to authenticate
 	 * @return true if authentication completed, false otherwise
 	 */
 	public static NVP<Boolean, AuthenticationMethod> auth(final SSHConnection conn) {
-		for(AuthenticationMethod am: values()) {
+		
+		for(AuthenticationMethod am: getAvailableMethods(conn.getRemainingAuthMethods())) {
 			try {				
 				am.authenticate(conn);
 				if(conn.connection.isAuthenticationComplete()) return new NVP<Boolean, AuthenticationMethod>(true, am);
@@ -113,6 +135,7 @@ public enum AuthenticationMethod implements Authenticationator {
 		}
 		return new NVP<Boolean, AuthenticationMethod>(false, null);
 	}
+	
 
 	static {
 		final AuthenticationMethod[] values = AuthenticationMethod.values();

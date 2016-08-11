@@ -139,6 +139,9 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	protected final File confDirectory;
 	/** The collector service tmp directory where the compiler puts runtime artifacts */
 	protected final File tmpDirectory;
+	/** The collector service ssh directory where SSH config files are read from */
+	protected final File sshDirectory;
+
 	
 	/** The collector service script path */
 	protected final Path scriptPath;
@@ -263,9 +266,13 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		log.info(">>>>> Starting ManagedScriptFactory...");
 		final String rootDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROOT_DIR, DEFAULT_ROOT_DIR);		
 		rootDirectory = new File(rootDirName);
+		rootDirectory.mkdirs();
+		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
 		initSubDirs(rootDirectory);
 		log.info("Collector Service root directory: [{}]", rootDirectory);
-		rootDirectory.mkdirs();
+		sshDirectory = new File(rootDirectory, "ssh").getAbsoluteFile().toPath().normalize().toFile();
+		System.setProperty(SSHTunnelManager.CONFIG_JSON_DIR, sshDirectory.getAbsolutePath());
+		SSHTunnelManager.getInstance();
 		libDirectory = new File(rootDirectory, "lib");
 		jdbcLibDirectory = new File(libDirectory, "jdbc");
 		jdbcLibDirectory.mkdir();
@@ -275,10 +282,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		tmpDirectory = new File(rootDirectory, "tmp").getAbsoluteFile();		
 		tracerFactory = initTracing(confDirectory);
 		scriptPath = scriptDirectory.toPath();
-		
 		System.setProperty("helios.collectors.script.root", scriptDirectory.getAbsolutePath());
-		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
-		
 		libDirClassLoader = new URLClassLoader(listLibJarUrls(libDirectory, new HashSet<URL>()));
 		loadJDBCDrivers();
 				//HeliosURLClassLoader.getOrCreateLoader(getClass().getSimpleName() + "LibClassLoader", listLibJarUrls(new File(rootDirectory, "lib"), new HashSet<URL>()));

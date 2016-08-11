@@ -21,7 +21,10 @@ package com.heliosapm.streams.collector.ssh;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -34,8 +37,22 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.SerializerProvider;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
+import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedScheduler;
@@ -55,17 +72,28 @@ import ch.ethz.ssh2.ServerHostKeyVerifier;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.ssh.SSHConnection</code></p>
  */
-
+@JsonDeserialize(using=SSHConnection.SSHConnectionDeserializer.class)
+@JsonSerialize(using=SSHConnection.SSHConnectionSerializer.class)
 public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKeyVerifier {
 	
 	/** A cache of connections keyed by <b><code>&lt;user&gt@&lt;host&gt:&lt;sshportr&gt</code></b>. */
-	private static final NonBlockingHashMap<String, SSHConnection> connections = new NonBlockingHashMap<String, SSHConnection>();
+	private static final Cache<String, SSHConnection> connections = CacheBuilder.newBuilder()
+			.concurrencyLevel(Runtime.getRuntime().availableProcessors())
+			.initialCapacity(256)
+			.weakValues()
+			.removalListener(new RemovalListener<String, SSHConnection>() {
+				@Override
+				public void onRemoval(RemovalNotification<String, SSHConnection> notification) {
+					try { notification.getValue().stop(false); } catch (Exception x) {/* No Op */}
+					
+				}
+			
+			})
+			.build();
 	
 	
-	/** Placeholder connection */
-	private static final SSHConnection PLACEHOLDER = new SSHConnection();
 	/** to string template */
-	public static final String TOSTRING_TEMPLATE = "%s@%s:%s, cto:%s, kto:%s";
+	public static final String TOSTRING_TEMPLATE = "%s@%s:%s, cto:%s, kto:%s, tun:%s";
 	/** Connection key template */
 	public static final String KEY_TEMPLATE = "%s@%s:%s";
 	
@@ -86,66 +114,50 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	
 	
 	/** The host to connect to */
-	@JsonProperty(value="host", required=true)
 	protected String host = null;
 	/** The ssh listener port */
-	@JsonProperty(value="sshport", defaultValue="22")
 	protected int sshPort = 22;
 	/** The user to connect as */
-	@JsonProperty(value="user", required=true)
 	protected String user = null;
 	/** The user password */
-	@JsonProperty(value="password")
 	protected String password = null;
 	/** The ssh private key */
-	@JsonProperty(value="pkey")
 	protected char[] privateKey = null;
 	/** The ssh private key file */
-	@JsonProperty(value="pkeyfile")
 	protected File privateKeyFile = null;	
 	/** The ssh private key passphrase */
-	@JsonProperty(value="pphrase")
 	protected String passPhrase = null;
 	/** The ssh connect timeout in ms. */
-	@JsonProperty(value="connectTimeout", defaultValue="" + DEFAULT_CONNECT_TIMEOUT)
 	protected int connectTimeout = 10000;
 	/** The ssh kex (key verification) timeout in ms. */
-	@JsonProperty(value="kexTimeout", defaultValue="" + DEFAULT_KEX_TIMEOUT)
 	protected int kexTimeout = 10000;
+	/** The port tunneling requests attached to this connection */
+	protected final NonBlockingHashMap<String, LocalPortForwardRequest> tunnels = new NonBlockingHashMap<String, LocalPortForwardRequest>(); 
+	
 
 	/** The connection key */
-	@JsonIgnore
 	protected String key = null;
 	/** The connection log */
-	@JsonIgnore
 	protected final Logger log = LogManager.getLogger(getClass());
 	
 	/** The authentication method used to authenticate */
-	@JsonIgnore
 	protected AtomicReference<AuthenticationMethod> authMethod  = new AtomicReference<AuthenticationMethod>(null); 
 	
 	
 	
 	/** The SSH connection */
-	@JsonIgnore
 	protected Connection connection = null;
 	/** The SSH connection's info */
-	@JsonIgnore
 	protected ConnectionInfo connectionInfo = null;
 	/** Indicates if the connection is connected */
-	@JsonIgnore
 	protected final AtomicBoolean connected = new AtomicBoolean(false);	
 	/** Indicates if the connection is started */
-	@JsonIgnore
 	protected final AtomicBoolean started = new AtomicBoolean(false);
 	/** The reconnect schedule handle for this connection */
-	@JsonIgnore
 	protected volatile ScheduledFuture<?> scheduleHandle = null;
 	/** A set of connection listeners */
-	@JsonIgnore
 	protected final Set<SSHConnectionListener> connectionListeners = new CopyOnWriteArraySet<SSHConnectionListener>();
 	/** The notification executor */
-	@JsonIgnore
 	protected final SharedNotificationExecutor notifExecutor = SharedNotificationExecutor.getInstance();
 	
 	/**
@@ -155,6 +167,18 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		key = null;
 		connection = null;
 	}
+	
+	/**
+	 * Creates a new SSHConnection. For JSON deser only.
+	 * @param key the key
+	 * @param connection the connection
+	 */
+	private SSHConnection(final String key, final Connection connection) {
+		this.key = key;
+		this.connection = connection;
+		connection.addConnectionMonitor(this);
+	}
+
 	
 	public static void main(String[] args) {
 		try {
@@ -193,7 +217,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		if(user==null || user.trim().isEmpty()) throw new IllegalArgumentException("The user name was null or empty");
 		if(sshPort < 1 || sshPort > 65535) throw new IllegalArgumentException("The ssh port number [" + sshPort + "] is invalid");
 		final String key = String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);
-		return connections.get(key);
+		return connections.getIfPresent(key);
 	}
 	
 	/**
@@ -203,7 +227,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	public static SSHConnection getConnection(final String key) {
 		if(key==null || key.trim().isEmpty()) throw new IllegalArgumentException("The key was null or empty");
-		return connections.get(key.trim());
+		return connections.getIfPresent(key.trim());
 	}
 	
 	
@@ -220,13 +244,17 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		if(host==null || host.trim().isEmpty()) throw new IllegalArgumentException("The host name was null or empty");
 		if(user==null || user.trim().isEmpty()) throw new IllegalArgumentException("The user name was null or empty");
 		if(sshPort < 1 || sshPort > 65535) throw new IllegalArgumentException("The ssh port number [" + sshPort + "] is invalid");
-		final String key = String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);
-		SSHConnection conn = connections.putIfAbsent(key, PLACEHOLDER);
-		if(conn==null || conn==PLACEHOLDER) {
-			conn = new SSHConnection(host, sshPort, user, password);
-			connections.replace(key, conn);
+		final String key = String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);		
+		try {
+			return connections.get(key, new Callable<SSHConnection>(){
+				@Override
+				public SSHConnection call() throws Exception {				
+					return new SSHConnection(host, sshPort, user, password);
+				}
+			});
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
 		}
-		return conn;			
 	}
 
 	
@@ -244,12 +272,16 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		if(user==null || user.trim().isEmpty()) throw new IllegalArgumentException("The user name was null or empty");
 		if(sshPort < 1 || sshPort > 65535) throw new IllegalArgumentException("The ssh port number [" + sshPort + "] is invalid");
 		final String key = String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);
-		SSHConnection conn = connections.putIfAbsent(key, PLACEHOLDER);
-		if(conn==null || conn==PLACEHOLDER) {
-			conn = new SSHConnection(host, sshPort, user, privateKeyFileName);
-			connections.replace(key, conn);
+		try {
+			return connections.get(key, new Callable<SSHConnection>(){
+				@Override
+				public SSHConnection call() throws Exception {				
+					return new SSHConnection(host, sshPort, user, privateKeyFileName);
+				}
+			});
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
 		}
-		return conn;			
 	}
 
 	/**
@@ -266,12 +298,16 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		if(user==null || user.trim().isEmpty()) throw new IllegalArgumentException("The user name was null or empty");
 		if(sshPort < 1 || sshPort > 65535) throw new IllegalArgumentException("The ssh port number [" + sshPort + "] is invalid");
 		final String key = String.format(KEY_TEMPLATE, user.trim(), host.trim(), sshPort);
-		SSHConnection conn = connections.putIfAbsent(key, PLACEHOLDER);
-		if(conn==null || conn==PLACEHOLDER) {
-			conn = new SSHConnection(host, sshPort, user, privateKey, passPhrase);
-			connections.replace(key, conn);
+		try {
+			return connections.get(key, new Callable<SSHConnection>(){
+				@Override
+				public SSHConnection call() throws Exception {				
+					return new SSHConnection(host, sshPort, user, privateKey, passPhrase);
+				}
+			});
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
 		}
-		return conn;			
 	}
  
 	
@@ -358,6 +394,15 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	LocalPortForwarder createPortForward(final int localPort, final int connectPort) {
 		return createPortForward(localPort, host, connectPort);
+	}
+	
+	/**
+	 * Creates a port forward from the passed request
+	 * @param req a port forward definition
+	 * @return the port forward
+	 */
+	LocalPortForwarder createPortForward(final LocalPortForwardRequest req) {
+		return createPortForward(req.getLocalPort(), req.getRemoteHost(), req.getRemotePort());
 	}
 
 	
@@ -464,6 +509,10 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	}
 	
 	void stop() {
+		stop(true);
+	}
+	
+	void stop(final boolean fire) {
 		if(started.compareAndSet(true, false)) {
 			try {
 				if(scheduleHandle!=null) try { scheduleHandle.cancel(true); } catch (Exception x) {/* No Op */}
@@ -471,7 +520,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 				try { connection.close(); } catch (Exception x) {/* No Op */}
 				fireConnectionStopped();
 			} finally {
-				connections.remove(key);
+				if(fire)connections.invalidate(key);
 			}
 		}		
 	}
@@ -512,7 +561,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	@Override
 	public boolean verifyServerHostKey(final String hostname, final int port, final String serverHostKeyAlgorithm, final byte[] serverHostKey) throws Exception {
-		log.info("Verifying Host Ket from [{}:{}], Algo: [{}]", hostname, port, serverHostKeyAlgorithm);
+		log.info("Verifying Host Key from [{}:{}], Algo: [{}]", hostname, port, serverHostKeyAlgorithm);
 		return true;
 	}
 	
@@ -614,7 +663,7 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	@Override
 	public String toString() {
-		return String.format(TOSTRING_TEMPLATE, user.trim(), host.trim(), sshPort, connectTimeout, kexTimeout);
+		return String.format(TOSTRING_TEMPLATE, user.trim(), host.trim(), sshPort, connectTimeout, kexTimeout, tunnels.size());
 	}
 	
 	/**
@@ -693,6 +742,21 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 		if(kexTimeout < 0) throw new IllegalArgumentException("The kex timeout [" + connectTimeout + "] is invalid");
 		this.kexTimeout = kexTimeout;
 	}
+	
+	/**
+	 * Returns the available authentication methods
+	 * @return an array of the available authentication methods
+	 * @see ch.ethz.ssh2.Connection#getRemainingAuthMethods(java.lang.String)
+	 */
+	public String[] getRemainingAuthMethods() {
+		if(!connected.get()) throw new IllegalStateException("Not connected");
+		try {
+			return connection.getRemainingAuthMethods(user);
+		} catch (IOException iex) {
+			throw new RuntimeException("Failed to get RemainingAuthMethods for [" + this + "]", iex);
+		}
+	}
+	
 
 
 	/**
@@ -701,6 +765,115 @@ public class SSHConnection implements ConnectionMonitor, Runnable, ServerHostKey
 	 */
 	public AuthenticationMethod getAuthenticationMethod() {
 		return authMethod.get();
+	}
+	
+	/**
+	 * Returns a map of this connection's LocalPortForwardRequests keyed by the request key 
+	 * @return a map of this connection's LocalPortForwardRequests
+	 */
+	public Map<String, LocalPortForwardRequest> getTunnels() {
+		return new HashMap<String, LocalPortForwardRequest>(tunnels);
+	}
+	
+	/** Sharable JSON deserializer for SSHConnections */
+	public static final JsonDeserializer<SSHConnection> DESER = new SSHConnectionDeserializer();
+	/** Sharable JSON serializer for SSHConnections */
+	public static final JsonSerializer<SSHConnection> SER = new SSHConnectionSerializer();
+	
+	static {
+		JSONOps.registerSerialization(SSHConnection.class, DESER, SER);
+	}
+	
+	
+
+	/**
+	 * <p>Title: SSHConnectionSerializer</p>
+	 * <p>Description: JSON serializer for SSHConnections</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.collector.ssh.SSHConnection.SSHConnectionSerializer</code></p>
+	 */
+	public static class SSHConnectionSerializer extends JsonSerializer<SSHConnection> {
+		/**
+		 * {@inheritDoc}
+		 * @see com.fasterxml.jackson.databind.JsonSerializer#serialize(java.lang.Object, com.fasterxml.jackson.core.JsonGenerator, com.fasterxml.jackson.databind.SerializerProvider)
+		 */
+		@Override
+		public void serialize(final SSHConnection value, final JsonGenerator gen, final SerializerProvider serializers) throws IOException, JsonProcessingException {
+			gen.writeStartObject();
+			gen.writeStringField("host", value.host);
+			gen.writeNumberField("sshport", value.sshPort);
+			gen.writeStringField("user", value.user);
+			if(value.password!=null) {
+				gen.writeStringField("password", value.password);
+			}
+			if(value.privateKey!=null) {				
+				gen.writeStringField("pkey", new String(value.privateKey));
+			}
+			if(value.privateKeyFile!=null) {				
+				gen.writeStringField("pkeyfile", value.privateKeyFile.getAbsolutePath());
+			}
+			if(value.passPhrase!=null) {				
+				gen.writeStringField("pphrase", value.passPhrase);
+			}
+			gen.writeNumberField("connectTimeout", value.connectTimeout);
+			gen.writeNumberField("kexTimeout", value.kexTimeout);
+			if(!value.tunnels.isEmpty()) {
+				gen.writeArrayFieldStart("tunnels");
+				for(LocalPortForwardRequest lr: value.tunnels.values()) {
+					gen.writeObject(lr);
+				}
+				gen.writeEndArray();
+			}
+			gen.writeEndObject();			
+		}
+	}
+	
+	/**
+	 * <p>Title: SSHConnectionDeserializer</p>
+	 * <p>Description: JSON deserializer for SSHConnections</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.collector.ssh.SSHConnection.SSHConnectionDeserializer</code></p>
+	 */
+	public static class SSHConnectionDeserializer extends JsonDeserializer<SSHConnection> {
+		/**
+		 * {@inheritDoc}
+		 * @see com.fasterxml.jackson.databind.JsonDeserializer#deserialize(com.fasterxml.jackson.core.JsonParser, com.fasterxml.jackson.databind.DeserializationContext)
+		 */
+		@Override
+		public SSHConnection deserialize(final JsonParser p, final DeserializationContext ctxt) throws IOException, JsonProcessingException {
+			final JsonNode node = p.getCodec().readTree(p);
+			final String host = node.get("host").textValue();
+			final String user = node.get("user").textValue();
+			final int sshPort = node.has("sshport") ? node.get("sshport").intValue() : 22;
+			
+			final String key = String.format(KEY_TEMPLATE, user, host, sshPort);
+			final Connection connection = new Connection(host, sshPort);
+			
+			final SSHConnection sshConn = new SSHConnection(key, connection);
+			sshConn.host = host;
+			sshConn.user = user;
+			sshConn.sshPort = sshPort;
+			sshConn.password = node.has("password") ? node.get("password").textValue() : null;
+			sshConn.privateKey = node.has("pkey") ? node.get("pkey").textValue().toCharArray() : null;
+			sshConn.passPhrase = node.has("passphrase") ? node.get("passphrase").textValue() : null;
+			sshConn.privateKeyFile = node.has("pkeyfile") ? new File(node.get("pkeyfile").textValue()) : null;
+			sshConn.connectTimeout = node.has("connectTimeout") ? node.get("connectTimeout").intValue() : DEFAULT_CONNECT_TIMEOUT;
+			sshConn.kexTimeout = node.has("kexTimeout") ? node.get("kexTimeout").intValue() : DEFAULT_KEX_TIMEOUT;
+			
+			if(node.has("tunnels")) {
+				final ArrayNode an = (ArrayNode)node.get("tunnels");
+				if(an.size() > 0) {
+					for(JsonNode n: an) {
+						LocalPortForwardRequest req = JSONOps.parseToObject(n, LocalPortForwardRequest.class);
+						sshConn.tunnels.put(req.getKey(), req);
+					}
+				}
+			}
+			connections.put(key, sshConn);
+			return sshConn;
+		}
 	}
 
 	

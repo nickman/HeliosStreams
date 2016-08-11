@@ -19,24 +19,33 @@ import java.io.File;
 import java.net.URL;
 import java.util.Arrays;
 
+import javax.management.MBeanServerConnection;
+import javax.management.remote.JMXConnector;
+import javax.management.remote.jmxmp.JMXMPConnectorServer;
+
+import org.junit.After;
 import org.junit.Assert;
-import org.junit.Ignore;
+import org.junit.Before;
 import org.junit.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.heliosapm.streams.collector.ssh.LocalPortForwardRequest;
 import com.heliosapm.streams.collector.ssh.SSHConnection;
 import com.heliosapm.streams.collector.ssh.SSHTunnelManager;
+import com.heliosapm.streams.json.JSONOps;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.url.URLHelper;
 
+import ch.ethz.ssh2.LocalPortForwarder;
 import test.com.heliosapm.streams.collector.BaseTest;
 import test.com.heliosapm.streams.collector.ssh.server.ApacheSSHDServer;
 
 /**
  * <p>Title: SSHConnectionTest</p>
- * <p>Description: </p> 
+ * <p>Description: SSH raw connection, authentication and tunneling tests</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>test.com.heliosapm.streams.collector.ssh.conn.SSHConnectionTest</code></p>
@@ -49,6 +58,57 @@ public class SSHConnectionTest extends BaseTest {
 	public static final String SSHD_PORT_PROP = "heliosapm.sshd.port";
 	/** A reference to the tunnel manager */
 	protected static final SSHTunnelManager tunnelManager = SSHTunnelManager.getInstance();
+	/** The sys prop for local port 1 */
+	public static final String LOCAL_PORT_1 = "heliosapm.sshd.tunnel.rport.1";
+	/** The sys prop for local port 2 */
+	public static final String LOCAL_PORT_2 = "heliosapm.sshd.tunnel.rport.2";
+	
+	
+	
+	/**
+	 * Clears the local port sysprops and sshd port
+	 */
+	@SuppressWarnings("static-method")
+	@After
+	public void clearLocalPorts() {
+		System.clearProperty(LOCAL_PORT_1);
+		System.clearProperty(LOCAL_PORT_2);
+		System.clearProperty(SSHD_PORT_PROP);
+	}
+	
+	/**
+	 * Sets the local port sysprops and sshd port
+	 */
+	@SuppressWarnings("static-method")
+	@Before
+	public void assignLocalPorts() {
+		setLocalPorts();
+	}
+
+	
+	
+	/**
+	 * Sets the test ports
+	 * @param port1 test port 1
+	 * @param port2 test port 2
+	 */
+	protected static void setLocalPorts(final int port1, final int port2) {
+		System.setProperty(LOCAL_PORT_1, "" + port1);
+		System.setProperty(LOCAL_PORT_2, "" + port2);
+		System.setProperty(SSHD_PORT_PROP, "22");
+	}
+	
+	/**
+	 * Sets the test ports to random values
+	 * @return the assigned ports
+	 */
+	protected static int[] setLocalPorts() {
+		final int[] ports = new int[]{nextPosInt(65535), nextPosInt(65535)};
+		setLocalPorts(ports[0], ports[1]);
+		return ports;
+	}
+
+	
 	
 	/**
 	 * Tests loading an array of SSHConnections from JSON
@@ -72,6 +132,9 @@ public class SSHConnectionTest extends BaseTest {
 			for(int i = 0; i < connections.length; i++) {
 				validateConnection(connections[i], nodes.get(i));
 			}
+		} catch (Throwable ex) {
+			ex.printStackTrace(System.err);
+			throw new RuntimeException(ex);
 		} finally {
 			System.clearProperty(SSHD_PORT_PROP);
 		}
@@ -84,6 +147,7 @@ public class SSHConnectionTest extends BaseTest {
 	@SuppressWarnings("static-method")
 	@Test
 	public void testBasicConnects() throws Exception {
+		System.clearProperty(SSHD_PORT_PROP);
 		final ApacheSSHDServer sshdServer = ApacheSSHDServer.getInstance(); 
 		try {			
 			final URL url = SSHConnectionTest.class.getClassLoader().getResource(TEST_JSON);
@@ -106,6 +170,7 @@ public class SSHConnectionTest extends BaseTest {
 	@SuppressWarnings("static-method")
 	@Test
 	public void testBasicConnectAndAuthenticate() throws Exception {
+		System.clearProperty(SSHD_PORT_PROP);
 		final ApacheSSHDServer sshdServer = ApacheSSHDServer.getInstance();
 		sshdServer.activateKeyAuthenticator(true);
 		sshdServer.activatePasswordAuthenticator(true);
@@ -150,32 +215,77 @@ public class SSHConnectionTest extends BaseTest {
 			} else {
 				Assert.assertEquals("Mismatched kexTimeout on connection vs. default on [" + conn + "]", SSHConnection.DEFAULT_KEX_TIMEOUT, ((Integer)(PrivateAccessor.getFieldValue(conn, "kexTimeout"))).intValue());
 			}
+			if(jsonNode.has("tunnels")) {
+				final ArrayNode tunnelNode = (ArrayNode)jsonNode.get("tunnels");
+				LocalPortForwardRequest[] tunnels = JSONOps.parseToObject(tunnelNode, LocalPortForwardRequest[].class);
+				Assert.assertEquals("Mismatched tunnel count on connection vs. json on [" + conn + "]", tunnelNode.size(), tunnels.length);
+				for(int i = 0; i < tunnels.length; i++) {
+					validateTunnel(tunnels[i], tunnelNode.get(i));
+				}
+				
+			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw ex;
 		}
 	}
 	
-//	/** The host to connect to */
-//	@JsonProperty(value="host", required=true)
-//	protected String host = null;
-//	/** The ssh listener port */
-//	@JsonProperty(value="sshport", defaultValue="22")
-//	protected int sshPort = 22;
-//	/** The user to connect as */
-//	@JsonProperty(value="user", required=true)
-//	protected String user = null;
-//	/** The user password */
-//	@JsonProperty(value="password")
-//	protected String password = null;
-//	/** The ssh private key */
-//	@JsonProperty(value="pkey")
-//	protected char[] privateKey = null;
-//	/** The ssh private key file */
-//	@JsonProperty(value="pkeyfile")
-//	protected File privateKeyFile = null;	
-//	/** The ssh private key passphrase */
-//	@JsonProperty(value="pphrase")
-//	protected String passPhrase = null;
+	/**
+	 * Validates that the passed tunnel request has the same values as the passed json node
+	 * @param tunnel The tunnel to test
+	 * @param jsonNode The json to test against
+	 * @throws Exception thrown on any error
+	 */
+	protected static void validateTunnel(final LocalPortForwardRequest tunnel, final JsonNode jsonNode) throws Exception {
+			Assert.assertNotNull("Tunnel was null", tunnel);
+			Assert.assertNotNull("Node was null", jsonNode);
+			Assert.assertEquals("Mismatched host on tunnel vs. json on [" + tunnel + "]", jsonNode.get("remotehost").textValue(), tunnel.getRemoteHost());
+			if(jsonNode.has("localport")) {
+				Assert.assertEquals("Mismatched local port on tunnel vs. json on [" + tunnel + "]", jsonNode.get("localport").intValue(), tunnel.getLocalPort());
+			} else {
+				Assert.assertEquals("Mismatched local port on tunnel vs. json on [" + tunnel + "]", 0, tunnel.getLocalPort());
+			}
+			Assert.assertEquals("Mismatched remote port on tunnel vs. json on [" + tunnel + "]", jsonNode.get("remoteport").intValue(), tunnel.getRemotePort());
+			Assert.assertEquals("Mismatched key on tunnel [" + tunnel + "]", (jsonNode.get("remotehost").textValue() + ":" + jsonNode.get("remoteport").intValue()), tunnel.getKey());
+	}
+	
+	/**
+	 * Tests loading an array of SSHConnections from JSON and establishing a basic connection
+	 * @throws Exception thrown on any error
+	 */
+	@SuppressWarnings("static-method")
+	@Test
+	public void testJMXMPTunnel() throws Exception {
+		System.clearProperty(SSHD_PORT_PROP);
+		final ApacheSSHDServer sshdServer = ApacheSSHDServer.getInstance();		
+		final int[] ports = setLocalPorts();
+		System.setProperty(SSHD_PORT_PROP, "" + sshdServer.getPort());
+		final JMXMPConnectorServer jmxmp = JMXHelper.fireUpJMXMPServer(0);
+		final int remotePort = jmxmp.getAddress().getPort();
+		final String agentId = JMXHelper.getAgentId();
+		log("Actual Agent ID: [" + agentId + "]");
+		try {			
+			final URL url = SSHConnectionTest.class.getClassLoader().getResource(TEST_JSON);
+			final SSHConnection[] connections = SSHTunnelManager.parseConnections(url);
+			log(Arrays.deepToString(connections));
+			for(int i = 0; i < connections.length; i++) {
+				connections[i].authenticate();
+				LocalPortForwarder lpf = (LocalPortForwarder)PrivateAccessor.invoke(connections[i], "createPortForward", new Object[]{0, "localhost", remotePort}, int.class, String.class, int.class);
+				final int localPort = lpf.getLocalPort();
+				final JMXConnector jmxConnector = JMXHelper.getJMXConnection("service:jmx:jmxmp://localhost:" + localPort, true, null);
+				final MBeanServerConnection server = jmxConnector.getMBeanServerConnection();
+				final String readAgentId = JMXHelper.getAgentId(server);
+				log("Agent ID: for [" + connections[i] + "] : [" + agentId + "]");
+				Assert.assertEquals("Mismatch on expected agent ids", agentId, readAgentId);
+				jmxConnector.close();
+			}
+		} finally {
+			jmxmp.stop();
+			sshdServer.stop(true);
+			System.clearProperty(SSHD_PORT_PROP);
+		}
+	}
+	
+	
 	
 }
