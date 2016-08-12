@@ -27,9 +27,9 @@ import java.io.Reader;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -70,7 +70,7 @@ public class ByteBufReaderSource implements ReaderSource {
 	/** Indicates if any preject code was generated */
 	final boolean prejected;
 	/** The bindings map */
-	final Map<String, Object> bindingMap = new LinkedHashMap<String, Object>();
+	final Map<String, Object> bindingMap = new ConcurrentHashMap<String, Object>();
 	/** The merged local and linked script properties */
 	final Properties scriptProperties;
 	/** A reference to the global cache service */
@@ -90,7 +90,7 @@ public class ByteBufReaderSource implements ReaderSource {
 	/** Typed value substitution pattern */
 	public static final Pattern TYPED_PATTERN = Pattern.compile("\\$typed\\{(.*?):(.*)\\}");
 	/** Injected field template */
-	public static final String INJECT_TEMPLATE = "@Dependency(value=\"%s\", timeout=%s, unit=%s) def %s;"; 
+	public static final String INJECT_TEMPLATE = "@Dependency(value=\"%s\", timeout=%sL, unit=java.util.concurrent.TimeUnit.%s) def %s;"; 
 	/** The platform end of line character */
 	public static final String EOL = System.getProperty("line.separator");
 	
@@ -233,7 +233,7 @@ public class ByteBufReaderSource implements ReaderSource {
 		final Properties p = readConfig(sourceFile);
 		if(p.isEmpty()) return b;
 		for(final String key: p.stringPropertyNames()) {
-			final String value = p.getProperty(key, "").trim();
+			final String value = StringHelper.resolveTokens(p, p.getProperty(key, "").trim(), p);
 			if(value.isEmpty()) continue;
 			try {				
 				final Matcher m = CACHE_PATTERN.matcher(value);
@@ -268,6 +268,7 @@ public class ByteBufReaderSource implements ReaderSource {
 				log.warn("Failed to process injected property [{}]:[{}]", key, value, ex);
 				continue;
 			}
+			bindingMap.put(key, value);
 		}
 		return b;
 	}
@@ -293,7 +294,14 @@ public class ByteBufReaderSource implements ReaderSource {
 			if(!linkedSourcePath.equals(sourcePath)) {
 				final File linkedProps = new File(linkedSourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
 				if(linkedProps.canRead()) {
-					final Properties linkedProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(linkedProps))), UTF8);
+//					final String propsAsString = StringHelper.resolveTokens(
+//							p,
+//							URLHelper.getStrBuffFromURL(URLHelper.toURL(linkedProps)),
+//							p
+//					);
+					final String propsAsString = StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(linkedProps)));
+					
+					final Properties linkedProperties = Props.strToProps(propsAsString, UTF8);
 					p.putAll(linkedProperties);
 				}
 			}
@@ -301,12 +309,23 @@ public class ByteBufReaderSource implements ReaderSource {
 		final File exactMatchFileProps = new File(sourcePath.toFile().getAbsolutePath().replace(".groovy", ".properties"));
 		final File noSchedFileProps = new File(sourcePath.toFile().getAbsolutePath().replace(sourceFile.getName(), PERIOD_PATTERN.matcher(sourceFile.getName()).replaceAll(".properties")));
 		if(noSchedFileProps.canRead()) {
-			final Properties rp = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(noSchedFileProps))), UTF8);
+//			final Properties rp = Props.strToProps(
+//					StringHelper.resolveTokens(p,URLHelper.getStrBuffFromURL(URLHelper.toURL(noSchedFileProps)), p), 
+//					UTF8);
+			final Properties rp = Props.strToProps(
+					StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(noSchedFileProps))), 
+					UTF8);			
 			p.putAll(rp);
 		}
 		
 		if(exactMatchFileProps.canRead()) {
-			final Properties localProperties = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(exactMatchFileProps))), UTF8);
+//			final Properties localProperties = Props.strToProps(
+//					StringHelper.resolveTokens(p, URLHelper.getStrBuffFromURL(URLHelper.toURL(exactMatchFileProps)), p), 
+//					UTF8);
+			final Properties localProperties = Props.strToProps(
+					StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(exactMatchFileProps))), 
+					UTF8);
+			
 			p.putAll(localProperties);
 		}
 		

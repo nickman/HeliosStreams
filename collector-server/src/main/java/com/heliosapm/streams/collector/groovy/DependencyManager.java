@@ -85,6 +85,7 @@ public class DependencyManager<T extends ManagedScript> implements CacheEventLis
 						log.info("Seting dependent value [{}] on [{}] from cache entry [{}]", o.getClass().getName(), scriptName, cacheKey);
 						updater.set(script, o);
 						//PrivateAccessor.setFieldValue(script, f.getName(), o);
+						cache.addCacheEventListener(this, cacheKey);
 						log.info("Dependent value [{}] initialized on [{}] from cache entry [{}]", o.getClass().getName(), scriptName, cacheKey);
 					}
 				}
@@ -113,6 +114,7 @@ public class DependencyManager<T extends ManagedScript> implements CacheEventLis
 		final AtomicReferenceFieldUpdater<T, Object> updater = depUpdaters.get(key);
 		if(updater!=null) {
 			updater.set(script, value);
+			script.getBinding().setVariable("_" + depFields.get(key).getName(), value);
 			script.removePendingDependency(key);
 			log.info("Dependent value [{}] initialized on [{}] from cache entry [{}]", value.getClass().getName(), scriptName, key);
 		}
@@ -127,7 +129,8 @@ public class DependencyManager<T extends ManagedScript> implements CacheEventLis
 		final AtomicReferenceFieldUpdater<T, Object> updater = depUpdaters.get(key);
 		if(updater!=null) {
 			script.addPendingDependency(key);
-			updater.set(script, null);			
+			updater.set(script, null);		
+			script.getBinding().getVariables().remove("_" + depFields.get(key).getName());
 			log.info("Dependent value removed from [{}] based on cleared cache entry [{}]", scriptName, key);
 		}		
 	}
@@ -142,6 +145,7 @@ public class DependencyManager<T extends ManagedScript> implements CacheEventLis
 		if(updater!=null) {
 			script.removePendingDependency(key);
 			updater.set(script, newValue);
+			script.getBinding().setVariable("_" + depFields.get(key).getName() , newValue);
 			log.info("Dependent value [{}] replaced on [{}] from cache entry [{}]", newValue.getClass().getName(), scriptName, key);
 		}				
 	}

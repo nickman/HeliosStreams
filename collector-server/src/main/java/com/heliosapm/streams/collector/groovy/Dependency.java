@@ -30,9 +30,6 @@ import java.util.concurrent.TimeUnit;
 
 import org.codehaus.groovy.transform.GroovyASTTransformationClass;
 
-import groovy.transform.AnnotationCollector;
-import groovy.transform.Field;
-
 /**
  * <p>Title: Dependency</p>
  * <p>Description: Annotation to create a dependency on a cache value in a groovy script</p> 
@@ -43,7 +40,7 @@ import groovy.transform.Field;
 @Retention(RUNTIME)
 @Target({ FIELD, LOCAL_VARIABLE, ANNOTATION_TYPE })
 
-//@AnnotationCollector({VolatileField.class})
+
 @GroovyASTTransformationClass("com.heliosapm.streams.collector.groovy.VolatileFieldASTTransformation")
 public @interface Dependency {
 	/**

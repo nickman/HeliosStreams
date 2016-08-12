@@ -57,7 +57,7 @@ public class LocalPortForwardRequest {
 		this.localPort = localPort;
 		this.remotePort = remotePort;
 		this.remoteHost = remoteHost.trim();
-		key = this.remoteHost + ":" + remotePort;
+		key = this.remoteHost + "-" + remotePort;
 	}
 	
 	/**

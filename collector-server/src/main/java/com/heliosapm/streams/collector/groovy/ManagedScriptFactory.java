@@ -115,7 +115,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			"import javax.management.*", 
 			"import java.lang.management.*",
 			"import com.heliosapm.streams.collector.groovy.*",
-			"import groovy.transform.*"
+			"import groovy.transform.*",
+			"import com.heliosapm.streams.collector.jmx.*"
 	};
 	
 	
@@ -141,6 +142,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	protected final File tmpDirectory;
 	/** The collector service ssh directory where SSH config files are read from */
 	protected final File sshDirectory;
+	/** The collector service datasource definition directory */
+	protected final File dataSourceDirectory;
 
 	
 	/** The collector service script path */
@@ -277,6 +280,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		jdbcLibDirectory = new File(libDirectory, "jdbc");
 		jdbcLibDirectory.mkdir();
 		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
+		dataSourceDirectory = new File(rootDirectory, "datasources").getAbsoluteFile();
 		fixtureDirectory = new File(rootDirectory, "fixtures").getAbsoluteFile();
 		confDirectory = new File(rootDirectory, "conf").getAbsoluteFile();
 		tmpDirectory = new File(rootDirectory, "tmp").getAbsoluteFile();		
@@ -297,7 +301,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 //		GroovySystem.stopThreadedReferenceManager();
 		customizeCompiler();
 		collectorExecutionService = CollectorExecutionService.getInstance();
-		jdbcDataSourceManager = new JDBCDataSourceManager(new File(rootDirectory, "datasources"));
+		jdbcDataSourceManager = new JDBCDataSourceManager(dataSourceDirectory, collectorExecutionService);
 		SharedScheduler.getInstance();
 		try { JMXHelper.registerMBean(this, OBJECT_NAME); } catch (Exception ex) {
 			log.warn("Failed to register ManagedScriptFactory management interface. Will continue without.", ex);
@@ -356,6 +360,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			final long elapsed = System.currentTimeMillis() - start;
 			log.info("Startup compilation completed for [{}] source files. Successful: [{}], Failed: [{}], Elapsed: [{}] ms.", sourceFiles.length, successfulCompiles.longValue(), failedCompiles.longValue(), elapsed);
 		}
+		System.gc();
 		fileChangeWatcher = sourceFinder.watch(5, true, this);
 		fileChangeWatcher.startWatcher(5);
 	}

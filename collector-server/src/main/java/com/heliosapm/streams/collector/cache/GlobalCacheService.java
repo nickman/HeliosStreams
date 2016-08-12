@@ -117,9 +117,10 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param value The new cache item value
 	 */
 	protected void fireValueAdded(final String key, final Object value) {
-		sendNotif(NOTIF_ADD_EVENT, "Cache Item Added [" + key + "/" + value + "]");
+		sendNotif(NOTIF_ADD_EVENT, "Cache Item Added [" + key + " : " + value + "]");
 		for(final CacheEventListener listener: listenersByAnyKey) {
 			notificationExecutor.execute(new Runnable(){
+				@Override
 				public void run() {
 					listener.onValueAdded(key, value);
 				}
@@ -147,6 +148,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 		sendNotif(NOTIF_REMOVE_EVENT, "Cache Item Removed [" + key + "]");
 		for(final CacheEventListener listener: listenersByAnyKey) {
 			notificationExecutor.execute(new Runnable(){
+				@Override
 				public void run() {
 					listener.onValueRemoved(key, value);
 				}
@@ -156,6 +158,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 		if(keyListeners!=null && !keyListeners.isEmpty()) {
 			for(final CacheEventListener listener: keyListeners) {
 				notificationExecutor.execute(new Runnable(){
+					@Override
 					public void run() {
 						listener.onValueRemoved(key, value);
 					}
@@ -174,6 +177,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 		sendNotif(NOTIF_REMOVE_EVENT, "Cache Item Replaced [" + key + "]");
 		for(final CacheEventListener listener: listenersByAnyKey) {
 			notificationExecutor.execute(new Runnable(){
+				@Override
 				public void run() {
 					listener.onValueReplaced(key, oldValue, newValue);
 				}
@@ -183,6 +187,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 		if(keyListeners!=null && !keyListeners.isEmpty()) {
 			for(final CacheEventListener listener: keyListeners) {
 				notificationExecutor.execute(new Runnable(){
+					@Override
 					public void run() {
 						listener.onValueReplaced(key, oldValue, newValue);
 					}
@@ -673,6 +678,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 			this.onRemove = onRemove;
 			if(this.expireIn>0) {
 				expiryHandle = scheduler.schedule(new Runnable(){
+					@Override
 					public void run() {
 						remove(key);						
 					}					
@@ -681,6 +687,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 		}
 		
 		
+		@Override
 		public void close() {
 			if(expiryHandle!=null) try { 
 				expiryHandle.cancel(true); 

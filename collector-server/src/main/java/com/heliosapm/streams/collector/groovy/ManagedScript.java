@@ -49,14 +49,15 @@ import javax.management.ObjectName;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
+import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.reflection.ClassInfo;
 
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.TimeoutService;
-import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.tracing.ITracer;
@@ -64,6 +65,7 @@ import com.heliosapm.streams.tracing.TracerFactory;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.ref.MBeanProxy;
 import com.heliosapm.utils.ref.ReferenceService.ReferenceType;
 import com.heliosapm.utils.reflect.PrivateAccessor;
@@ -71,7 +73,9 @@ import com.heliosapm.utils.tuples.NVP;
 
 import groovy.lang.Binding;
 import groovy.lang.GroovyClassLoader;
+import groovy.lang.GroovyShell;
 import groovy.lang.GroovySystem;
+import groovy.lang.MissingPropertyException;
 import groovy.lang.Script;
 import io.netty.util.Timeout;
 import jsr166e.LongAdder;
@@ -81,6 +85,8 @@ import jsr166e.LongAdder;
  * <p>Description: A groovy {@link Script} extension to provide JMX management for each script instance</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScript</code></p>
+ * FIXME:
+ * 	Race condition on dependency management when datasource is redeployed. 
  */
 
 public abstract class ManagedScript extends Script implements MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler {
@@ -148,11 +154,13 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	
 	/** Regex pattern to determine if a schedule directive is build into the source file name */
 	public static final Pattern PERIOD_PATTERN = Pattern.compile(".*\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
+	/** The pattern identifying a property value that should be resolved post-compilation */
+	public static final Pattern POST_COMPILE = Pattern.compile("\\$post\\{(.*?)\\}$");
 	
 	/** The UTF8 char set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
 	
-	private static final double NS2MS = 1D / (double)TimeUnit.NANOSECONDS.convert(1, TimeUnit.MILLISECONDS);
+	protected static final NonBlockingHashMap<String, Field> fields = new NonBlockingHashMap<String, Field>(); 
 
 	
 	/**
@@ -162,6 +170,9 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	public ManagedScript() {
 		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 		executionService = CollectorExecutionService.getInstance();
+		for(Field f: getClass().getDeclaredFields()) {
+			fields.put(f.getName(), f);
+		}
 	}
 
 //	/**
@@ -193,7 +204,24 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		final String name = sourceReader.getSourceFile().getName().replace(".groovy", "");
 		final String dir = sourceReader.getSourceFile().getParent().replace(rootDirectory, "").replace("\\", "/").replace("/./", "/").replace("/collectors/", "");
 		bindingMap = sourceReader.getBindingMap();
-		binding = new Binding(this.bindingMap);
+		final Object thisScript = this;
+		binding = new Binding(this.bindingMap) {
+        	@Override
+        	public Object getProperty(final String name) {
+        		if(bindingMap.containsKey(name)) return bindingMap.get(name);
+        		final Field f = fields.get(name);
+        		if(f!=null) {
+        			return PrivateAccessor.getFieldValue(f, thisScript);
+        		}
+        		throw new MissingPropertyException("No such property: [" + name + "]");
+        	}
+        	
+        	@Override
+        	public Object getVariable(final String name) {
+        		return getProperty(name);
+        	}
+			
+		};
 		bindingMap.putAll(super.getBinding().getVariables());		
 		bindingMap.putAll(baseBindings);
 		super.setBinding(this.binding);
@@ -245,6 +273,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	
 	
 	
+	
 //	/** Cache injection substitution pattern */
 //	public static final Pattern CACHE_PATTERN = Pattern.compile("\\$cache\\{(.*?)(?::(\\d+))?(?::(nanoseconds|microseconds|milliseconds|seconds|minutes|hours|days))??\\}");
 //	/** Injected field template */
@@ -293,10 +322,12 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		@Override
 		public Void call() throws Exception {
 			try {
-				final Timeout txout = timeoutService.timeout(5, TimeUnit.SECONDS, new Runnable(){
+				final long timeout = JMXHelper.isDebugAgentLoaded() ? 10000 : scheduledPeriod;
+				final Timeout txout = timeoutService.timeout(timeout, TimeUnit.SECONDS, new Runnable(){
 					final Thread me = Thread.currentThread();
 					@Override
 					public void run() {
+						log.warn("Exec Timeout !!!\n{}", StringHelper.formatStackTrace(me));
 						me.interrupt();
 						log.warn("Task interrupted after timeout");
 					}
@@ -319,6 +350,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			} finally {
 				if(pendingDependencies.isEmpty()) {
 					canReschedule.set(true);
+					updateProps();
 					scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);					
 				} else {
 					log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
@@ -352,6 +384,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		if(scheduleHandle != null) {
 			scheduleHandle.cancel(true);
 			scheduleHandle = null;
+			log.warn("\n\t ================================ \n\t Waiting script [{}} unscheduled. Dependencies incomplete: {}", this.sourceFile, pendingDependencies);			
 		}
 
 	}
@@ -364,10 +397,52 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		pendingDependencies.remove(cacheKey);
 		if(pendingDependencies.isEmpty()) {
 			canReschedule.set(true);
+			updateProps();
 			scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);
-			log.info("\n ================================ \n Waiting script [{}} scheduled. All dependencies complete.", this.sourceFile);
+			log.info("\n\t ================================ \n\t Waiting script [{}} scheduled. All dependencies complete.", this.sourceFile);
 		}
 	}
+	
+	
+	/**
+	 * Examines all the bindings looking for a value that looks like a post-compile 
+	 * expression which is one that matches {@link #POST_COMPILE}.
+	 * For each one found, the post-compile value is evaluated as a groovy script
+	 * and the result replaces the binding value.
+	 */
+	protected void updateProps() {
+		for(Map.Entry<String, Object> bind: bindingMap.entrySet()) {
+			try {
+				final Object o = bind.getValue();
+				if(o!=null && (o instanceof CharSequence)) {
+					final String v = o.toString();
+					final Matcher m = POST_COMPILE.matcher(v);
+					if(m.matches()) {
+						final String expr = m.group(1);
+						final Object evaled = evaluate("\"" + expr + "\"");
+						bind.setValue(evaled);
+						log.info("Completed post-compile for key [{}]: [{}] --> [{}]", bind.getKey(), o, evaled);
+					}
+				}
+			} catch (Exception ex) {
+				log.error("Failed to process post-compile on bind [{}:{}]", bind.getKey(), bind.getValue(), ex);
+			}
+		}
+	}
+	
+    /**
+     * A helper method to allow the dynamic evaluation of groovy expressions using this
+     * scripts binding as the variable scope
+     *
+     * @param expression is the Groovy script expression to evaluate
+     * @return The return value of the script
+     */
+	@Override
+    public Object evaluate(String expression) throws CompilationFailedException {
+        GroovyShell shell = new GroovyShell(binding);        
+        return shell.evaluate(expression);
+    }
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -414,7 +489,8 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			scheduleHandle = null;
 		}
 		bindingMap.clear();
-		dependencyManager.close();
+		fields.clear();
+		try { dependencyManager.close(); } catch (Exception x) {/* No Op */}
 		if(gcl!=null) {
 			final Class[] classes = gcl.getLoadedClasses();
 			
