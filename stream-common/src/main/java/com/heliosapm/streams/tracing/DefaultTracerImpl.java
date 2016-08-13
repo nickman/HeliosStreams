@@ -438,14 +438,19 @@ public class DefaultTracerImpl implements ITracer {
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.tracing.ITracer#pushTag(java.lang.String, java.lang.String)
+	 * @see com.heliosapm.streams.tracing.ITracer#pushTag(java.lang.Object, java.lang.Object)
 	 */
 	@Override
-	public ITracer pushTag(final String tagKey, final String tagValue) {
-		if(tagKey==null || tagKey.trim().isEmpty()) throw new IllegalArgumentException("Tag key was null or empty");
-		if(tagValue==null || tagValue.trim().isEmpty()) throw new IllegalArgumentException("Tag value was null or empty");
-		tagStack.push(new String[]{tagKey.trim(), tagValue.trim()});
+	public ITracer pushTag(final Object tagKey, final Object tagValue) {
+		tagStack.push(new String[]{ts(tagKey, "Tag Key"), ts(tagValue, "Tag Value")});		
 		return this;
+	}
+	
+	private static String ts(final Object obj, final String name) {
+		if(obj==null) throw new IllegalArgumentException(name + " was null");
+		final String s = obj.toString().trim().toLowerCase();
+		if(s.isEmpty()) throw new IllegalArgumentException(name + " was empty");
+		return s;
 	}
 	
 	/**

@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
 import javax.management.Attribute;
@@ -34,12 +35,14 @@ import javax.management.MBeanInfo;
 import javax.management.MBeanRegistrationException;
 import javax.management.MBeanServerConnection;
 import javax.management.NotCompliantMBeanException;
+import javax.management.Notification;
 import javax.management.NotificationFilter;
 import javax.management.NotificationListener;
 import javax.management.ObjectInstance;
 import javax.management.ObjectName;
 import javax.management.QueryExp;
 import javax.management.ReflectionException;
+import javax.management.remote.JMXConnectionNotification;
 import javax.management.remote.JMXConnector;
 import javax.management.remote.JMXConnectorFactory;
 import javax.management.remote.JMXServiceURL;
@@ -48,7 +51,13 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
 import com.heliosapm.streams.collector.TimeoutService;
+import com.heliosapm.streams.collector.jmx.protocol.tunnel.ClientProvider;
+import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
 
@@ -62,7 +71,7 @@ import io.netty.util.Timeout;
  * <p><code>com.heliosapm.streams.collector.jmx.JMXClient</code></p>
  */
 
-public class JMXClient {
+public class JMXClient implements MBeanServerConnection {
 	/** The JMX URL */
 	protected final String jmxUrl;
 	/** The JMX Service URL */
@@ -77,14 +86,91 @@ public class JMXClient {
 	protected final long connectTimeoutSecs;
 	/** Instance logger */
 	protected final Logger log;
+	
+	/** The default connect timeout in seconds */
+	public static final long DEFAULT_CONNECT_TIMEOUT = 10;
+	
 	/** Listener registrations that should be saved an re-applied on re-connect */
 	protected final NonBlockingHashSet<SavedNotificationEvent> registrations = new NonBlockingHashSet<SavedNotificationEvent>();
 	
-	public static JMXClient newInstance(final CharSequence cs) {
+	/** Client cache */
+	protected static final Cache<Object, JMXClient> clients = CacheBuilder.newBuilder()
+		.concurrencyLevel(Runtime.getRuntime().availableProcessors())
+		.initialCapacity(256)
+		.weakKeys()
+		.removalListener(new RemovalListener<Object, JMXClient>() {
+			@Override
+			public void onRemoval(final RemovalNotification<Object, JMXClient> notification) {
+				if(notification!=null) {
+					final JMXClient client = notification.getValue();
+					if(client!=null) {
+						client.log.info("Closing JMXClient [{}]", client.jmxServiceUrl);
+						try { client.jmxConnector.close(); } catch (Exception ex) {/* No Op */}
+					}
+				}
+			}
+		})
+		.build();
+	
+	/**
+	 * Creates a new JMXClient
+	 * @param cs A string parsed as <b><code>&lt;JMX URL&gt;[[,&lt;Connect Timeout (sec)&gt;],&lt;Credentials&gt;]</code></b>
+	 * @return the JMXClient
+	 */
+	public static JMXClient newInstance(final Object key, final CharSequence cs) {
 		if(cs==null) throw new IllegalArgumentException("The passed char sequence was null");
+		if(key==null) throw new IllegalArgumentException("The passed client key was null");
 		final String str = cs.toString().trim();
 		if(str.isEmpty()) throw new IllegalArgumentException("The passed char sequence was empty");
 		final String[] frags = StringHelper.splitString(str, ',', true);
+		final String url = frags[0];
+		final long connectTimeoutSecs;
+		final String[] credentials;
+		if(frags.length > 1) {
+			long tmp = -1;
+			try { 
+				tmp = Long.parseLong(frags[1]);
+			} catch (Exception ex) {
+				tmp = DEFAULT_CONNECT_TIMEOUT;
+			}
+			connectTimeoutSecs = tmp;
+		} else {
+			connectTimeoutSecs = DEFAULT_CONNECT_TIMEOUT;
+		}
+		if(frags.length > 2) {
+			if(frags.length == 3) {
+				credentials = new String[]{frags[2], ""};
+			} else {
+				credentials = new String[]{frags[2], frags[3]};
+			}
+		} else {
+			credentials = new String[0];
+		}
+		try {
+			return clients.get(key, new Callable<JMXClient>(){
+				@Override
+				public JMXClient call() throws Exception {
+					final JMXClient client = new JMXClient(url, connectTimeoutSecs, credentials);
+					client.addConnectionNotificationListener(new NotificationListener(){
+						@Override
+						public void handleNotification(final Notification n, final Object handback) {
+							if(n instanceof JMXConnectionNotification) {
+								if(JMXConnectionNotification.CLOSED.equals(n.getType()) || JMXConnectionNotification.FAILED.equals(n.getType())) {
+									client.log.warn("In cache JMXClient received close notif: [{}]", n.getType());
+									try { client.jmxConnector.close(); } catch (Exception x) {/* No Op */}
+									clients.invalidate(key);
+								}
+							}
+							
+						}
+					},null , null);
+					return client;
+				}
+			});
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to acquire JMXClient for [" + cs + "]", ex);
+		}
+		
 	}
 	
 	/**
@@ -97,6 +183,7 @@ public class JMXClient {
 		super();
 		this.jmxUrl = jmxUrl;
 		this.connectTimeoutSecs = connectTimeoutSecs;
+		env.put(ClientProvider.RECONNECT_TIMEOUT_KEY, this.connectTimeoutSecs);
 		jmxServiceUrl = JMXHelper.serviceUrl(jmxUrl);
 		log = LogManager.getLogger(getClass().getName() + "-" + jmxServiceUrl.getHost().replace('.', '_') + "-" + jmxServiceUrl.getPort());
 		if(credentials!=null && credentials.length > 1) {
@@ -544,6 +631,13 @@ public class JMXClient {
 	 */
 	public String getConnectionId() throws IOException {
 		return jmxConnector.getConnectionId();
+	}
+	
+	public String getAppName() {
+		return AgentName.remoteAppName(this);
+	}
+	public String getHostName() {
+		return AgentName.remoteHostName(this);
 	}
 	
 	

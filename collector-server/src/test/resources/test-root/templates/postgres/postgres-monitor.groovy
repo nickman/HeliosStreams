@@ -43,7 +43,7 @@ db_pgstats_monot = ["xact_commit","xact_rollback","blks_read","blks_hit","tup_re
 tracer {
 	tracer.pushKeys("db", "user", "dbapp", "state").pushSeg("session.states");
 	sql.eachRow(pgstats, {
-		tracer.trace(it.cnt, it.db, it.user, it.dbapp, it.state);
+		//tracer.trace(it.cnt, it.db, it.user, it.dbapp, it.state);
 	});
 }
 

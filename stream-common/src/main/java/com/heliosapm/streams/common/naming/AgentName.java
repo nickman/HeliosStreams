@@ -546,10 +546,16 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 			String appName = sysProps.getProperty(PROP_APP_NAME, "").trim();
 			if(appName!=null && !appName.isEmpty()) return appName;
 			appName = sysProps.getProperty(REMOTE_PROP_APP_NAME, "").trim();
+			if(appName!=null && !appName.isEmpty()) return appName;
+			appName = sysProps.getProperty("spring.boot.admin.client.name", "").trim();
 			if(appName!=null && !appName.isEmpty()) return appName;			
 			appName = getRemoteJSAppName(remote);
 			if(appName!=null && !appName.isEmpty()) return appName;
 			appName = sysProps.getProperty("sun.java.command").trim();
+			if(appName!=null && !appName.isEmpty()) {
+				return cleanAppName(appName);
+			}
+			appName = sysProps.getProperty("sun.rt.javaCommand").trim();
 			if(appName!=null && !appName.isEmpty()) {
 				return cleanAppName(appName);
 			}

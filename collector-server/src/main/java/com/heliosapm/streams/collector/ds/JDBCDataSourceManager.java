@@ -23,7 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -93,7 +93,7 @@ public class JDBCDataSourceManager implements FileChangeEventListener {
 		.fileFinder();
 		final long start = System.currentTimeMillis();
 		final File[] dsFiles = finder.find();
-		final List<ForkJoinTask<Boolean>> deploymentTasks = new ArrayList<ForkJoinTask<Boolean>>(dsFiles.length);
+		final List<Future<Boolean>> deploymentTasks = new ArrayList<Future<Boolean>>(dsFiles.length);
 		for(final File dsFile : dsFiles) {
 			deploymentTasks.add(collectorExecutionService.submit(new Callable<Boolean>(){
 				@Override
@@ -108,7 +108,7 @@ public class JDBCDataSourceManager implements FileChangeEventListener {
 			}));				
 		}
 		log.info("Waiting for [{}] data sources to be deployed", dsFiles.length);
-		for(ForkJoinTask<Boolean> task: deploymentTasks) {
+		for(Future<Boolean> task: deploymentTasks) {
 			try {
 				task.get();
 			} catch (Exception e) {					

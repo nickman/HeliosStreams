@@ -169,7 +169,7 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 	public int getPortForward(final String connectHost, final int connectPort) {
 		if(connectHost==null || connectHost.trim().isEmpty()) throw new IllegalArgumentException("The passed connect host was null or empty");
 		if(connectPort < 1 || connectPort > 65535) throw new IllegalArgumentException("The requested port number [" + connectPort + "] is invalid");
-		final String key = connectHost.trim() + ":" + connectPort;
+		final String key = connectHost.trim() + "-" + connectPort;
 		final LocalPortForwarder lpf = portForwards.get(key);
 		if(lpf==null || lpf == LocalPortForwarder.PLACEHOLDER) throw new RuntimeException("No portforward established to [" + key + "]");
 		return lpf.getLocalPort();
@@ -188,7 +188,7 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 		if(connectHost==null || connectHost.trim().isEmpty()) throw new IllegalArgumentException("The passed connect host was null or empty");
 		if(connectPort < 1 || connectPort > 65535) throw new IllegalArgumentException("The requested port number [" + connectPort + "] is invalid");
 		
-		final String lpfKey = connectHost.trim() + ":" + connectPort;
+		final String lpfKey = connectHost.trim() + "-" + connectPort;
 		LocalPortForwarder lpf = portForwards.putIfAbsent(lpfKey, LocalPortForwarder.PLACEHOLDER);
 		if(lpf==null || lpf == LocalPortForwarder.PLACEHOLDER) {
 			if(forwardingHost==null || forwardingHost.trim().isEmpty()) throw new IllegalArgumentException("The passed forwarding host was null or empty");
@@ -319,11 +319,12 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 				if(oldLpf!=null) {
 					try { oldLpf.close(); } catch (Exception x) {/* No Op */}
 				}				
-				final LocalPortForwarder lpf = conn.createPortForward(req);				
+				final LocalPortForwarder lpf = conn.createPortForward(req);
+				portForwards.put(req.getKey(), lpf);
 				cacheService.put(req.getKey(), lpf.getLocalPort());
-				log.info("Created LocalPortForwarder {} through {}", lpf, conn);
+				log.info("Created LocalPortForwarder [{}] through [{}]", lpf, conn);
 			} catch (Exception ex) {
-				log.warn("Failed to connect LocalPortForwarder {}", req, ex);
+				log.warn("Failed to connect LocalPortForwarder [{}]", req, ex);
 			}
 		}
 	}

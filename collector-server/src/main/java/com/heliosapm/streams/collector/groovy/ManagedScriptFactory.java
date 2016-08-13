@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.jar.JarFile;
@@ -69,6 +70,7 @@ import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.file.FileChangeEvent;
 import com.heliosapm.utils.file.FileChangeEventListener;
 import com.heliosapm.utils.file.FileChangeWatcher;
+import com.heliosapm.utils.file.FileFilterBuilder;
 import com.heliosapm.utils.file.FileFinder;
 import com.heliosapm.utils.file.FileHelper;
 import com.heliosapm.utils.file.Filters.FileMod;
@@ -94,6 +96,8 @@ import jsr166y.ForkJoinTask;
  * <p>Description: The factory for creating {@link ManagedScript} instances</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScriptFactory</code></p>
+ * TODO:
+ * 	finish impl for linked files for windows platforms
  */
 
 public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChangeEventListener, MetaClassRegistryChangeEventListener {
@@ -117,7 +121,9 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			"import com.heliosapm.streams.collector.groovy.*",
 			"import groovy.transform.*",
 			"import com.heliosapm.streams.collector.jmx.*"
+			
 	};
+	//"import static com.heliosapm.utils.jmx.JMXHelper.*"
 	
 	
 	/** The expected directory names under the collector-service root */
@@ -162,7 +168,10 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	/** The initial and default imports customizer for the compiler configuration */
 	protected final ImportCustomizer importCustomizer = new ImportCustomizer();
 	/** The groovy source file file finder */
-	protected FileFinder sourceFinder = null; 
+	protected FileFinder sourceFinder = null;
+	/** The linked groovy source file file finder */
+	protected FileFinder linkedSourceFinder = null; 
+	
 	/** The groovy source file watcher */
 	protected FileChangeWatcher fileChangeWatcher = null;
 	/** The JDBC data source manager to provide DB connections */
@@ -311,11 +320,26 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			.maxDepth(20)
 			.filterBuilder()
 			.caseInsensitive(false)
+//			.patternMatch(".*\\.groovy$|.*\\.lnk$")
 			.endsWithMatch(".groovy")
 			.fileAttributes(FileMod.READABLE)
 			.shouldBeFile()
 			.fileFinder();
+		linkedSourceFinder = FileFinder.newFileFinder(scriptDirectory.getAbsolutePath())
+				.maxDepth(20)
+				.filterBuilder()
+					.linkedFile(
+							FileFilterBuilder.newBuilder()
+							.caseInsensitive(false)
+							.endsWithMatch(".groovy")
+							.fileAttributes(FileMod.READABLE)
+							.shouldBeFile()
+							.build()
+					)
+				.fileFinder();
 		startScriptDeployer();
+		
+		
 	}
 	
 	
@@ -335,7 +359,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		final long start = System.currentTimeMillis();
 		final File[] sourceFiles = sourceFinder.find();
 		if(sourceFiles!=null && sourceFiles.length > 0) {
-			final List<ForkJoinTask<Boolean>> compilationTasks = new ArrayList<ForkJoinTask<Boolean>>(sourceFiles.length);
+			final List<Future<Boolean>> compilationTasks = new ArrayList<Future<Boolean>>(sourceFiles.length);
 			for(final File sourceFile : sourceFiles) {
 				compilationTasks.add(collectorExecutionService.submit(new Callable<Boolean>(){
 					@Override
@@ -350,7 +374,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 				}));				
 			}
 			log.info("Waiting for [{}] source files to be compiled", sourceFiles.length);
-			for(ForkJoinTask<Boolean> task: compilationTasks) {
+			for(Future<Boolean> task: compilationTasks) {
 				try {
 					task.get();
 				} catch (Exception e) {					
@@ -416,9 +440,10 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		final GroovyClassLoader gcl = newGroovyClassLoader();
 		boolean success = false;
 		String errMsg = null;
+		ByteBufReaderSource bSource = null;
 		try {
 			log.info("Compiling script [{}]...", sourceName);
-			final ByteBufReaderSource bSource = new ByteBufReaderSource(source, scriptPath); 
+			bSource = new ByteBufReaderSource(source, scriptPath); 
 			final GroovyCodeSource gcs = new GroovyCodeSource(bSource.getReader(), bSource.getClassName(), bSource.getURI().toString());
 			gcs.setCachable(false);
 			final Class<ManagedScript> msClazz = gcl.parseClass(gcs);
@@ -436,7 +461,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			log.info("Successfully Compiled script [{}] --> [{}].[{}] in [{}] ms.", sourceName, msClazz.getPackage().getName(), msClazz.getSimpleName(), elapsedTime);
 			return ms;
 		} catch (CompilationFailedException cex) {
-			errMsg = "Failed to compile source ["+ source + "]";
+			errMsg = "Failed to compile source ["+ source + "]\n\t!!!!!!!!!!!!!!!!!!\n" + bSource.getPrejectedSource() + "\n!!!!!!!!!";
+			
 			cex.printStackTrace(System.err);
 			throw new RuntimeException(errMsg, cex);
 		} catch (IOException iex) {

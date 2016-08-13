@@ -192,7 +192,7 @@ public interface ITracer extends Closeable {
 	 * @param tagValue The tag value
 	 * @return this tracer
 	 */
-	public ITracer pushTag(final String tagKey, final String tagValue);
+	public ITracer pushTag(final Object tagKey, final Object tagValue);
 	
 	/**
 	 * Pushes a map of tags onto the tag stack

@@ -286,6 +286,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param key The key to retrieve by
 	 * @param createIfNotFound A closure that will create the value if not found in cache
 	 * @return The value or null if the key was not bound
+	 * @param <T> The expected type of the object being retrieved
 	 */
 	@SuppressWarnings("unchecked")
 	public <T> T get(final String key, final Closure<T> createIfNotFound) {
@@ -297,8 +298,13 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 				if(cv==null) {
 					final PutBuilder<T> pb = new PutBuilder<T>(key.trim());
 					cv = (CacheValue<T>) cacheValuesByKey.get(key.trim());
-					final T t = createIfNotFound.call(pb);
-					pb.value(t);
+					try {
+						final T t = createIfNotFound.call(pb);
+						pb.value(t).put();
+						cv = new CacheValue<T>(key.trim(), t);
+					} catch (Exception ex) {
+						ex.printStackTrace(System.err);
+					}
 				}
 			}
 		}
@@ -318,6 +324,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param unit The expiry period unit
 	 * @param createIfNotFound A closure that will create the value if not found in cache
 	 * @return The value or null if the key was not bound and the closure returned null
+	 * @param <T> The expected type of the object being retrieved
 	 */
 	@SuppressWarnings("unchecked")
 	public <T> T get(final String key, final long expiryPeriod , final TimeUnit unit, final Closure<T> createIfNotFound) {
@@ -343,6 +350,18 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 		hitCount.increment();
 		return cv.value;		
 	}
+	
+	/**
+	 * Flushes all the values from cache having the passed key
+	 * @param keys The keys to flush
+	 */
+	public void flush(final Set<String> keys) {
+		if(keys!=null && !keys.isEmpty()) {
+			for(final String key: keys) {
+				remove(key);
+			}
+		}
+	}
 
 	/**
 	 * Retrieves a value from cache
@@ -350,6 +369,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param expiryPeriod The expiry period in ms. for the newly created cache value if created
 	 * @param createIfNotFound A closure that will create the value if not found in cache
 	 * @return The value or null if the key was not bound and the closure returned null
+	 * @param <T> The expected type of the object being retrieved
 	 */
 	public <T> T get(final String key, final long expiryPeriod , final Closure<T> createIfNotFound) {
 		return get(key, expiryPeriod, TimeUnit.MILLISECONDS, createIfNotFound);
@@ -359,6 +379,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * Retrieves a value from cache
 	 * @param key The key to retrieve by
 	 * @return The value or null if the key was not bound
+	 * @param <T> The expected type of the object being retrieved
 	 */
 	public <T> T get(final String key) {
 		if(key==null || key.trim().isEmpty()) throw new IllegalArgumentException("The passed listener was null or empty");
@@ -375,7 +396,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	
 	/**
 	 * {@inheritDoc}
-	 * @see org.helios.nash.cache.GlobalCacheServiceMBean#getListenerCount()
+	 * @see com.heliosapm.streams.collector.cache.GlobalCacheServiceMBean#getListenerCount()
 	 */
 	@Override
 	public int getListenerCount() {
@@ -393,6 +414,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param unit The unit of the expiry period. Ignored if expiry period is less than 1. Defaults to {@link TimeUnit#MILLISECONDS} if null.
 	 * @param onRemove An optional closure to be called when bound cache entry is removed or replaced
 	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
 	 */
 	@SuppressWarnings("unchecked")
 	public <T> T put(final String key, final T value, final long expiryPeriod, final TimeUnit unit, final Closure<Void> onRemove) {
@@ -405,10 +427,9 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 			oldValue.close();
 			fireValueReplaced(key.trim(), oldValue.value, value);
 			return oldValue.value;
-		} else {
-			fireValueAdded(key.trim(), value);
-			return null;
 		}
+		fireValueAdded(key.trim(), value);
+		return null;
 		
 	}
 	
@@ -419,6 +440,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param expiryPeriod The expiry period for this cache item. Ignored if less than 1.
 	 * @param unit The unit of the expiry period. Ignored if expiry period is less than 1. Defaults to {@link TimeUnit#MILLISECONDS} if null.
 	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
 	 */
 
 	public <T> T put(final String key, final T value, final long expiryPeriod, final TimeUnit unit) {
@@ -431,6 +453,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param value The value to bind
 	 * @param expiryPeriod The expiry period for this cache item in ms.. Ignored if less than 1.
 	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
 	 */
 
 	public <T> T put(final String key, final T value, final long expiryPeriod) {
@@ -444,6 +467,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param value The value to bind
 	 * @param onRemove An optional closure to be called when bound cache entry is removed or replaced
 	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
 	 */
 	public <T> T put(final String key, final T value, final Closure<Void> onRemove) {		
 		return put(key, value, -1L, TimeUnit.MILLISECONDS, onRemove);
@@ -456,6 +480,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param expiryPeriod The expiry period for this cache item. Ignored if less than 1.
 	 * @param onRemove An optional closure to be called when bound cache entry is removed or replaced
 	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
 	 */
 	public <T> T put(final String key, final T value, final long expiryPeriod, final Closure<Void> onRemove) {		
 		return put(key, value, expiryPeriod, TimeUnit.MILLISECONDS, onRemove);
@@ -467,6 +492,7 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 	 * @param key The key to bind the value under
 	 * @param value The value to bind
 	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
 	 */
 	public <T> T put(final String key, final T value) {		
 		return put(key, value, -1L, null, null);
@@ -526,9 +552,8 @@ public class GlobalCacheService extends NotificationBroadcasterSupport implement
 				prior.close();
 				fireValueReplaced(key.trim(), prior.value, value);
 				return (CacheValue<T>)prior;
-			} else {
-				fireValueAdded(key.trim(), value);
 			}
+			fireValueAdded(key.trim(), value);
 			return null;
 		}
 

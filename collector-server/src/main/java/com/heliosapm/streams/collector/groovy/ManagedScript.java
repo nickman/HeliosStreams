@@ -58,10 +58,12 @@ import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.TimeoutService;
+import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.tracing.ITracer;
 import com.heliosapm.streams.tracing.TracerFactory;
+import com.heliosapm.streams.tracing.deltas.DeltaManager;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
@@ -72,6 +74,7 @@ import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
 
 import groovy.lang.Binding;
+import groovy.lang.Closure;
 import groovy.lang.GroovyClassLoader;
 import groovy.lang.GroovyShell;
 import groovy.lang.GroovySystem;
@@ -125,6 +128,18 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The compile time for this script */
 	protected long compileTime = -1L;
 	
+	/** A reference to the global cache service */
+	protected final GlobalCacheService cache;
+	/** The global cache keys put by this script */
+	protected final NonBlockingHashSet<String> globalCacheKeys = new NonBlockingHashSet<String>();
+	/** The delta keys put by this script */
+	protected final NonBlockingHashSet<String> deltaKeys = new NonBlockingHashSet<String>();
+	
+	/** The cache key prefix */
+	protected final String cacheKeyPrefix = getClass().getName();
+	/** The delta service */
+	protected final DeltaManager deltaManager = DeltaManager.getInstance();
+	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
 	/** A cached gauge for the collection timer's snapshot */
@@ -160,6 +175,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The UTF8 char set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
 	
+	/** A map of the declared fields of this class keyed by the field name */
 	protected static final NonBlockingHashMap<String, Field> fields = new NonBlockingHashMap<String, Field>(); 
 
 	
@@ -168,6 +184,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@SuppressWarnings("unchecked")
 	public ManagedScript() {
+		cache = GlobalCacheService.getInstance();
 		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 		executionService = CollectorExecutionService.getInstance();
 		for(Field f: getClass().getDeclaredFields()) {
@@ -899,6 +916,246 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	@Override
 	public Long getTimeUntilNextCollect() {
 		return scheduleHandle != null ? scheduleHandle.getDelay(TimeUnit.SECONDS) : null; 
+	}
+	
+	//====================================================================================================
+	//			Cache Delegate Methods
+	//====================================================================================================
+	
+//	protected final NonBlockingHashSet<String> globalCacheKeys = new NonBlockingHashSet<String>();
+//	protected final String cacheKeyPrefix = getClass().getName();
+
+	protected String ck(final String key) {
+		final String ckey = cacheKeyPrefix + ":" +  key.trim();
+		globalCacheKeys.add(ckey);
+		return ckey;
+	}
+	
+	protected String dk(final String key) {
+		final String ckey = cacheKeyPrefix + ":" +  key.trim();
+		deltaKeys.add(ckey);
+		return ckey;
+	}
+	
+
+	/**
+	 * Retrieves a value from cache
+	 * @param key The key to retrieve by
+	 * @param createIfNotFound A closure that will create the value if not found in cache
+	 * @return The value or null if the key was not bound and the closure returned null
+	 * @param <T> The expected type of the object being retrieved
+	 */
+	public <T> T get(final String key, final Closure<T> createIfNotFound) {
+		return cache.get(ck(key), createIfNotFound);
+	}
+
+	/**
+	 * Retrieves a value from cache
+	 * @param key The key to retrieve by
+	 * @param expiryPeriod The expiry period for the newly created cache value if created
+	 * @param unit The expiry period unit
+	 * @param createIfNotFound A closure that will create the value if not found in cache
+	 * @return The value or null if the key was not bound and the closure returned null
+	 * @param <T> The expected type of the object being retrieved
+	 */
+	public <T> T get(final String key, final long expiryPeriod, final TimeUnit unit, final Closure<T> createIfNotFound) {
+		return cache.get(ck(key), expiryPeriod, unit, createIfNotFound);
+	}
+
+	/**
+	 * Retrieves a value from cache
+	 * @param key The key to retrieve by
+	 * @param expiryPeriod The expiry period for the newly created cache value if created
+	 * @param createIfNotFound A closure that will create the value if not found in cache
+	 * @return The value or null if the key was not bound and the closure returned null
+	 * @param <T> The expected type of the object being retrieved
+	 */
+	public <T> T get(final String key, final long expiryPeriod, final Closure<T> createIfNotFound) {
+		return cache.get(ck(key), expiryPeriod, createIfNotFound);
+	}
+
+	/**
+	 * Retrieves a value from cache
+	 * @param key The key to retrieve by
+	 * @return The value or null if the key was not bound and the closure returned null
+	 * @param <T> The expected type of the object being retrieved
+	 */
+	public <T> T get(final String key) {
+		return cache.get(ck(key));
+	}
+
+	/**
+	 * Puts a value into the cache
+	 * @param key The key to bind the value under
+	 * @param value The value to bind
+	 * @param expiryPeriod The expiry period for this cache item. Ignored if less than 1.
+	 * @param unit The unit of the expiry period. Ignored if expiry period is less than 1. Defaults to {@link TimeUnit#MILLISECONDS} if null.
+	 * @param onRemove An optional closure to be called when bound cache entry is removed or replaced
+	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
+	 */
+	public <T> T put(final String key, final T value, final long expiryPeriod, final TimeUnit unit, final Closure<Void> onRemove) {
+		return cache.put(ck(key), value, expiryPeriod, unit, onRemove);
+	}
+
+	/**
+	 * Puts a value into the cache
+	 * @param key The key to bind the value under
+	 * @param value The value to bind
+	 * @param expiryPeriod The expiry period for this cache item. Ignored if less than 1.
+	 * @param unit The unit of the expiry period. Ignored if expiry period is less than 1. Defaults to {@link TimeUnit#MILLISECONDS} if null.
+	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
+	 */
+	public <T> T put(final String key, final T value, final long expiryPeriod, final TimeUnit unit) {
+		return cache.put(ck(key), value, expiryPeriod, unit);
+	}
+
+	/**
+	 * Puts a value into the cache
+	 * @param key The key to bind the value under
+	 * @param value The value to bind
+	 * @param expiryPeriod The expiry period for this cache item. Ignored if less than 1.
+	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
+	 */
+	public <T> T put(final String key, final T value, final long expiryPeriod) {
+		return cache.put(ck(key), value, expiryPeriod);
+	}
+
+	/**
+	 * Puts a value into the cache
+	 * @param key The key to bind the value under
+	 * @param value The value to bind
+	 * @param onRemove An optional closure to be called when bound cache entry is removed or replaced
+	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
+	 */
+	public <T> T put(final String key, final T value, final Closure<Void> onRemove) {
+		return cache.put(ck(key), value, onRemove);
+	}
+
+	/**
+	 * Puts a value into the cache
+	 * @param key The key to bind the value under
+	 * @param value The value to bind
+	 * @param expiryPeriod The expiry period for this cache item. Ignored if less than 1.
+	 * @param onRemove An optional closure to be called when bound cache entry is removed or replaced
+	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
+	 */
+	public <T> T put(final String key, final T value, final long expiryPeriod, final Closure<Void> onRemove) {
+		return cache.put(ck(key), value, expiryPeriod, onRemove);
+	}
+
+	/**
+	 * Puts a value into the cache
+	 * @param key The key to bind the value under
+	 * @param value The value to bind
+	 * @return the unbound value that was replaced or null
+	 * @param <T> The type of the object being put
+	 */
+	public <T> T put(final String key, final T value) {
+		return cache.put(ck(key), value);
+	}
+	
+	/**
+	 * Flushes all global cache entries for this script
+	 */
+	public void flushCache() {
+		cache.flush(globalCacheKeys);
+		globalCacheKeys.clear();
+	}
+
+	/**
+	 * Registers a sample value and returns the delta between this sample and the prior
+	 * @param key The delta sample key
+	 * @param value The absolute sample value
+	 * @return The delta or null if this was the first sample, or the last sample caused a reset
+	 * @see com.heliosapm.streams.tracing.deltas.DeltaManager#delta(java.lang.String, long)
+	 */			
+	public Long delta(final String key, final long value) {
+		return deltaManager.delta(dk(key), value);
+	}
+	
+	/**
+	 * Acquires the delta for the passed key for the passed value
+	 * and passes the key and delta value to the passed closure if the delta is not null.
+	 * @param key The delta key
+	 * @param value The delta value
+	 * @param closure The result handling closure
+	 */
+	public void delta(final String key, final long value, final Closure<?> closure) {
+		final String dkey = dk(key);
+		final Long d = deltaManager.delta(dkey, value);
+		if(d!=null && closure != null) {
+			closure.call(key, d);
+		}
+	}
+
+	/**
+	 * Registers a sample value and returns the delta between this sample and the prior
+	 * @param key The delta sample key
+	 * @param value The absolute sample value
+	 * @return The delta or null if this was the first sample, or the last sample caused a reset
+	 * @see com.heliosapm.streams.tracing.deltas.DeltaManager#delta(java.lang.String, double)
+	 */			
+	public Double delta(final String key, final double value) {
+		return deltaManager.delta(dk(key), value);
+	}
+	
+	/**
+	 * Acquires the delta for the passed key for the passed value
+	 * and passes the key and delta value to the passed closure if the delta is not null.
+	 * @param key The delta key
+	 * @param value The delta value
+	 * @param closure The result handling closure
+	 */
+	public void delta(final String key, final double value, final Closure<?> closure) {
+		final String dkey = dk(key);
+		final Double d = deltaManager.delta(dkey, value);
+		if(d!=null && closure != null) {
+			closure.call(key, d);
+		}
+	}
+	
+
+	/**
+	 * Registers a sample value and returns the delta between this sample and the prior
+	 * @param key The delta sample key
+	 * @param value The absolute sample value
+	 * @return The delta or null if this was the first sample, or the last sample caused a reset
+	 * @see com.heliosapm.streams.tracing.deltas.DeltaManager#delta(java.lang.String, int)
+	 */	
+	public Integer delta(final String key, final int value) {
+		return deltaManager.delta(dk(key), value);
+	}
+	
+	/**
+	 * Acquires the delta for the passed key for the passed value
+	 * and passes the key and delta value to the passed closure if the delta is not null.
+	 * @param key The delta key
+	 * @param value The delta value
+	 * @param closure The result handling closure
+	 */
+	public void delta(final String key, final int value, final Closure<?> closure) {
+		final String dkey = dk(key);
+		final Integer d = deltaManager.delta(dkey, value);
+		if(d!=null && closure != null) {
+			closure.call(key, d);
+		}
+	}
+	
+	/**
+	 * Resets all deltas for this scrip 
+	 */
+	public void resetDeltas() {
+		for(String key: deltaKeys) {
+			deltaManager.resetDouble(key);
+			deltaManager.resetInt(key);
+			deltaManager.resetLong(key);
+		}
+		deltaKeys.clear();
 	}
 	
 }
