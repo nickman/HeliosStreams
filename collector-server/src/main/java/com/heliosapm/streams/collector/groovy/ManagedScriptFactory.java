@@ -18,8 +18,10 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileFilter;
+import java.io.FileReader;
 import java.io.IOException;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Constructor;
@@ -66,6 +68,7 @@ import com.heliosapm.streams.collector.ssh.SSHConnection;
 import com.heliosapm.streams.collector.ssh.SSHTunnelManager;
 import com.heliosapm.streams.tracing.TracerFactory;
 import com.heliosapm.utils.collections.Props;
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.file.FileChangeEvent;
 import com.heliosapm.utils.file.FileChangeEventListener;
@@ -89,7 +92,6 @@ import groovy.lang.GroovySystem;
 import groovy.lang.MetaClassRegistryChangeEvent;
 import groovy.lang.MetaClassRegistryChangeEventListener;
 import jsr166e.LongAdder;
-import jsr166y.ForkJoinTask;
 
 /**
  * <p>Title: ManagedScriptFactory</p>
@@ -118,12 +120,19 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	public static final String[] DEFAULT_AUTO_IMPORTS = {
 			"import javax.management.*", 
 			"import java.lang.management.*",
+			"import java.util.concurrent.*",
 			"import com.heliosapm.streams.collector.groovy.*",
 			"import groovy.transform.*",
 			"import com.heliosapm.streams.collector.jmx.*"
 			
 	};
 	//"import static com.heliosapm.utils.jmx.JMXHelper.*"
+	
+	/** If this is the first line in a groovy script file, don't deploy it */
+	public static final String DISABLED_HEADER = "!STOP";
+	/** The platform end of line character */
+	public static final String EOL = System.getProperty("line.separator");
+	
 	
 	
 	/** The expected directory names under the collector-service root */
@@ -276,6 +285,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 */
 	private ManagedScriptFactory() {
 		log.info(">>>>> Starting ManagedScriptFactory...");
+		ExtendedThreadManager.install();
+		JMXHelper.registerHotspotInternal();
 		final String rootDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROOT_DIR, DEFAULT_ROOT_DIR);		
 		rootDirectory = new File(rootDirName);
 		rootDirectory.mkdirs();
@@ -365,6 +376,10 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 					@Override
 					public Boolean call() throws Exception {
 						try {
+							if(isDisabled(sourceFile)) {
+								log.info("Source file [{}] is disabled", sourceFile);
+								return false;
+							}												
 							compileScript(sourceFile);
 							return true;
 						} catch (Exception ex) {
@@ -483,6 +498,36 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			}
 		}
 	}
+	
+	
+	/**
+	 * Checks the first line of the file for the disabled header {@link #DISABLED_HEADER}.
+	 * Returns true if found or on any error checking. Otherwise returns false. 
+	 * @param sourceFile The file to check
+	 * @return true if disabled, false otherwise
+	 */
+	public static boolean isDisabled(final File sourceFile) {
+		FileReader fr = null;
+		BufferedReader br = null;
+		try {
+			fr = new FileReader(sourceFile);
+			br = new BufferedReader(fr);
+			String line = null;
+			while((line=br.readLine())!=null) {
+				if(line.trim().isEmpty()) continue;
+				final String s = line.replace(" ", "").replace("/", "").replace("*", "").toUpperCase();				
+				if(DISABLED_HEADER.equals(s)) return true;
+				break;				
+			}
+			return false;
+		} catch (Exception ex) {
+			return true;
+		} finally {
+			if(br!=null) try { br.close(); } catch (Exception x) {/* No Op */}
+			if(fr!=null) try { fr.close(); } catch (Exception x) {/* No Op */}
+		}
+	}
+	
 
 	/**
 	 * Creates any missing subdirectories
@@ -630,6 +675,10 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			@Override
 			public Boolean call() throws Exception {
 				try {
+					if(isDisabled(file)) {
+						log.info("Source file [{}] is disabled", file);
+						return false;
+					}					
 					compileScript(file);
 					return true;
 				} catch (Exception ex) {
@@ -662,7 +711,10 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 					globalBindings.put("mbs", JMXHelper.getHeliosMBeanServer());
 					globalBindings.put("jmxHelper", JMXHelper.class);
 					globalBindings.put("urlHelper", URLHelper.class);
-					globalBindings.put("stringHelper", StringHelper.class);					
+					globalBindings.put("stringHelper", StringHelper.class);			
+					try {
+						globalBindings.put("_perf", PrivateAccessor.invokeStatic("sun.misc.Perf", "getPerf"));
+					} catch (Exception x) {/* No Op */}
 				}
 			}
 		}
@@ -770,6 +822,10 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		collectorExecutionService.submit(new Callable<Boolean>(){
 			@Override
 			public Boolean call() throws Exception {
+				if(isDisabled(file)) {
+					log.info("Source file [{}] is disabled", file);
+					return false;
+				}									
 				try {
 					compileScript(file);
 					return true;

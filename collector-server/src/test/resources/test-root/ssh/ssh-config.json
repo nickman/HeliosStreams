@@ -12,6 +12,18 @@
 			"user" : "fooman",
 			"pkey" : "MIIBugIBAAKBgQDaDWE....",
 			"pphrase" : "secret" 
-		}		
+		},
+		{
+			"host" : "tpmint",
+			"sshport" : 22,
+			"user" : "nwhitehead",
+			"password" : "Stionsie",
+			"tunnels" : [
+				{
+					"remoteport" : 8006,
+					"remotehost" : "tpmint" 			
+				}
+			]
+		}				
 	]
 }

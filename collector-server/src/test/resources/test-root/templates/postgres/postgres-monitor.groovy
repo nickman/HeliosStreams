@@ -1,3 +1,4 @@
+//!STOP
 @Dependency("${postgres.datasource}")
 def sql;
 tracer.reset().tags([host : "leopard", app : "postgres"]).pushSeg("postgres");

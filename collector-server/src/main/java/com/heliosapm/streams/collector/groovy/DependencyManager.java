@@ -69,7 +69,7 @@ public class DependencyManager<T extends ManagedScript> implements CacheEventLis
 
 		cache = GlobalCacheService.getInstance();
 		try {
-			for(Field f: script.getClass().getDeclaredFields()) {
+			for(Field f: type.getDeclaredFields()) {
 				final Dependency d = f.getAnnotation(Dependency.class);
 				if(d!=null) {
 					final String cacheKey = d.value().trim();

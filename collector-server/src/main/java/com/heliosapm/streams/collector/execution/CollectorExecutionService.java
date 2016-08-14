@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -36,8 +37,6 @@ import org.apache.logging.log4j.Logger;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadPool;
 
-import jsr166y.ForkJoinTask;
-
 
 /**
  * <p>Title: CollectorExecutionService</p>
@@ -46,7 +45,7 @@ import jsr166y.ForkJoinTask;
  * <p><code>com.heliosapm.streams.collector.execution.CollectorExecutionService</code></p>
  */
 
-public class CollectorExecutionService implements UncaughtExceptionHandler {
+public class CollectorExecutionService implements UncaughtExceptionHandler, RejectedExecutionHandler {
 	/** The singleton instance */
 	private static volatile CollectorExecutionService instance;
 	/** The singleton instance ctor lock */
@@ -87,7 +86,8 @@ public class CollectorExecutionService implements UncaughtExceptionHandler {
 			.prestart(Runtime.getRuntime().availableProcessors())
 			.publishJMX(true)
 			.queueSize(128)
-			.rejectionHandler(new ThreadPoolExecutor.CallerRunsPolicy())
+			//.rejectionHandler(new ThreadPoolExecutor.CallerRunsPolicy())
+			.rejectionHandler(this)
 			.uncaughtHandler(this)
 			.build();
 			
@@ -127,9 +127,24 @@ public class CollectorExecutionService implements UncaughtExceptionHandler {
 		return threadPool.invokeAll(tasks, timeout, unit);
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Thread.UncaughtExceptionHandler#uncaughtException(java.lang.Thread, java.lang.Throwable)
+	 */
 	@Override
 	public void uncaughtException(final Thread t, final Throwable e) {
 		log.error("Uncaught exception in collection thread [{}}",  t, e);		
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.util.concurrent.RejectedExecutionHandler#rejectedExecution(java.lang.Runnable, java.util.concurrent.ThreadPoolExecutor)
+	 */
+	@Override
+	public void rejectedExecution(final Runnable r, final ThreadPoolExecutor executor) {
+		log.error("\t !!! ---> CollectionThreadPool Task Rejected [{}]\n\tActive Count: [{}], Pool Size: [{}], Q Capacity: [{}]", 
+				r, executor.getActiveCount(), executor.getPoolSize(), executor.getQueue().remainingCapacity());
 	}
 	
 	

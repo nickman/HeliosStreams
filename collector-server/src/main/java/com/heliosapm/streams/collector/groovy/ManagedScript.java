@@ -53,6 +53,7 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.reflection.ClassInfo;
+import org.codehaus.groovy.runtime.NullObject;
 
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
@@ -119,7 +120,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The collection runner callable */
 	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable();
 	/** The dependency manager for this script */
-	protected final DependencyManager<ManagedScript> dependencyManager;
+	protected final DependencyManager<? extends ManagedScript> dependencyManager;
 	/** The source file */
 	protected File sourceFile = null;
 	/** The linked source file */
@@ -175,8 +176,12 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** The UTF8 char set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
 	
+	/** A null object to put in bindings to avoid getting an NPE */
+	public static final NullObject NULL_OBJECT = NullObject.getNullObject();
+	
+	
 	/** A map of the declared fields of this class keyed by the field name */
-	protected static final NonBlockingHashMap<String, Field> fields = new NonBlockingHashMap<String, Field>(); 
+	protected final NonBlockingHashMap<String, Field> fields = new NonBlockingHashMap<String, Field>(); 
 
 	
 	/**
@@ -189,6 +194,11 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		executionService = CollectorExecutionService.getInstance();
 		for(Field f: getClass().getDeclaredFields()) {
 			fields.put(f.getName(), f);
+//			final groovy.transform.Field fieldAnn = f.getAnnotation(groovy.transform.Field.class);
+			final Dependency fieldAnn = f.getAnnotation(Dependency.class);
+			if(fieldAnn!=null) {
+				f.setAccessible(true);
+			}
 		}
 	}
 
@@ -204,6 +214,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 //		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 //		executionService = CollectorExecutionService.getInstance();
 //	}
+	
 	
 	/**
 	 * Initializes this script
@@ -221,14 +232,19 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		final String name = sourceReader.getSourceFile().getName().replace(".groovy", "");
 		final String dir = sourceReader.getSourceFile().getParent().replace(rootDirectory, "").replace("\\", "/").replace("/./", "/").replace("/collectors/", "");
 		bindingMap = sourceReader.getBindingMap();
-		final Object thisScript = this;
 		binding = new Binding(this.bindingMap) {
         	@Override
         	public Object getProperty(final String name) {
         		if(bindingMap.containsKey(name)) return bindingMap.get(name);
         		final Field f = fields.get(name);
         		if(f!=null) {
-        			return PrivateAccessor.getFieldValue(f, thisScript);
+        			//return PrivateAccessor.getFieldValue(f, ManagedScript.this);
+        			if(!f.isAccessible()) f.setAccessible(true);  // FIXME: get this outa here.
+        			try {
+        				return f.get(ManagedScript.this);
+        			} catch (Exception ex) {
+        				throw new RuntimeException("Failed to read field [" + f.getName() + "]", ex);
+        			}
         		}
         		throw new MissingPropertyException("No such property: [" + name + "]");
         	}
@@ -236,6 +252,16 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
         	@Override
         	public Object getVariable(final String name) {
         		return getProperty(name);
+        	}
+        	
+        	@Override
+        	public void setProperty(final String property, final Object newValue) {
+        		super.setProperty(property, newValue==null ? NULL_OBJECT : newValue);
+        	}
+        	
+        	@Override
+        	public void setVariable(final String name, final Object newValue) {
+        		super.setVariable(name, newValue==null ? NULL_OBJECT : newValue);
         	}
 			
 		};
@@ -280,7 +306,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		if(scheduledPeriod!=null) {
 			if(pendingDependencies.isEmpty()) {
 				canReschedule.set(true);
-				scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);			
+				scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);			
 				log.info("Collection Script scheduled");
 			} else {
 				log.info("\n ================================ \n Script [{}} not scheduled. \nWaiting on {}", this.sourceFile, pendingDependencies);
@@ -336,6 +362,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	private class CollectionRunnerCallable implements Callable<Void> {
 		final TimeoutService timeoutService = TimeoutService.getInstance();
 		
+		
 		@Override
 		public Void call() throws Exception {
 			try {
@@ -368,7 +395,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 				if(pendingDependencies.isEmpty()) {
 					canReschedule.set(true);
 					updateProps();
-					scheduleHandle = SharedScheduler.getInstance().schedule(this, scheduledPeriod, scheduledPeriodUnit);					
+					scheduleHandle = SharedScheduler.getInstance().schedule(ManagedScript.this, scheduledPeriod, scheduledPeriodUnit);					
 				} else {
 					log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
 				}
