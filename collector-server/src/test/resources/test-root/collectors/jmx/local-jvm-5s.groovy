@@ -1,4 +1,4 @@
-
+// http://localhost:4242/#start=5m-ago&m=sum:jvm.hotspot.safepoint.totalsafepointtime%7Bhost=*,app=*%7D&o=&m=sum:jvm.hotspot.safepoint.safepointsynctime%7Bhost=*,app=*%7D&o=&m=zimsum:jvm.hotspot.safepoint.safepointcount%7Bapp=*,host=*%7D&o=axis%20x1y2&yrange=%5B0:%5D&wxh=1900x400&style=linespoint&autoreload=10
 
 def jmxClient = JMXClient.newInstance(this, "$jmxurl");
 
