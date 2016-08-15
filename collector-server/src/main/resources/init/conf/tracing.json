@@ -3,7 +3,7 @@
 		{
 			"writer" : "com.heliosapm.streams.tracing.writers.LoggingWriter",
 			"configs" : {
-				"metricwriter.logging.filename" : "/tmp/stream-metrics/streams.logfile.log",
+				"metricwriter.logging.filename" : "${collector.service.rootdir}/tmp/stream-metrics/streams.logfile.log",
 				"metricwriter.logging.ra" : "false"
 			}
 		}	

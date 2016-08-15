@@ -1,0 +1,16 @@
+dataSourceClassName=oracle.jdbc.pool.OracleDataSource
+dataSource.user=ENTER USER HERE
+dataSource.password=ENTER PASSWORD HERE
+dataSource.url=ENTER URL HERE
+connectionTimeout=10000
+idleTimeout=120000
+minimumIdle=3
+maximumPoolSize=10
+maxLifetime=30000
+initializationFailFast=true
+allowPoolSuspension=true
+readOnly=true
+registerMbeans=true
+validationTimeout=5000
+leakDetectionThreshold=10000
+disabled=true

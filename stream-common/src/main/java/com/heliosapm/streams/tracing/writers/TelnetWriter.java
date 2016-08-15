@@ -27,7 +27,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
-import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.utils.lang.StringHelper;
 
 import io.netty.buffer.ByteBuf;
@@ -43,7 +42,7 @@ import io.netty.handler.codec.string.StringEncoder;
 
 /**
  * <p>Title: TelnetWriter</p>
- * <p>Description: </p> 
+ * <p>Description: Tracing writer that sends plain text <b><code>put</code></b> commands to an OpenTSDB listener</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.tracing.writers.TelnetWriter</code></p>
  */

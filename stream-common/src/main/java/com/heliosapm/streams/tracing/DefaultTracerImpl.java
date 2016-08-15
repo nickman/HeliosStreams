@@ -16,7 +16,6 @@
 package com.heliosapm.streams.tracing;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
@@ -81,8 +80,8 @@ public class DefaultTracerImpl implements ITracer {
 	private Stack<String[]> tagStack = new Stack<String[]>();	
 //	/** The metric tags sorter */
 //	private final TreeMap<String, String> tags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
-	/** The timestamp state in ms time format */
-	private Long msTime = null;
+	/** The timestamp state in ms time format */	
+	Long msTime = null;
 	/** The max number of traces before an auto-flush */
 	private int maxTracesBeforeFlush;
 	/** The current number of un-flushed events in the buffer */
@@ -144,6 +143,12 @@ public class DefaultTracerImpl implements ITracer {
 	
 	void updateWriter(final IMetricWriter writer) {
 		this.writer = writer;
+	}
+	
+	
+	public String clean(final String v) {
+		if(forceLower) return v.trim().toLowerCase();
+		return v.trim();
 	}
 	
 	/**
@@ -291,7 +296,7 @@ public class DefaultTracerImpl implements ITracer {
 		if(metricNameStack.isEmpty()) throw new RuntimeException("No metric name segments");
 		final StringBuilder b = new StringBuilder();
 		for(String s: metricNameStack) {
-			b.append(s).append(metricSegDelim);
+			b.append(clean(s)).append(metricSegDelim);
 		}
 		return b.deleteCharAt(b.length()-1).toString();
 	}
@@ -314,14 +319,14 @@ public class DefaultTracerImpl implements ITracer {
 			for(int i = 0; i < tagValues.length; i++) {		
 				try {
 					if(tagKeys[i].isEmpty() || tagValues[i].isEmpty()) continue;
-					tmap.put(tagKeys[i], tagValues[i]);
+					tmap.put(clean(tagKeys[i]), clean(tagValues[i]));
 				} catch (Exception ex) {
 					log.error("Failed to build tag pair: [{}]:[{}]", tagKeys[i], tagValues[i]);
 				}
 			}
 		}
 		for(String[] pair: tagStack) {
-			tmap.put(pair[0], pair[1]);
+			tmap.put(clean(pair[0]), clean(pair[1]));
 		}
 		return tmap;
 	}
@@ -336,7 +341,7 @@ public class DefaultTracerImpl implements ITracer {
 	public ITracer seg(final String fullSegment) {		
 		metricNameStack.clear();
 		if(fullSegment==null || fullSegment.trim().isEmpty()) return this;
-		Collections.addAll(metricNameStack, StringHelper.splitString(fullSegment, metricSegDelim, true));
+		Collections.addAll(metricNameStack, StringHelper.splitString(clean(fullSegment), metricSegDelim, true));
 		return this;
 	}
 
@@ -347,7 +352,7 @@ public class DefaultTracerImpl implements ITracer {
 	@Override
 	public ITracer pushSeg(final String segment) {
 		if(segment != null && !segment.trim().isEmpty()) {
-			metricNameStack.push(segment.trim());
+			metricNameStack.push(clean(segment));
 		}
 		return this;
 	}
@@ -412,7 +417,7 @@ public class DefaultTracerImpl implements ITracer {
 		if(tags!=null && !tags.isEmpty()) {
 			tagStack.clear();
 			for(Map.Entry<String, String> entry: tags.entrySet()) {
-				tagStack.push(new String[]{entry.getKey(), entry.getValue()});
+				tagStack.push(new String[]{clean(entry.getKey()), clean(entry.getValue())});
 			}
 		}
 		return this;
@@ -430,7 +435,7 @@ public class DefaultTracerImpl implements ITracer {
 			} else {
 				if(tags.length%2 != 0) throw new IllegalArgumentException("Odd number of tag pairs " + Arrays.toString(tags));
 				for(int i = 0; i < tags.length;) {
-					tagStack.push(new String[]{tags[i++].trim(), tags[i++].trim()});
+					tagStack.push(new String[]{clean(tags[i++]), clean(tags[i++])});
 				}				
 			}			
 		}
@@ -457,9 +462,9 @@ public class DefaultTracerImpl implements ITracer {
 		return this;
 	}
 	
-	private static String ts(final Object obj, final String name) {
+	private String ts(final Object obj, final String name) {
 		if(obj==null) throw new IllegalArgumentException(name + " was null");
-		final String s = obj.toString().trim();
+		final String s = clean(obj.toString());
 		if(s.isEmpty()) throw new IllegalArgumentException(name + " was empty");
 		return s;
 	}
@@ -510,7 +515,7 @@ public class DefaultTracerImpl implements ITracer {
 		if(keys != null) {
 			for(String key: keys) {
 				if(key==null) continue;
-				final String k = key.trim();
+				final String k = clean(key);
 				if(k.isEmpty()) continue;
 				tagKeyStack.addLast(k);
 			}
@@ -527,7 +532,7 @@ public class DefaultTracerImpl implements ITracer {
 		if(objectName==null) throw new IllegalArgumentException("The passed ObjectName was null");
 		metricNameStack.clear();
 		tagStack.clear();
-		Collections.addAll(metricNameStack, StringHelper.splitString(objectName.getDomain(), '.', true));
+		Collections.addAll(metricNameStack, StringHelper.splitString(clean(objectName.getDomain()), '.', true));
 		putTagStack(objectName.getKeyPropertyList());
 		return this;
 	}
@@ -538,8 +543,8 @@ public class DefaultTracerImpl implements ITracer {
 	 */
 	protected void putTagStack(final Map<String, String> tags) {
 		for(Map.Entry<String, String> entry: tags.entrySet()) {
-			final String key = entry.getKey();
-			final String value = entry.getValue();
+			final String key = clean(entry.getKey());
+			final String value = clean(entry.getValue());
 			if(!tagStack.isEmpty()) {
 				checkReplace(key);
 			}
@@ -617,7 +622,7 @@ public class DefaultTracerImpl implements ITracer {
 		if(tagKeys!=null && tagKeys.length!=0) {
 			for(String tagKey: tagKeys) {
 				if(tagKey==null) continue;
-				final String _tagKey = tagKey.trim();
+				final String _tagKey = clean(tagKey);
 				for(Iterator<String[]> iter = tagStack.iterator(); iter.hasNext();) {
 					final String[] pair = iter.next();
 					if(pair[0].equals(_tagKey)) {

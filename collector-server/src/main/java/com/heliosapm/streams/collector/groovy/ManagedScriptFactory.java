@@ -288,6 +288,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		ExtendedThreadManager.install();
 		JMXHelper.registerHotspotInternal();
 		final String rootDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROOT_DIR, DEFAULT_ROOT_DIR);		
+		System.setProperty(CONFIG_ROOT_DIR, rootDirName);
 		rootDirectory = new File(rootDirName);
 		rootDirectory.mkdirs();
 		if(!rootDirectory.isDirectory()) throw new RuntimeException("Failed to create root directory [" + rootDirectory + "]");
@@ -354,12 +355,18 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	}
 	
 	
-	private static TracerFactory initTracing(final File trcConfigDir) {
+	private TracerFactory initTracing(final File trcConfigDir) {
 		final File jsonFile = new File(trcConfigDir, "tracing.json");
 		if(!jsonFile.canRead()) {
 			throw new IllegalStateException("No tracing json defined at [" + jsonFile + "]");
 		}
-		return TracerFactory.getInstance(URLHelper.toURL(jsonFile));
+		final ClassLoader current = Thread.currentThread().getContextClassLoader();
+		try {
+			Thread.currentThread().setContextClassLoader(libDirClassLoader);
+			return TracerFactory.getInstance(URLHelper.toURL(jsonFile));
+		} finally {
+			Thread.currentThread().setContextClassLoader(current);
+		}
 	}
 	
 	

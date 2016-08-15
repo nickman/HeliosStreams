@@ -42,6 +42,7 @@ import net.opentsdb.stats.StatsCollector;
  * <p>Description: Extends the base abstract plugins to manage metrics for the plugin</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.opentsdb.plugin.PluginMetricManager</code></p>
+ * 
  */
 
 public class PluginMetricManager {
@@ -76,7 +77,7 @@ public class PluginMetricManager {
 	 */
 	public PluginMetricManager(final String serviceName) {
 		agentName = AgentName.getInstance();
-		serviceTag = "." + serviceName + ".host=" + agentName.getHostName() + ".app=" + agentName.getAppName();
+		serviceTag = "." + serviceName;// + ".host=" + agentName.getHostName() + ".app=" + agentName.getAppName();
 		extraTags.put("service", serviceName);
 		extraTags.put("app", agentName.getAppName());
 		extraTags.put("host", agentName.getHostName());
@@ -183,6 +184,10 @@ public class PluginMetricManager {
 	 * Collects stats for this plugin
 	 * @param collector The supplied stats collector
 	 */
+	
+	// java.lang.IllegalArgumentException: Invalid metric name (
+	// "tsd.pointsAdded.KafkaRPC.host=pp-dt-nwhi-01.app=opentsdb.rate.1m"): 
+	// illegal character: =
 	public void collectStats(final StatsCollector collector) {
 		for(Map.Entry<String, String> xtag : extraTags.entrySet()) {
 			collector.addExtraTag(xtag.getKey(), xtag.getValue());

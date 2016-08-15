@@ -64,6 +64,10 @@ public class InternalStatsCollector extends StatsCollector {
 		
 	}
 	
+	// java.lang.IllegalArgumentException: Invalid metric name (
+	// "tsd.pointsAdded.KafkaRPC.host=pp-dt-nwhi-01.app=opentsdb.rate.1m"): 
+	// illegal character: =
+	
 	@Override
 	public void emit(final String datapoint) {
 		// metricname, timestamp, value, [tags]

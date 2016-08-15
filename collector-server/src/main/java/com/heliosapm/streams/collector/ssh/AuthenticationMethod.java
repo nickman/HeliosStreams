@@ -68,7 +68,7 @@ public enum AuthenticationMethod implements Authenticationator {
 		@Override
 		public boolean authenticate(final SSHConnection conn) throws IOException {
 			if(validate(conn)) return true;
-			final char[] pk = conn.getPrivateKey();
+			final char[] pk = conn.getPrivateKey();			
 			if(pk==null) return false;
 			return conn.connection.authenticateWithPublicKey(conn.user, pk, conn.passPhrase);
 		}
@@ -126,6 +126,7 @@ public enum AuthenticationMethod implements Authenticationator {
 		
 		for(AuthenticationMethod am: getAvailableMethods(conn.getRemainingAuthMethods())) {
 			try {				
+//				System.err.println("Attempting [" + am + "] for [" + conn + "]");
 				am.authenticate(conn);
 				if(conn.connection.isAuthenticationComplete()) return new NVP<Boolean, AuthenticationMethod>(true, am);
 			} catch (Exception x){

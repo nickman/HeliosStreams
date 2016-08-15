@@ -16,13 +16,23 @@
 package com.heliosapm.streams.collector;
 
 import java.io.File;
+import java.net.URI;
 import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Collections;
+import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
 
 import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
+import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.url.URLHelper;
 
 /**
@@ -46,6 +56,11 @@ public class CollectorServer {
 			"--help : Prints these options then exits \n";
 
 
+//	public static void main(String[] args) {
+//		final File f = new File("D:\\temp\\coll");
+//		listInitResources(f.toPath());
+//	}
+	
 	/**
 	 * The boot entry point for the CollectorServer
 	 * @param args Command line options as follows: <ul>
@@ -85,6 +100,20 @@ public class CollectorServer {
 			}
 		}
 		System.setProperty(ManagedScriptFactory.CONFIG_ROOT_DIR, rootDir);
+		final File confDir = new File(rootDir, "conf");
+		final File sysprops = new File(confDir, "sys.properties");
+		if(sysprops.canRead()) {
+			try {
+				final Properties p = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(sysprops)))) ;
+				System.getProperties().putAll(p);
+				System.out.println("Applied [" + p.size() + "] system properties from [" + sysprops + "]");
+			} catch (Exception ex) {
+				System.err.println("Failed to read and apply [" + sysprops + "]. Stack trace follows.");
+				ex.printStackTrace(System.err);
+				System.exit(-1);
+			}
+					//URLHelper.readProperties(URLHelper.toURL(sysprops));
+		}
 		if(findArg("--init", null, args) != null) {
 			final int index = findArgIndex("--init", args);
 			final int eindex = args[index].indexOf('=');
@@ -126,9 +155,7 @@ public class CollectorServer {
 				System.err.println("Cannot read log4j2 config file [" + log4jLoc + "]. Falling back to default.");
 			}
 		} else {
-			final File confDir = new File(rootDirectory, "conf");
 			final File logDir = new File(rootDirectory, "log");
-			
 			final String configFile = enableConsole ? "console-log4j2.xml" : "quiet-log4j2.xml";
 			final String resourceName = "deploy/logging/" + configFile;
 			final File log4jXmlFile = new File(confDir, configFile);
@@ -204,6 +231,38 @@ public class CollectorServer {
 		return -1;
 		
 	}
+	
+//	private static void listInitResources(final Path target) {
+//		FileSystem fileSystem = null;
+//		try {
+//			URI uri = CollectorServer.class.getResource("/init").toURI();
+//		    Path myPath;
+//		    String prefix;
+//		    if (uri.getScheme().equals("jar")) {
+//		        fileSystem = FileSystems.newFileSystem(uri, Collections.<String, Object>emptyMap());
+//		        myPath = fileSystem.getPath("/init");
+//		        prefix = "/init";
+//		    } else {
+//		        myPath = Paths.get(uri);
+//		        prefix = new File(uri).getAbsolutePath();
+//		    }
+//		    Files.copy(myPath, target);
+//		    System.out.println("Done");
+////		    System.out.println("Base:" + prefix);
+////		    Stream<Path> walk = Files.walk(myPath);
+////		    for (Iterator<Path> it = walk.iterator(); it.hasNext();){
+////		    	final File f = it.next().toFile();
+////		    	if(f.isFile()) {
+////		    		System.out.println("Init Resource:" + f.getName() + ", Parent:" + f.getParentFile());
+////		    	}
+////		    }
+//		} catch (Exception ex) {
+//			ex.printStackTrace(System.err);
+//		} finally {
+//			if(fileSystem!=null) try { fileSystem.close(); } catch (Exception x) {/* No Op */}
+//			System.exit(0);
+//		}
+//	}
 	
 //	private static String[] findArg(final String prefix, final String defaultValue, final String[] args, final int includeOffset) {
 //		try {

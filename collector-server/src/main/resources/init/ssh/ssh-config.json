@@ -1,0 +1,32 @@
+{
+	"disabled-connections" : [
+		{
+			"host" : "localhost",
+			"sshport" : 22,
+			"user" : "fred",
+			"password" : "flintstone",
+			"connectTimeout" : 7500,
+			"kexTimeout" : 5000, 
+			"tunnels" : [
+				{
+					"remoteport" : "${heliosapm.sshd.tunnel.rport.1:0}",
+					"remotehost" : "127.0.0.1" 			
+				}			
+			]
+		},
+		{
+			"host" : "127.0.0.1",
+			"sshport" : "${test-server.sshd.port}",
+			"user" : "sillysally",
+			"pkeyfile" : "./src/test/resources/ssh/auth/keys/sillysally_dsa",
+			"tunnels" : [
+				{
+					"localport" : 0,
+					"remoteport" : "${test.sshd.tunnel.rport.2:0}",
+					"remotehost" : "localhost" 			
+				}			
+			]
+			
+		}		
+	]
+}

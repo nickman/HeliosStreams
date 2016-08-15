@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
+import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.url.URLHelper;
@@ -97,18 +98,14 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 		return instance;
 	}
 	
-	public static void main(final String[] args) {
-		System.setProperty(CONFIG_JSON_DIR, "/home/nwhitehead/.collectorServer/ssh");
-		getInstance();
-		StdInCommandHandler.getInstance().run();
-	}
 	
 	/**
 	 * Creates a new SSHTunnelManager
 	 */
 	private SSHTunnelManager() {
-		sshDir = new File(System.getProperty(CONFIG_JSON_DIR));		
+		sshDir = new File(System.getProperty(ManagedScriptFactory.CONFIG_ROOT_DIR), "ssh");		
 		cacheService = GlobalCacheService.getInstance();
+		log.info("Loading SSH Configs from [{}]", sshDir);
 		loadConfigDir();
 	}
 	
@@ -126,6 +123,7 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 		});
 		for(File sshConfigFile: sshConfigFiles) {
 			if(sshFiles.containsKey(sshConfigFile)) continue;
+			log.info("Loading SSH Config from file [{}]", sshConfigFile);
 			try {
 				final SSHConnection[] connections = loadSSHConfigJson(URLHelper.toURL(sshConfigFile));
 				final Set<String> tunnelKeys = new NonBlockingHashSet<String>();
@@ -152,7 +150,10 @@ public class SSHTunnelManager implements SSHConnectionListener, SSHTunnelManager
 	public static SSHConnection[] loadSSHConfigJson(final URL jsonUrl) {
 		if(jsonUrl==null) throw new IllegalArgumentException("The passed URL was null");
 		try {
-			final JsonNode node = OBJECT_MAPPER.readTree(jsonUrl);
+			final String sshConfig = StringHelper.resolveTokens(
+				URLHelper.getStrBuffFromURL(jsonUrl)
+			);
+			final JsonNode node = OBJECT_MAPPER.readTree(sshConfig);
 			return getConnections(node);
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to process SSH config JSON from [" + jsonUrl + "]", ex);
