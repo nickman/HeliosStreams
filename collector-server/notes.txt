@@ -23,3 +23,21 @@ Core:
 	Scheduler with cron support
 	hot [un-]deployer with filewatcher
 	compiled script tree
+
+	
+Next:
+=====
+Init resources
+Script State
+Update Script via JMX
+Create new Script via JMX
+STOP/PAUSE headers
+SpringBootify / HTTP/WebSock End points
+Top level properties
+
+JBoss JMX:
+===========
+Data Sources
+TX Manager
+
+
