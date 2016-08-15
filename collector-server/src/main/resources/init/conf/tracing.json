@@ -1,0 +1,47 @@
+{
+	"writers" : [
+		{
+			"writer" : "com.heliosapm.streams.tracing.writers.LoggingWriter",
+			"configs" : {
+				"metricwriter.logging.filename" : "/tmp/stream-metrics/streams.logfile.log",
+				"metricwriter.logging.ra" : "false"
+			}
+		}	
+	],
+	"inactive" : [
+		{
+			"writer" : "com.heliosapm.streams.tracing.writers.KafkaSyncWriter",
+			"configs" : {
+				"metricwriter.kafka.bootstrap.servers" : "localhost:9093,localhost:9094",
+				"metricwriter.kafka.acks" : 1,
+				"metricwriter.kafka.retries" : 0,
+				"metricwriter.kafka.batch.size" : 16384,
+				"metricwriter.kafka.linger.ms" : 1,
+				"metricwriter.kafka.buffer.memory" : 33554432,
+				"metricwriter.kafka.topics" : "tsdb.metrics.st",
+				"metricwriter.kafka.interceptor.classes" : "com.heliosapm.streams.common.kafka.interceptor.MonitoringProducerInterceptor"
+			}
+		},		
+		{
+			"writer" : "com.heliosapm.streams.tracing.writers.TelnetWriter",
+			"configs" : {
+				"metricwriter.net.remotes" : "localhost:1892,localhost:1893",
+				"metricwriter.net.group.threads" : 4,
+				"metricwriter.net.eventloop.threads" : 8
+			}
+		},
+		{
+			"writer" : "com.heliosapm.streams.tracing.writers.TelnetWriter",
+			"configs" : {
+				"metricwriter.net.remotes" : "localhost:4242",
+				"metricwriter.net.group.threads" : 4,
+				"metricwriter.net.eventloop.threads" : 8
+			}
+		},	
+		{
+			"writer" : "com.heliosapm.streams.tracing.writers.ConsoleWriter"
+			
+		}
+		
+	]	
+}

@@ -51,6 +51,10 @@ public interface ITracer extends Closeable {
 	/** The default metric name segment delimiter */
 	public static final char DEFAULT_METRIC_SEG_DELIM = '.';
 	
+	/** The conf property key for the force to lower case flag */
+	public static final String CONF_METRIC_FORCE_LOWER = "tracer.metricseg.forcelower";	
+	/** The default force to lower case flag */
+	public static final boolean DEFAULT_METRIC_FORCE_LOWER = true;
 	
 	
 	// =====================================

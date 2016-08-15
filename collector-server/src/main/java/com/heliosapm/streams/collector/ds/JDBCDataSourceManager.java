@@ -132,9 +132,18 @@ public class JDBCDataSourceManager implements FileChangeEventListener {
 		if(dsDef==null) throw new IllegalArgumentException("The passed file was null");
 		if(!dsDef.getName().toLowerCase().endsWith(".ds")) return;
 		if(!dsDef.canRead()) throw new IllegalArgumentException("The passed file [" + dsDef + "] cannot be read");		
-		log.info(">>> Deploying DataSource from [{}]", dsDef);
+		
 		try {
 			final Properties p = URLHelper.readProperties(URLHelper.toURL(dsDef));
+			for(String key: p.stringPropertyNames()) {
+				if(key.trim().equalsIgnoreCase("disabled")) {
+					if(p.getProperty(key, "false").trim().equalsIgnoreCase("true")) {
+						log.info("DataSource Definition [{}] is marked disabled. Skipping.", dsDef);
+						return;
+					}
+				}
+			}
+			log.info(">>> Deploying DataSource from [{}]", dsDef);
 			final HikariConfig config = new HikariConfig(p);
 			config.setMetricRegistry(SharedMetricsRegistry.getInstance());
 			final String name = dsDef.getName().substring(0, dsDef.getName().length()-3);

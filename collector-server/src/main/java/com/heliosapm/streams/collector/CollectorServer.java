@@ -37,13 +37,13 @@ import com.heliosapm.utils.url.URLHelper;
 public class CollectorServer {
 	
 	/** The command help text */
-	public static final String COMMAND_HELP = "Helios CollectionServer: Command Line Options: " +
-			"--root=<directory name> : Sets the root directory of the collector server. If not supplied, this will be the current directory. " +
-			"--jmxmp=<jmxmp listening port> : Sets the port that the JMXMP listener will listen on. If not supplied, defaults to 3456 " +
-			"--log4j2=<log4j2 xml config> : Sets the file location of a custom log4j2 XML configuration file. If not supplied, defaults to the internal default location. " +
-			"--init : Initializes the root directory then exits" + 
-			"--console : Enables console logging in the internal logging config" +
-			"--help : Prints these options then exits ";
+	public static final String COMMAND_HELP = "Helios CollectionServer: Command Line Options: \n" +
+			"--root=<directory name> : Sets the root directory of the collector server. If not supplied, this will be the current directory. \n" +
+			"--jmxmp=<jmxmp listening port> : Sets the port that the JMXMP listener will listen on. If not supplied, defaults to 3456 \n" +
+			"--log4j2=<log4j2 xml config> : Sets the file location of a custom log4j2 XML configuration file. If not supplied, defaults to the internal default location. \n" +
+			"--init : Initializes the root directory then exits\n" + 
+			"--console : Enables console logging in the internal logging config\n" +
+			"--help : Prints these options then exits \n";
 
 
 	/**
@@ -86,7 +86,33 @@ public class CollectorServer {
 		}
 		System.setProperty(ManagedScriptFactory.CONFIG_ROOT_DIR, rootDir);
 		if(findArg("--init", null, args) != null) {
-			initDir(rootDirectory);
+			final int index = findArgIndex("--init", args);
+			final int eindex = args[index].indexOf('=');
+			String dirName = null;
+			if(eindex!=-1) {
+				dirName = args[index].substring(eindex+1);
+				if(dirName.trim().isEmpty()) {
+					dirName = null;
+				} else {
+					if(!URLHelper.isDirectory(dirName)) {
+						System.err.println("Invalid --init directory [" + dirName + "]");
+						System.exit(-1);
+					}
+				}
+			}
+			if(dirName==null) {
+				try {
+					dirName = args[index+1];
+					if(!URLHelper.isDirectory(dirName)) {
+						System.err.println("Invalid --init directory [" + dirName + "]");
+						System.exit(-1);
+					}
+				} catch (Exception ex) {
+					dirName = null;
+				}
+			}
+			final File initDir = new File(dirName==null ? "." : dirName.trim());
+			initDir(initDir);
 		}
 		
 		final String jmxmpIface = findArg("--jmxmp=", "0.0.0.0:3456", args);
@@ -168,5 +194,45 @@ public class CollectorServer {
 		return defaultValue;
 	}
 	
+	private static int findArgIndex(final String prefix, final String[] args) {
+		for(int i = 0; i < args.length; i++) {
+			final String s = args[i];
+			if(s.startsWith(prefix)) {
+				return i;
+			}
+		}
+		return -1;
+		
+	}
+	
+//	private static String[] findArg(final String prefix, final String defaultValue, final String[] args, final int includeOffset) {
+//		try {
+//			final String[] extracted = new String[includeOffsets.length];
+//			int found = 0;
+//			for(int i = 0; i < args.length; i++) {
+//				final String s = args[i];
+//				if(s.startsWith(prefix)) {
+//					final int index = s.indexOf('=');
+//					if(index!=-1) {
+//						final String exSuffix = s.substring(index+1);
+//						if(!exSuffix.trim().isEmpty()) {
+//							extracted[found] = exSuffix;
+//							found++;
+//						}
+//					}
+//					for(int x = found; x < includeOffsets.length; x++) {
+//						extracted[found] = args[includeOffsets[x]];
+//						
+//					}
+//					//s = s.replace(prefix, "").trim();
+//					//return s;
+//				}
+//			}
+//			
+//		} catch (Exception x) {
+//			/* No Op */ 
+//		}
+//		return new String[] {defaultValue};
+//	}
 	
 }

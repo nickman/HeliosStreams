@@ -92,7 +92,10 @@ public class DefaultTracerImpl implements ITracer {
 	/** The total number of events generated */
 	private long totalEvents = 0;
 	/** The configured metric name segment delimiter */
-	public final char metricSegDelim; 
+	public final char metricSegDelim;
+	/** Flag indicating if tag keys, values and metric names should be forced to lower case */
+	public final boolean forceLower; 
+	
 	/** The configured max number of tags in a trace */
 	public final int maxTags; 
 	/** The configured min number of tags in a trace */
@@ -199,6 +202,7 @@ public class DefaultTracerImpl implements ITracer {
 	protected DefaultTracerImpl(final IMetricWriter writer) {
 		this.writer = writer;
 		metricSegDelim = ConfigurationHelper.getCharSystemThenEnvProperty(CONF_METRIC_SEG_DELIM, DEFAULT_METRIC_SEG_DELIM);
+		forceLower = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONF_METRIC_FORCE_LOWER, DEFAULT_METRIC_FORCE_LOWER);
 		maxTags = 8;  // FIXME: config
 		minTags = 1;  // FIXME: config... allow zero for graphite et.al.
 		maxTracesBeforeFlush = 200;  // FIXME: config a default
@@ -206,7 +210,14 @@ public class DefaultTracerImpl implements ITracer {
 		outBuffer.setByte(COMPRESS_OFFSET, 0);
 		outBuffer.setInt(COUNT_OFFSET, 0);
 		outBuffer.writerIndex(START_DATA_OFFSET);
-		appHostTags = Collections.unmodifiableMap(AgentName.getInstance().defaultTags());
+		final Map<String, String> _appHostTags = AgentName.getInstance().defaultTags();
+		if(forceLower) {
+			for(String key: _appHostTags.keySet()) {
+				final String val = _appHostTags.remove(key);
+				_appHostTags.put(key.toLowerCase(), val.toLowerCase());
+			}
+		}
+		appHostTags = Collections.unmodifiableMap(_appHostTags);
 	}
 	
 	/**
@@ -448,7 +459,7 @@ public class DefaultTracerImpl implements ITracer {
 	
 	private static String ts(final Object obj, final String name) {
 		if(obj==null) throw new IllegalArgumentException(name + " was null");
-		final String s = obj.toString().trim().toLowerCase();
+		final String s = obj.toString().trim();
 		if(s.isEmpty()) throw new IllegalArgumentException(name + " was empty");
 		return s;
 	}
