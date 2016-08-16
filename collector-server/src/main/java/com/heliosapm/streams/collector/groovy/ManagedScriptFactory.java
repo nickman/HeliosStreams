@@ -539,7 +539,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		final ObjectName scriptObjectName = sourceNameToObjectName(sourceName);
 		final boolean registered = JMXHelper.isRegistered(scriptObjectName);
 		final String type = registered ? NOTIF_TYPE_REPLACEMENT_FAILED : NOTIF_TYPE_NEW_SCRIPT_FAIL;
-		final String message = (registered ? "Replacement" : "New") + " Script Deployment Failed. Error:" + errMsg;
+		final String message = "ERROR:" + (registered ? "Replacement" : "New") + " Script Deployment Failed. Error:" + errMsg;
 //		final String scriptName = sourceName;  // e.g. /jmx/standard/jvm-jmxcollector-10s.groovy   --->   com.heliosapm.streams.collector.scripts:dir=jmx/standard,name=jvm-jmxcollector-10s
 		
 		final Notification n = new Notification(type, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), message);
@@ -573,10 +573,10 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		final String scriptName = ms.getClass().getName().replace('.', '/');
 		if(dId==0L) {
 			type = NOTIF_TYPE_NEW_SCRIPT;
-			message = "New script: " + scriptName + ", version:" + dId;
+			message = "OK:New script: " + scriptName + ", version:" + dId;
 		} else {
 			type = NOTIF_TYPE_REPLACEMENT_COMPLETE;
-			message = "Replaced script: " + scriptName + ", version:" + dId;
+			message = "OK:Replaced script: " + scriptName + ", version:" + dId;
 		}
 		final Notification n = new Notification(type, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), message);
 		n.setUserData(scriptName);

@@ -229,4 +229,15 @@ public interface ManagedScriptMBean {
 	 */
 	public ObjectName getObjectName();
 	
+	/**
+	 * Pauses a scheduled script
+	 */
+	public void pause();
+	
+	/**
+	 * Resumes a paused script
+	 */
+	public void resume();
+	
+	
 }

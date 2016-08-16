@@ -69,6 +69,7 @@ import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.TimeoutService;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
+import com.heliosapm.streams.collector.jmx.JMXClient;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.tracing.ITracer;
 import com.heliosapm.streams.tracing.TracerFactory;
@@ -78,8 +79,6 @@ import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.lang.StringHelper;
-import com.heliosapm.utils.ref.MBeanProxyBuilder;
-import com.heliosapm.utils.ref.ReferenceService.ReferenceType;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
 
@@ -365,6 +364,35 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		}
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#pause()
+	 */
+	@Override
+	public void pause() {
+		if(state.get()!=ScriptState.PAUSED && scheduledPeriod!=null && scheduleHandle!=null) {
+			canReschedule.set(false);
+			scheduleHandle.cancel(true);
+			scheduleHandle = null;
+			setState(ScriptState.PAUSED);
+			log.info("Collection Script paused");			
+		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#resume()
+	 */
+	@Override
+	public void resume() {
+		if(state.get()==ScriptState.PAUSED && scheduledPeriod!=null && scheduleHandle==null) {
+			canReschedule.set(true);
+			scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);
+			setState(ScriptState.SCHEDULED);
+			log.info("Collection Script Resumed");			
+		}		
+	}
+	
 //	/** Cache injection substitution pattern */
 //	public static final Pattern CACHE_PATTERN = Pattern.compile("\\$cache\\{(.*?)(?::(\\d+))?(?::(nanoseconds|microseconds|milliseconds|seconds|minutes|hours|days))??\\}");
 //	/** Injected field template */
@@ -456,6 +484,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			final ITracer tracer = TracerFactory.getInstance().getTracer();			
 			bindingMap.put("tracer", tracer);
 			try {
+				log.info("Starting collect");
 				final long start = System.currentTimeMillis();
 				run();			
 				return System.currentTimeMillis() - start;
@@ -581,11 +610,18 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			scheduleHandle.cancel(true);
 			scheduleHandle = null;
 		}
+		for(Object o: bindingMap.values()) {
+			if(o!=null && (o instanceof Closeable)) {
+				try {
+					((Closeable)o).close();
+				} catch (Exception x) {/* No Op */}
+			}
+		}
 		bindingMap.clear();
 		fields.clear();
 		try { dependencyManager.close(); } catch (Exception x) {/* No Op */}
 		if(gcl!=null) {
-			final Class[] classes = gcl.getLoadedClasses();
+			final Class<?>[] classes = gcl.getLoadedClasses();
 			
 			
 			try { gcl.close(); } catch (Exception x) {/* No Op */}			
@@ -605,7 +641,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 				unloaded++;
 				try {
 					final ClassInfo classInfo = ClassInfo.getClassInfo(clazz);
-					final HashMap<Class,ClassInfo> map = (HashMap<Class,ClassInfo>)PrivateAccessor.invokeStatic(classInfo.getClass(), "getLocalClassInfoMap", new Object[0]);
+					@SuppressWarnings("unchecked")
+					final HashMap<Class<?>,ClassInfo> map = (HashMap<Class<?>,ClassInfo>)PrivateAccessor.invokeStatic(classInfo.getClass(), "getLocalClassInfoMap", new Object[0]);
 					if(map!=null) {
 						ClassInfo ci = map.remove(clazz);
 						if(ci!=null) {

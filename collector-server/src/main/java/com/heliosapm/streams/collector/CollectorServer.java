@@ -30,6 +30,7 @@ import org.apache.logging.log4j.LogManager;
 
 import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
 import com.heliosapm.utils.collections.Props;
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
@@ -102,16 +103,28 @@ public class CollectorServer {
 		System.setProperty(ManagedScriptFactory.CONFIG_ROOT_DIR, rootDir);
 		final File confDir = new File(rootDir, "conf");
 		final File sysprops = new File(confDir, "sys.properties");
+		final File appprops = new File(confDir, "app.properties");
 		if(sysprops.canRead()) {
 			try {
 				final Properties p = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(sysprops)))) ;
 				System.getProperties().putAll(p);
 				System.out.println("Applied [" + p.size() + "] system properties from [" + sysprops + "]");
 			} catch (Exception ex) {
-				System.err.println("Failed to read and apply [" + sysprops + "]. Stack trace follows.");
+				System.err.println("Failed to read and apply System [" + sysprops + "]. Stack trace follows.");
 				ex.printStackTrace(System.err);
 				System.exit(-1);
 			}
+			if(appprops.canRead()) {
+				try {
+					final Properties p = Props.strToProps(StringHelper.resolveTokens(URLHelper.getStrBuffFromURL(URLHelper.toURL(appprops)))) ;
+					ConfigurationHelper.setAppProperties(p);
+					System.out.println("Applied [" + p.size() + "] app properties from [" + appprops + "]");
+				} catch (Exception ex) {
+					System.err.println("Failed to read and apply App properties [" + appprops + "]. Stack trace follows.");
+					ex.printStackTrace(System.err);
+					System.exit(-1);
+				}
+			}			
 					//URLHelper.readProperties(URLHelper.toURL(sysprops));
 		}
 		if(findArg("--init", null, args) != null) {

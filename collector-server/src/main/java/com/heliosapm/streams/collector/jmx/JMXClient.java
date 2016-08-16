@@ -15,12 +15,20 @@
  */
 package com.heliosapm.streams.collector.jmx;
 
+import java.io.Closeable;
 import java.io.IOException;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.regex.Pattern;
 
 import javax.management.Attribute;
 import javax.management.AttributeList;
@@ -71,7 +79,7 @@ import io.netty.util.Timeout;
  * <p><code>com.heliosapm.streams.collector.jmx.JMXClient</code></p>
  */
 
-public class JMXClient implements MBeanServerConnection {
+public class JMXClient implements MBeanServerConnection, Closeable {
 	/** The JMX URL */
 	protected final String jmxUrl;
 	/** The JMX Service URL */
@@ -86,12 +94,38 @@ public class JMXClient implements MBeanServerConnection {
 	protected final long connectTimeoutSecs;
 	/** Instance logger */
 	protected final Logger log;
+	/** Accumulator for total jmx remoting time */
+	protected final LongAdder remotingTime = new LongAdder();
+	
+	/** The tracing app name */
+	protected final String remoteApp;
+	/** The tracing host name */
+	protected final String remoteHost;
 	
 	/** The default connect timeout in seconds */
 	public static final long DEFAULT_CONNECT_TIMEOUT = 10;
+	/** The URL path query arg for the tracing app name we're connecting to */
+	public static final String APP_QUERY_ARG = "app";
+	/** The URL path query arg for the tracing host name we're connecting to */
+	public static final String HOST_QUERY_ARG = "host";
 	
 	/** Listener registrations that should be saved an re-applied on re-connect */
 	protected final NonBlockingHashSet<SavedNotificationEvent> registrations = new NonBlockingHashSet<SavedNotificationEvent>();
+	
+	private static Set<Method> instrumentedMethods;
+	
+	static {
+		try {
+			HashSet<Method> tmpMethods = new HashSet<Method>();
+			tmpMethods.add(MBeanServerConnection.class.getDeclaredMethod("getAttributes", ObjectName.class, String[].class));
+			tmpMethods.add(MBeanServerConnection.class.getDeclaredMethod("getAttribute", ObjectName.class, String.class));
+			tmpMethods.add(MBeanServerConnection.class.getDeclaredMethod("invoke", ObjectName.class, String.class, Object[].class, String[].class));
+			instrumentedMethods = Collections.unmodifiableSet(new HashSet<Method>(tmpMethods));
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+			throw new RuntimeException(ex);
+		}
+	}
 	
 	/** Client cache */
 	protected static final Cache<Object, JMXClient> clients = CacheBuilder.newBuilder()
@@ -191,12 +225,45 @@ public class JMXClient implements MBeanServerConnection {
 			System.arraycopy(credentials, 0, creds, 0, 2);
 			env.put(JMXConnector.CREDENTIALS, creds);
 		}
+		final Map<String, String> qArgs = queryArgsToMap(jmxServiceUrl);
+		remoteApp = qArgs.get(APP_QUERY_ARG);
+		remoteHost = qArgs.get(HOST_QUERY_ARG);
 		
 		try {
 			jmxConnector = JMXConnectorFactory.newJMXConnector(jmxServiceUrl, env);
 		} catch (IOException iex) {
 			throw new RuntimeException("Failed to create JMXConnector", iex);
 		}
+	}
+	
+	public static final Pattern QARG_SPLITTER = Pattern.compile("\\W");
+	
+	public static Map<String, String> queryArgsToMap(final JMXServiceURL jmxUrl) {
+		final String urlPath = jmxUrl.getURLPath();
+		final String[] frags = QARG_SPLITTER.split(urlPath);
+		final Map<String, String> map = new HashMap<String, String>();
+		final int x = frags.length-1;
+		for(int i = 0; i < frags.length; i++) {
+			
+			final String key = frags[i];
+			if(key!=null && !key.trim().isEmpty()) {
+				i++;
+				if(i==x) break;
+				final String value = frags[i];
+				if(value!=null && !value.trim().isEmpty()) {
+					map.put(key.trim(), value.trim());
+				}				
+			}
+		}
+		return map;
+	}
+	
+	@Override
+	public void close() throws IOException {
+		try { jmxConnector.close(); } catch (Exception x) {/* No Op */}
+		env.clear();
+		registrations.clear();
+		server = null;		
 	}
 	
 	/**
@@ -218,7 +285,24 @@ public class JMXClient implements MBeanServerConnection {
 							}
 						});
 						jmxConnector.connect();
-						server = jmxConnector.getMBeanServerConnection();
+//						server = jmxConnector.getMBeanServerConnection();
+						final MBeanServerConnection conn = jmxConnector.getMBeanServerConnection();
+						try {
+							server = (MBeanServerConnection)Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{MBeanServerConnection.class}, new InvocationHandler(){
+								@Override
+								public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+									final long start = System.currentTimeMillis();
+									try {
+										return method.invoke(conn, args); 
+									} finally {
+										remotingTime.add(System.currentTimeMillis() - start);
+									}
+								}
+							});
+						} catch (Exception ex) {
+							server = conn;
+							log.warn("Failed to create Instrumented Proxy for JMX MBeanConnection Server [{}]. Continuing with native", this.jmxServiceUrl, ex);
+						}
 						txout.cancel();
 						for(SavedNotificationEvent n: registrations) {							
 							try {
@@ -239,6 +323,14 @@ public class JMXClient implements MBeanServerConnection {
 			}
 		}
 		return server;
+	}
+	
+	/**
+	 * Returns the accumulated remoting time and resets the counter
+	 * @return the accumulated remoting time  in ms.
+	 */
+	public long getJMXRemotingTime() {
+		return remotingTime.sumThenReset();
 	}
 
 	/**
@@ -634,9 +726,11 @@ public class JMXClient implements MBeanServerConnection {
 	}
 	
 	public String getAppName() {
+		if(remoteApp!=null) return remoteApp;
 		return AgentName.remoteAppName(this);
 	}
 	public String getHostName() {
+		if(remoteHost!=null) return remoteHost;
 		return AgentName.remoteHostName(this);
 	}
 	
