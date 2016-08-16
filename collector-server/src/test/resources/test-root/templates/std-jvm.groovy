@@ -320,6 +320,7 @@ tracer {
 		}
 
 	}
-
 }
+
+try { log.info("Total Remoting Time: ${jmxClient.getJMXRemotingTime()} ms."); } catch (x) {}
 
