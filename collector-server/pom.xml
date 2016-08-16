@@ -18,6 +18,14 @@
 	
     <dependencies>
       
+      
+	<dependency>
+    	<groupId>org.apache.logging.log4j</groupId>
+    	<version>2.3</version>
+		<artifactId>log4j-jul</artifactId>	
+	</dependency>      
+	
+	
 		<dependency>				
 			<groupId>com.heliosapm.utils</groupId>
 			<artifactId>heliosutils</artifactId>

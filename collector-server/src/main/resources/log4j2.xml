@@ -9,6 +9,14 @@
             </pattern>>
         </PatternLayout>
     </Console>
+    <Console name="ERR-Appender" target="SYSTEM_ERR">
+        <PatternLayout>
+            <pattern>
+                [%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{4} - %msg%n
+            </pattern>>
+        </PatternLayout>
+    </Console>
+    
 </Appenders>
 
 <Loggers>
@@ -18,7 +26,9 @@
            <Logger name="org.apache.sshd" level="warn" additivity="false">
                <AppenderRef ref="Console-Appender" level="warn"/>               
            </Logger>
-           
+           <Logger name="javax.management.mbeanserver" level="trace" additivity="false">
+               <AppenderRef ref="ERR-Appender" level="trace"/>
+           </Logger>           
         <Root level="info">
             <AppenderRef ref="Console-Appender" />
         </Root>

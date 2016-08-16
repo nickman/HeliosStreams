@@ -49,6 +49,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.jar.JarFile;
 
+import javax.management.MBeanNotificationInfo;
+import javax.management.Notification;
+import javax.management.NotificationBroadcasterSupport;
+import javax.management.NotificationEmitter;
+import javax.management.ObjectName;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
@@ -79,6 +85,7 @@ import com.heliosapm.utils.file.FileHelper;
 import com.heliosapm.utils.file.Filters.FileMod;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.ref.ReferenceService;
@@ -102,7 +109,7 @@ import jsr166e.LongAdder;
  * 	finish impl for linked files for windows platforms
  */
 
-public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChangeEventListener, MetaClassRegistryChangeEventListener {
+public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener {
 	/** The singleton instance */
 	private static volatile ManagedScriptFactory instance;
 	/** The singleton instance ctor lock */
@@ -130,6 +137,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	/** If this is the first line in a groovy script file, don't deploy it */
 	public static final String DISABLED_HEADER = "!STOP";
+	
 	/** The platform end of line character */
 	public static final String EOL = System.getProperty("line.separator");
 	
@@ -142,6 +150,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	
 	/** The collector service root directory */
 	protected final File rootDirectory;
+	
 	/** The 3rd party lib directory */
 	protected final File libDirectory;
 	/** The 3rd party JDBC lib directory */
@@ -180,6 +189,8 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	protected FileFinder sourceFinder = null;
 	/** The linked groovy source file file finder */
 	protected FileFinder linkedSourceFinder = null; 
+	/** The jmx notification serial factory */
+	protected final AtomicLong notifSerial = new AtomicLong(0L);
 	
 	/** The groovy source file watcher */
 	protected FileChangeWatcher fileChangeWatcher = null;
@@ -213,6 +224,14 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 		.weakValues()
 		.build();
 	
+	
+	private static final MBeanNotificationInfo[] NOTIF_INFO = new MBeanNotificationInfo[]{
+		new MBeanNotificationInfo(new String[]{NOTIF_TYPE_REPLACEMENT_FAILED}, Notification.class.getName(), "Notification emitted when a script was re-compiled but failed compilation"),
+		new MBeanNotificationInfo(new String[]{NOTIF_TYPE_REPLACEMENT_COMPLETE}, Notification.class.getName(), "Notification emitted when script was re-compiled successfully and replaced an existing one"),
+		new MBeanNotificationInfo(new String[]{NOTIF_TYPE_NEW_SCRIPT}, Notification.class.getName(), "Notification emitted when a new script successfully compiled"),
+		new MBeanNotificationInfo(new String[]{NOTIF_TYPE_NEW_SCRIPT_FAIL}, Notification.class.getName(), "Notification emitted when a new script failed to compile")
+	
+	};
 	
 	/**
 	 * Acquires and returns the ManagedScriptFactory singleton instance
@@ -284,6 +303,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 	 * Creates a new ManagedScriptFactory
 	 */
 	private ManagedScriptFactory() {
+		super(SharedNotificationExecutor.getInstance(), NOTIF_INFO);
 		log.info(">>>>> Starting ManagedScriptFactory...");
 		ExtendedThreadManager.install();
 		JMXHelper.registerHotspotInternal();
@@ -472,14 +492,14 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			ReferenceService.getInstance().newWeakReference(msClazz, null);
 			//final ManagedScript ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{new Binding(bSource.getBindingMap())}, Binding.class);
 			final ManagedScript ms = msClazz.newInstance();
-			final long elapsedTime = System.currentTimeMillis() - startTime;
+			final long elapsedTime = System.currentTimeMillis() - startTime;			
 			ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
+			sendCompilationEvent(ms);
 			success = true;
 			managedScripts.put(source, ms);
 			successfulCompiles.increment();
 			compiledScripts.add(sourceName);
 			failedScripts.remove(sourceName);
-			
 			log.info("Successfully Compiled script [{}] --> [{}].[{}] in [{}] ms.", sourceName, msClazz.getPackage().getName(), msClazz.getSimpleName(), elapsedTime);
 			return ms;
 		} catch (CompilationFailedException cex) {
@@ -496,6 +516,7 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 			throw new RuntimeException(errMsg, ex);
 		} finally {
 			if(!success) {
+				sendCompilationEvent(source.getAbsolutePath().replace(scriptDirectory.getAbsolutePath(), ""), errMsg, null);
 				failedCompiles.increment();
 				if(!compiledScripts.contains(sourceName)) {
 					failedScripts.add(sourceName);
@@ -504,6 +525,62 @@ public class ManagedScriptFactory implements ManagedScriptFactoryMBean, FileChan
 				
 			}
 		}
+	}
+	
+
+
+	/**
+	 * Sends a compilation failed event
+	 * @param sourceName The name of the source that failed
+	 * @param errMsg The error message
+	 * @param err The throwable from the deployment error
+	 */
+	protected void sendCompilationEvent(final String sourceName, final String errMsg, final Throwable err) {
+		final ObjectName scriptObjectName = sourceNameToObjectName(sourceName);
+		final boolean registered = JMXHelper.isRegistered(scriptObjectName);
+		final String type = registered ? NOTIF_TYPE_REPLACEMENT_FAILED : NOTIF_TYPE_NEW_SCRIPT_FAIL;
+		final String message = (registered ? "Replacement" : "New") + " Script Deployment Failed. Error:" + errMsg;
+//		final String scriptName = sourceName;  // e.g. /jmx/standard/jvm-jmxcollector-10s.groovy   --->   com.heliosapm.streams.collector.scripts:dir=jmx/standard,name=jvm-jmxcollector-10s
+		
+		final Notification n = new Notification(type, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), message);
+		n.setUserData(scriptObjectName);
+		sendNotification(n);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#sourceNameToObjectName(java.lang.String)
+	 */
+	@Override
+	public ObjectName sourceNameToObjectName(final String sourceName) {
+		final String[] frags = StringHelper.splitString(sourceName, File.separatorChar, true);
+		final String name = frags[frags.length-1].replace(".groovy", "");
+		final String[] dirElements = new String[frags.length-1];
+		System.arraycopy(frags, 0, dirElements, 0, frags.length-1);
+		final String dir = String.join(File.separator, dirElements);
+		return JMXHelper.objectName(new StringBuilder("com.heliosapm.streams.collector.scripts:dir=").append(dir).append(",name=").append(name));
+	}
+	
+	
+	/**
+	 * Sends a compilation complete event
+	 * @param ms The compiled script
+	 */
+	protected void sendCompilationEvent(final ManagedScript ms) {
+		final long dId = ms.getDeploymentId();
+		final String type;
+		final String message;
+		final String scriptName = ms.getClass().getName().replace('.', '/');
+		if(dId==0L) {
+			type = NOTIF_TYPE_NEW_SCRIPT;
+			message = "New script: " + scriptName + ", version:" + dId;
+		} else {
+			type = NOTIF_TYPE_REPLACEMENT_COMPLETE;
+			message = "Replaced script: " + scriptName + ", version:" + dId;
+		}
+		final Notification n = new Notification(type, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), message);
+		n.setUserData(scriptName);
+		sendNotification(n);
 	}
 	
 	

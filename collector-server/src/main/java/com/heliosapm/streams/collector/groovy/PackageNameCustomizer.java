@@ -46,6 +46,10 @@ public class PackageNameCustomizer extends CompilationCustomizer {
 	@Override
 	public void call(final SourceUnit source, final GeneratorContext context, final ClassNode classNode) throws CompilationFailedException {
 		classNode.setName(source.getName());
+		final Class<?>[] ifaces = ManagedScript.class.getInterfaces();
+		for(Class<?> iface: ifaces) {
+			classNode.addInterface(new ClassNode(iface));
+		}
 	}
 
 }

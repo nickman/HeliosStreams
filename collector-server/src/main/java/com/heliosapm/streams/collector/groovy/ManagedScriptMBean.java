@@ -24,6 +24,9 @@ import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 
+import javax.management.NotificationEmitter;
+import javax.management.ObjectName;
+
 /**
  * <p>Title: ManagedScriptMBean</p>
  * <p>Description: JMX MBean interface for {@link ManagedScript} instances</p> 
@@ -32,6 +35,7 @@ import java.util.Set;
  */
 
 public interface ManagedScriptMBean {
+	
 	/**
 	 * Closes the groovy class loader and unregisters the MBean
 	 * @throws IOException will not be thrown.
@@ -219,5 +223,10 @@ public interface ManagedScriptMBean {
 	 */
 	public Long getTimeUntilNextCollect();
 	
+	/**
+	 * Returns the script's JMX ObjectName
+	 * @return the script's JMX ObjectName
+	 */
+	public ObjectName getObjectName();
 	
 }

@@ -13,6 +13,14 @@
 	            </pattern>>
 	        </PatternLayout>
 	    </Console>
+	    <Console name="ERR-Appender" target="SYSTEM_ERR">
+	        <PatternLayout>
+	            <pattern>
+	                [%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{4} - %msg%n
+	            </pattern>>
+	        </PatternLayout>
+	    </Console>
+	    
 	    <RollingRandomAccessFile 
 	    	name="RollingRandomAccessFile" 
 	    	fileName="${log-path}/collector.log"
@@ -38,6 +46,9 @@
 	           <Logger name="com.heliosapm" level="info" additivity="false">
 	               <AppenderRef ref="RollingRandomAccessFile" level="info"/>               
 	               <AppenderRef ref="Console-Appender" level="info"/>
+	           </Logger>
+	           <Logger name="javax.management.mbeanserver" level="trace" additivity="false">
+	               <AppenderRef ref="ERR-Appender" level="trace"/>
 	           </Logger>
 	           
 	        <Root level="info">

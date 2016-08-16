@@ -39,6 +39,24 @@ public interface ManagedScriptFactoryMBean {
 	/** The ManagedScriptFactory MBean ObjectName */
 	public static final ObjectName OBJECT_NAME = JMXHelper.objectName("com.heliosapm.streams.collector:service=ManagedScriptFactory");
 	
+	/** Compilation event notification type prefix */
+	public static String NOTIF_TYPE_COMPILATION_PREFIX = "collector.script.compilation.";
+	/** Compilation event notification type prefix for script replacement */
+	public static String NOTIF_TYPE_COMPILATION_REPLACEMENT_PREFIX = NOTIF_TYPE_COMPILATION_PREFIX + "replacement.";
+	/** Compilation event notification type prefix for a new script */
+	public static String NOTIF_TYPE_COMPILATION_NEW_PREFIX = NOTIF_TYPE_COMPILATION_PREFIX + "replacement.";
+	
+	
+	/** Compilation event notification type for a failed script replacement */
+	public static String NOTIF_TYPE_REPLACEMENT_FAILED = NOTIF_TYPE_COMPILATION_REPLACEMENT_PREFIX + "failed";
+	/** Compilation event notification type for a successful script replacement */
+	public static String NOTIF_TYPE_REPLACEMENT_COMPLETE = NOTIF_TYPE_COMPILATION_REPLACEMENT_PREFIX + "complete";
+	/** Compilation event notification type for a new script deployment */
+	public static String NOTIF_TYPE_NEW_SCRIPT = NOTIF_TYPE_COMPILATION_NEW_PREFIX + "complete";
+	/** Compilation event notification type for a new script deployment failure */
+	public static String NOTIF_TYPE_NEW_SCRIPT_FAIL = NOTIF_TYPE_COMPILATION_NEW_PREFIX + "failed";
+
+	
 	/**
 	 * Returns the cummulative number of successful compilations
 	 * @return the cummulative number of successful compilations
@@ -202,5 +220,12 @@ public interface ManagedScriptFactoryMBean {
 	 * @see org.codehaus.groovy.control.CompilerConfiguration#getOptimizationOptions()
 	 */
 	public Map<String, Boolean> getOptimizationOptions();
+	
+	/**
+	 * Returns the expected ManagedScript ObjectName for the passed source file
+	 * @param sourceName The source file location starting below the root script directory
+	 * @return the expected ObjectName
+	 */
+	public ObjectName sourceNameToObjectName(final String sourceName);
 
 }

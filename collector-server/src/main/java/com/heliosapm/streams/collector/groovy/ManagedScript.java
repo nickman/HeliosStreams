@@ -27,6 +27,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,9 +43,16 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import javax.management.AttributeChangeNotification;
+import javax.management.ListenerNotFoundException;
+import javax.management.MBeanNotificationInfo;
 import javax.management.MBeanRegistration;
 import javax.management.MBeanServer;
 import javax.management.MBeanServerInvocationHandler;
+import javax.management.NotificationBroadcasterSupport;
+import javax.management.NotificationEmitter;
+import javax.management.NotificationFilter;
+import javax.management.NotificationListener;
 import javax.management.ObjectName;
 
 import org.apache.logging.log4j.LogManager;
@@ -67,9 +75,10 @@ import com.heliosapm.streams.tracing.TracerFactory;
 import com.heliosapm.streams.tracing.deltas.DeltaManager;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.lang.StringHelper;
-import com.heliosapm.utils.ref.MBeanProxy;
+import com.heliosapm.utils.ref.MBeanProxyBuilder;
 import com.heliosapm.utils.ref.ReferenceService.ReferenceType;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
@@ -93,8 +102,9 @@ import jsr166e.LongAdder;
  * 	Race condition on dependency management when datasource is redeployed. 
  */
 
-public abstract class ManagedScript extends Script implements MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler {
-
+public abstract class ManagedScript extends Script implements NotificationEmitter, MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler {
+	/** The JMX notification handler */
+	protected final NotificationBroadcasterSupport broadcaster;
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** This script's dedicated class loader */
@@ -125,6 +135,9 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	protected File sourceFile = null;
 	/** The linked source file */
 	protected File linkedSourceFile = null; 
+	
+	/** The jmx notification serial factory */
+	protected final AtomicLong notifSerial = new AtomicLong(0L);
 	
 	/** The compile time for this script */
 	protected long compileTime = -1L;
@@ -179,6 +192,17 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	/** A null object to put in bindings to avoid getting an NPE */
 	public static final NullObject NULL_OBJECT = NullObject.getNullObject();
 	
+	/** The jmx notification infos */
+	private static final MBeanNotificationInfo[] NOTIF_INFOS;
+	
+	
+	static {
+		final MBeanNotificationInfo[] STATE_INFOS = ScriptState.NOTIF_INFOS.values().toArray(new MBeanNotificationInfo[ScriptState.values().length]);
+		
+		final Set<MBeanNotificationInfo> infoSet = new HashSet<MBeanNotificationInfo>();
+		Collections.addAll(infoSet, STATE_INFOS);
+		NOTIF_INFOS = infoSet.toArray(new MBeanNotificationInfo[infoSet.size()]);
+	}
 	
 	/** A map of the declared fields of this class keyed by the field name */
 	protected final NonBlockingHashMap<String, Field> fields = new NonBlockingHashMap<String, Field>(); 
@@ -189,9 +213,11 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	 */
 	@SuppressWarnings("unchecked")
 	public ManagedScript() {
+		
 		cache = GlobalCacheService.getInstance();
 		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 		executionService = CollectorExecutionService.getInstance();
+		broadcaster = new NotificationBroadcasterSupport(SharedNotificationExecutor.getInstance(), NOTIF_INFOS);
 		for(Field f: getClass().getDeclaredFields()) {
 			fields.put(f.getName(), f);
 //			final groovy.transform.Field fieldAnn = f.getAnnotation(groovy.transform.Field.class);
@@ -297,7 +323,15 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 		
 		try { 
 			//JMXHelper.registerMBean(proxy, objectName);
-			MBeanProxy.register(ReferenceType.WEAK, objectName, ManagedScriptMBean.class, this);
+			final ClassLoader cl = Thread.currentThread().getContextClassLoader();
+			try {
+				Thread.currentThread().setContextClassLoader(this.gcl);
+				//MBeanProxy.register(ReferenceType.WEAK, objectName, ManagedScriptMBean.class, this);
+//				MBeanProxyBuilder.register(ReferenceType.WEAK, objectName, ManagedScriptMBean.class, this);
+				JMXHelper.registerMBean(objectName, this);
+			} finally {
+				Thread.currentThread().setContextClassLoader(cl);
+			}
 		} catch (Exception ex) {
 			log.warn("Failed to register MBean for ManagedScript [{}]", objectName, ex);
 		}
@@ -308,14 +342,28 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 				canReschedule.set(true);
 				scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);			
 				log.info("Collection Script scheduled");
+				setState(ScriptState.SCHEDULED);
 			} else {
+				setState(ScriptState.PASSIVE);
 				log.info("\n ================================ \n Script [{}} not scheduled. \nWaiting on {}", this.sourceFile, pendingDependencies);
 			}
 		}
 	}
 	
 	
-	
+	/**
+	 * Sets the script state.
+	 * If the state has changed, an attribute change notification will be emitted.
+	 * @param newState The new script state
+	 */
+	protected void setState(final ScriptState newState) {
+		if(newState==null) throw new IllegalArgumentException("The passed ScriptState was null");
+		final ScriptState priorState = state.getAndSet(newState);
+		if(priorState!=newState) {
+			final AttributeChangeNotification acn = new AttributeChangeNotification(objectName, notifSerial.incrementAndGet(), System.currentTimeMillis(), "State change: [" + priorState + "] to [" + newState + "]", "State", String.class.getName(), priorState.name(), newState.name());
+			broadcaster.sendNotification(acn);
+		}
+	}
 	
 //	/** Cache injection substitution pattern */
 //	public static final Pattern CACHE_PATTERN = Pattern.compile("\\$cache\\{(.*?)(?::(\\d+))?(?::(nanoseconds|microseconds|milliseconds|seconds|minutes|hours|days))??\\}");
@@ -357,6 +405,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			lastCollectionElapsed.set(lastElapsed);
 		}
 		try { oldScript.close(); } catch (Exception x) {/* No Op */}
+		
 	}
 	
 	private class CollectionRunnerCallable implements Callable<Void> {
@@ -1174,7 +1223,7 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 	}
 	
 	/**
-	 * Resets all deltas for this scrip 
+	 * Resets all deltas for this script
 	 */
 	public void resetDeltas() {
 		for(String key: deltaKeys) {
@@ -1183,6 +1232,51 @@ public abstract class ManagedScript extends Script implements MBeanRegistration,
 			deltaManager.resetLong(key);
 		}
 		deltaKeys.clear();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.NotificationBroadcaster#addNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
+	 */
+	@Override
+	public void addNotificationListener(final NotificationListener listener, final NotificationFilter filter, final Object handback) throws IllegalArgumentException {
+		broadcaster.addNotificationListener(listener, filter, handback);		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.NotificationBroadcaster#removeNotificationListener(javax.management.NotificationListener)
+	 */
+	@Override
+	public void removeNotificationListener(final NotificationListener listener) throws ListenerNotFoundException {
+		broadcaster.removeNotificationListener(listener);		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.NotificationBroadcaster#getNotificationInfo()
+	 */
+	@Override
+	public MBeanNotificationInfo[] getNotificationInfo() {		
+		return NOTIF_INFOS;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.NotificationEmitter#removeNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
+	 */
+	@Override
+	public void removeNotificationListener(final NotificationListener listener, final NotificationFilter filter, final Object handback) throws ListenerNotFoundException {
+		broadcaster.removeNotificationListener(listener, filter, handback);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getObjectName()
+	 */
+	@Override
+	public ObjectName getObjectName() {
+		return objectName;
 	}
 	
 }

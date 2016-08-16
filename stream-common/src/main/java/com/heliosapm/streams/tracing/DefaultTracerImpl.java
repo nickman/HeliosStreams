@@ -218,8 +218,8 @@ public class DefaultTracerImpl implements ITracer {
 		final Map<String, String> _appHostTags = AgentName.getInstance().defaultTags();
 		if(forceLower) {
 			for(String key: _appHostTags.keySet()) {
-				final String val = _appHostTags.remove(key);
-				_appHostTags.put(key.toLowerCase(), val.toLowerCase());
+//				final String val = _appHostTags.remove(key);
+				_appHostTags.put(key.toLowerCase(), _appHostTags.get(key).toLowerCase());
 			}
 		}
 		appHostTags = Collections.unmodifiableMap(_appHostTags);
