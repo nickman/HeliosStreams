@@ -24,8 +24,9 @@ import java.util.Date;
 import java.util.Map;
 import java.util.Set;
 
-import javax.management.NotificationEmitter;
 import javax.management.ObjectName;
+
+import org.springframework.beans.factory.NamedBean;
 
 /**
  * <p>Title: ManagedScriptMBean</p>
@@ -34,7 +35,7 @@ import javax.management.ObjectName;
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScriptMBean</code></p>
  */
 
-public interface ManagedScriptMBean {
+public interface ManagedScriptMBean extends NamedBean {
 	
 	/**
 	 * Closes the groovy class loader and unregisters the MBean
@@ -238,6 +239,7 @@ public interface ManagedScriptMBean {
 	 * Resumes a paused script
 	 */
 	public void resume();
+	
 	
 	
 }

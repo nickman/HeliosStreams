@@ -127,11 +127,6 @@
 		      <dependency>
 						<groupId>org.codehaus.groovy</groupId>
 						<artifactId>groovy-all</artifactId>
-						<version>${groovy.version}</version>
-		      </dependency>
-		      <dependency>
-						<groupId>org.codehaus.groovy</groupId>
-						<artifactId>groovy-all</artifactId>
 						<!-- <classifier>indy</classifier> -->
 						<version>${groovy.version}</version>
 		      </dependency>
@@ -159,6 +154,7 @@
 			  <scope>provided</scope>
 			</dependency>
 
+			<!-- 
 			<dependency>
 			  <groupId>org.apache.curator</groupId>
 			  <artifactId>curator-framework</artifactId>
@@ -177,7 +173,7 @@
 			  <scope>provided</scope>
 			</dependency>
 
-
+			-->
 
 		<!-- ==========================================================
 		    Kafka Dependencies
@@ -269,6 +265,31 @@
 		  <groupId>org.springframework.boot</groupId>
 		  <artifactId>spring-boot-loader</artifactId>
 		</dependency>
+		
+      	<dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+            <version>${spring-boot.version}</version>
+			  <exclusions>
+               	<exclusion>
+		          <groupId>ch.qos.logback</groupId>
+		          <artifactId>logback-classic</artifactId>
+		        </exclusion>
+			  	<exclusion>
+		          <groupId>org.slf4j</groupId>
+		          <artifactId>slf4j-log4j12</artifactId>
+		        </exclusion>
+			  	<exclusion>
+		          <groupId>org.slf4j</groupId>
+		          <artifactId>slf4j-api</artifactId>
+		        </exclusion>		        		        
+			  	<exclusion>
+		          <groupId>log4j</groupId>
+		          <artifactId>log4j</artifactId>
+		        </exclusion>		        		        
+			  </exclusions>			  		    			  			              
+        </dependency>
+		
 	
 		
 		<dependency>
@@ -281,16 +302,13 @@
 		    <artifactId>spring-boot-starter-undertow</artifactId>
 		</dependency>
 
-		<dependency>
-		    <groupId>org.springframework.boot</groupId>
-		    <artifactId>spring-boot-starter-remote-shell</artifactId>
-		 </dependency>
-
+		<!-- 
 		<dependency>
 		    <groupId>de.codecentric</groupId>
 		    <artifactId>spring-boot-admin-starter-client</artifactId>
 		</dependency>
-
+		
+		 -->
 		<!-- ==========================================================
 		    Hystrix/Turbine Dependencies
 		    ========================================================== -->		
@@ -304,28 +322,38 @@
 		  <groupId>org.springframework.cloud</groupId>
 		  <artifactId>spring-cloud-starter-hystrix-dashboard</artifactId>
 		</dependency>
-
+		
 		<dependency>
 		  <groupId>org.springframework.cloud</groupId>
 		  <artifactId>spring-cloud-netflix-hystrix-dashboard</artifactId>
 		</dependency>
-
-		<dependency>
-		  <groupId>org.springframework.cloud</groupId>
-		  <artifactId>spring-cloud-netflix-hystrix-stream</artifactId>
-		</dependency>
 		
-
-
-		<dependency>
-		  <groupId>org.springframework.cloud</groupId>
-		  <artifactId>spring-cloud-netflix-turbine-stream</artifactId>
-		</dependency>
-
+		
 		<dependency>
 		  <groupId>org.springframework.cloud</groupId>
 		  <artifactId>spring-cloud-netflix-turbine</artifactId>
 		</dependency>
+		
+		<dependency>
+		  <groupId>com.netflix.servo</groupId>
+		  <artifactId>servo-core</artifactId>
+		  <version>0.7.2</version>
+		</dependency>
+
+
+		<!--
+		<dependency>
+		  <groupId>org.springframework.cloud</groupId>
+		  <artifactId>spring-cloud-netflix-hystrix-stream</artifactId>
+		</dependency>
+			
+		<dependency>
+		  <groupId>org.springframework.cloud</groupId>
+		  <artifactId>spring-cloud-netflix-turbine-stream</artifactId>
+		</dependency>
+	-->
+
+		
 
 
 
@@ -409,18 +437,7 @@
   <version>2.4.2</version>
 </dependency>
 
-<dependency>
-  <groupId>org.infinispan</groupId>
-  <artifactId>infinispan-bom</artifactId>
-  <version>7.0.2.Final</version>
-  <type>pom</type>
-</dependency>
 
-<dependency>
-	<groupId>org.infinispan</groupId>
-	<artifactId>infinispan-embedded</artifactId>
-	<version>8.2.0.Final</version>
-</dependency>		  		  
 
 <!-- 
 <dependency>
@@ -434,6 +451,20 @@
   <artifactId>esperio-db</artifactId>
   <version>5.3.0</version>
 </dependency>
+
+<dependency>
+  <groupId>org.infinispan</groupId>
+  <artifactId>infinispan-bom</artifactId>
+  <version>7.0.2.Final</version>
+  <type>pom</type>
+</dependency>
+
+<dependency>
+	<groupId>org.infinispan</groupId>
+	<artifactId>infinispan-embedded</artifactId>
+	<version>8.2.0.Final</version>
+</dependency>		  		  
+
 
 -->
 		

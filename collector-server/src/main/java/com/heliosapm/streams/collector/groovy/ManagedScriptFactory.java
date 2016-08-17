@@ -62,11 +62,24 @@ import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.control.messages.WarningMessage;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.NamedBean;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Scope;
+import org.springframework.stereotype.Component;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.shorthand.attach.vm.agent.LocalAgentInstaller;
+import com.heliosapm.streams.collector.CollectorServer;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
@@ -108,8 +121,9 @@ import jsr166e.LongAdder;
  * TODO:
  * 	finish impl for linked files for windows platforms
  */
-
-public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener {
+@Component
+@EnableHystrixDashboard
+public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener, ApplicationContextAware, NamedBean, InitializingBean {
 	/** The singleton instance */
 	private static volatile ManagedScriptFactory instance;
 	/** The singleton instance ctor lock */
@@ -118,7 +132,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	private final Logger log = LogManager.getLogger(ManagedScriptFactory.class);
 	
 	/** The configuration key for the collector service root directory */
-	public static final String CONFIG_ROOT_DIR = "collector.service.rootdir";
+	public static final String CONFIG_ROOT_DIR = CollectorServer.CONFIG_ROOT_DIR;
 	/** The default collector service root directory */
 	public static final String DEFAULT_ROOT_DIR = new File(new File(System.getProperty("user.home")), ".heliosapm-collector").getAbsolutePath();
 	/** The configuration key for the groovy compiler auto imports */
@@ -168,6 +182,14 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	protected final File sshDirectory;
 	/** The collector service datasource definition directory */
 	protected final File dataSourceDirectory;
+	/** Indicates if we're in spring mode */
+	protected final boolean springMode;
+	/** The spring app context if we're running in spring boot */
+	protected ApplicationContext appCtx = null;
+	/** The script factory bean name if we're running in spring boot */
+	protected String beanName = null;
+	/** The Spring exported interface of this instance */
+	protected ManagedScriptFactoryMBean springInstance = null;
 
 	
 	/** The collector service script path */
@@ -304,6 +326,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 */
 	private ManagedScriptFactory() {
 		super(SharedNotificationExecutor.getInstance(), NOTIF_INFO);
+		springMode = CollectorServer.isSpringMode();
 		log.info(">>>>> Starting ManagedScriptFactory...");
 		ExtendedThreadManager.install();
 		JMXHelper.registerHotspotInternal();
@@ -369,11 +392,15 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 							.build()
 					)
 				.fileFinder();
-		startScriptDeployer();
-		
-		
+		if(!springMode) {
+			startScriptDeployer();
+		}				
 	}
 	
+	@Override
+	public void afterPropertiesSet() throws Exception {
+		startScriptDeployer();		
+	}
 	
 	private TracerFactory initTracing(final File trcConfigDir) {
 		final File jsonFile = new File(trcConfigDir, "tracing.json");
@@ -397,7 +424,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		final long start = System.currentTimeMillis();
 		final File[] sourceFiles = sourceFinder.find();
 		if(sourceFiles!=null && sourceFiles.length > 0) {
-			final List<Future<Boolean>> compilationTasks = new ArrayList<Future<Boolean>>(sourceFiles.length);
+			final ArrayList<Future<Boolean>> compilationTasks = new ArrayList<Future<Boolean>>(sourceFiles.length);
 			for(final File sourceFile : sourceFiles) {
 				compilationTasks.add(collectorExecutionService.submit(new Callable<Boolean>(){
 					@Override
@@ -407,7 +434,11 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 								log.info("Source file [{}] is disabled", sourceFile);
 								return false;
 							}												
-							compileScript(sourceFile);
+							if(springMode) {
+								newScript(sourceFile);
+							} else {
+								compileScript(sourceFile);
+							}
 							return true;
 						} catch (Exception ex) {
 							return false;
@@ -415,20 +446,44 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 					}
 				}));				
 			}
-			log.info("Waiting for [{}] source files to be compiled", sourceFiles.length);
-			for(Future<Boolean> task: compilationTasks) {
-				try {
-					task.get();
-				} catch (Exception e) {					
-					e.printStackTrace();
-				}
+			if(springMode) {
+				final Thread t = new Thread("InitialManagedScriptCompiler") {
+					public void run() {
+						startupCompilation(compilationTasks, sourceFiles);
+						onStartupCompilationComplete(start, sourceFiles.length);	
+//						log.info(StringHelper.printBeanNames(appCtx.getBeansOfType(Object.class)));
+					}
+				};
+				t.setDaemon(true);
+				t.start();
+			} else {
+				startupCompilation(compilationTasks, sourceFiles);
+				onStartupCompilationComplete(start, sourceFiles.length);
 			}
-			final long elapsed = System.currentTimeMillis() - start;
-			log.info("Startup compilation completed for [{}] source files. Successful: [{}], Failed: [{}], Elapsed: [{}] ms.", sourceFiles.length, successfulCompiles.longValue(), failedCompiles.longValue(), elapsed);
+		} else {
+			onStartupCompilationComplete(start, 0);
 		}
+	}
+	
+	
+	protected void startupCompilation(final ArrayList<Future<Boolean>> compilationTasks, final File...sourceFiles) {
+		log.info("Waiting for [{}] source files to be compiled", sourceFiles.length);
+		for(Future<Boolean> task: compilationTasks) {
+			try {
+				task.get();
+			} catch (Exception e) {					
+				e.printStackTrace();
+			}
+		}
+		
+	}
+	
+	protected void onStartupCompilationComplete(final long start, final int sourceFileCount) {
+		final long elapsed = System.currentTimeMillis() - start;
+		log.info("Startup compilation completed for [{}] source files. Successful: [{}], Failed: [{}], Elapsed: [{}] ms.", sourceFileCount, successfulCompiles.longValue(), failedCompiles.longValue(), elapsed);						
 		System.gc();
 		fileChangeWatcher = sourceFinder.watch(5, true, this);
-		fileChangeWatcher.startWatcher(5);
+		fileChangeWatcher.startWatcher(5);		
 	}
 	
 	
@@ -469,11 +524,45 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	}
 	
 	
+	
+	
+	/**
+	 * ManagedScript bean factory for spring mode
+	 * @param sourceFile the source of the script to compile
+	 * @return the created managed script
+	 */
+	public ManagedScript newScript(final File sourceFile) {
+		final ManagedScript ms =  (ManagedScript)appCtx.getBean("scriptFactory", sourceFile.getAbsolutePath());
+		log.info("\n\n############### Bean Name:" + ms.getBeanName());
+		return ms;
+	}
+	
+	@Bean
+	@Scope(BeanDefinition.SCOPE_PROTOTYPE)
+	@Value("")
+	public Object scriptFactory(final String sourceFile) {
+		if(sourceFile.isEmpty()) return new Object();
+		final ManagedScript ms = compileScript(new File(sourceFile));
+		if(appCtx.containsBean(ms.getBeanName())) {
+//			appCtx.getAutowireCapableBeanFactory().destroyBean(existingBean);
+//			((BeanDefinitionRegistry)appCtx.getAutowireCapableBeanFactory()).destroySingleton(ms.getBeanName());
+			((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).destroySingleton(ms.getBeanName());
+		}
+		ms.setApplicationContext(appCtx);
+		((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).registerSingleton(ms.getBeanName(), ms);
+		appCtx.getAutowireCapableBeanFactory().configureBean(ms, ms.getBeanName());
+		//appCtx.getAutowireCapableBeanFactory().
+		return ms;
+	}
+	
+	
+	
 	/**
 	 * Compiles and deploys the script in the passed file
 	 * @param source The file to compile the source from
 	 * @return the script instance
 	 */
+	@Override
 	public ManagedScript compileScript(final File source) {
 		if(source==null) throw new IllegalArgumentException("The passed source file was null");
 		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
@@ -762,8 +851,12 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 					if(isDisabled(file)) {
 						log.info("Source file [{}] is disabled", file);
 						return false;
-					}					
-					compileScript(file);
+					}		
+					if(springMode) {
+						newScript(file);
+					} else {
+						compileScript(file);
+					}
 					return true;
 				} catch (Exception ex) {
 					return false;
@@ -911,7 +1004,11 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 					return false;
 				}									
 				try {
-					compileScript(file);
+					if(springMode) {
+						newScript(file);
+					} else {
+						compileScript(file);
+					}					
 					return true;
 				} catch (Exception ex) {
 					return false;
@@ -1153,6 +1250,26 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	@Override
 	public Map<String, Boolean> getOptimizationOptions() {
 		return compilerConfig.getOptimizationOptions();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.beans.factory.NamedBean#getBeanName()
+	 */
+	@Override
+	public String getBeanName() {
+		return getClass().getSimpleName();	
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
+	@Override
+	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+		this.appCtx = appCtx;		
+		//springInstance = appCtx.getBean("ManagedScriptFactory", ManagedScriptFactoryMBean.class);
+		springInstance = appCtx.getBean(ManagedScriptFactoryMBean.class);
 	}
 
 }

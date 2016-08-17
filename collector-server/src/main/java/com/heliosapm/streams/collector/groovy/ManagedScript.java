@@ -27,6 +27,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -34,6 +35,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.Stack;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -62,14 +64,17 @@ import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.reflection.ClassInfo;
 import org.codehaus.groovy.runtime.NullObject;
+import org.springframework.beans.BeansException;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
+import com.heliosapm.streams.collector.CollectorServer;
 import com.heliosapm.streams.collector.TimeoutService;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
-import com.heliosapm.streams.collector.jmx.JMXClient;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.tracing.ITracer;
 import com.heliosapm.streams.tracing.TracerFactory;
@@ -81,6 +86,12 @@ import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
+import com.netflix.hystrix.HystrixCommand;
+import com.netflix.hystrix.HystrixCommandGroupKey;
+import com.netflix.hystrix.HystrixCommandKey;
+import com.netflix.hystrix.HystrixCommandProperties;
+import com.netflix.hystrix.HystrixThreadPoolKey;
+import com.netflix.hystrix.HystrixThreadPoolProperties;
 
 import groovy.lang.Binding;
 import groovy.lang.Closure;
@@ -101,7 +112,7 @@ import jsr166e.LongAdder;
  * 	Race condition on dependency management when datasource is redeployed. 
  */
 
-public abstract class ManagedScript extends Script implements NotificationEmitter, MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler {
+public abstract class ManagedScript extends Script implements NotificationEmitter, MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler, ApplicationContextAware {
 	/** The JMX notification handler */
 	protected final NotificationBroadcasterSupport broadcaster;
 	/** Instance logger */
@@ -135,6 +146,12 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** The linked source file */
 	protected File linkedSourceFile = null; 
 	
+	/** The spring app context if we're running in spring boot */
+	protected ApplicationContext appCtx = null;
+	/** The Spring exported interface of this instance */
+	protected ManagedScriptMBean springInstance = null;
+	
+	
 	/** The jmx notification serial factory */
 	protected final AtomicLong notifSerial = new AtomicLong(0L);
 	
@@ -152,6 +169,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected final String cacheKeyPrefix = getClass().getName();
 	/** The delta service */
 	protected final DeltaManager deltaManager = DeltaManager.getInstance();
+	
+	protected final boolean springMode;
 	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
@@ -212,7 +231,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 */
 	@SuppressWarnings("unchecked")
 	public ManagedScript() {
-		
+		springMode = CollectorServer.isSpringMode();
 		cache = GlobalCacheService.getInstance();
 		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
 		executionService = CollectorExecutionService.getInstance();
@@ -486,7 +505,11 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			try {
 				log.info("Starting collect");
 				final long start = System.currentTimeMillis();
-				run();			
+				if(springMode) {
+					doRun();
+				} else {
+					run();
+				}
 				return System.currentTimeMillis() - start;
 			} finally {
 				tracer.flush();
@@ -494,7 +517,64 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		}
 	}
 	
+	private final int packageElems = StringHelper.splitString(getClass().getPackage().getName(), '.').length;
+	private final String packageKey = getClass().getPackage().getName();	
+	private final String regionKey = packageKey.substring(packageKey.indexOf('.')+1);
+	private final String classKey = getClass().getName();
 	
+	
+	protected class ScriptCommand extends HystrixCommand<Void> {
+
+	    public ScriptCommand() {
+	        super(Setter
+	        		.withGroupKey(HystrixCommandGroupKey.Factory.asKey("ExampleGroup"))
+	                .andCommandKey(HystrixCommandKey.Factory.asKey(classKey))
+	                .andThreadPoolKey(HystrixThreadPoolKey.Factory.asKey(regionKey))	                
+	                .andCommandPropertiesDefaults(HystrixCommandProperties.defaultSetter()
+	                	.withExecutionIsolationThreadInterruptOnTimeout(true)
+	                	.withFallbackEnabled(true)
+	                ).andThreadPoolPropertiesDefaults(HystrixThreadPoolProperties.defaultSetter()
+	                	.withCoreSize(3)
+	                	.withMaxQueueSize(10)	                	
+	                )
+	         );
+	        
+	    }
+
+	    @Override
+	    protected Void run() throws Exception {
+	    	ManagedScript.this.run();
+	        return null;
+	    }
+	    
+	    @Override
+	    protected Void getFallback() {
+	    	log.warn("Fallback used on [{}]", toString());
+	    	return null;
+	    }
+	    
+	    
+	    public String getPublicCacheKey() {
+	    	return classKey;
+	    }
+	}
+	
+	
+	
+	public void doRun() {
+		try {
+			new ScriptCommand().execute();
+		} catch (Exception ex) {
+			log.error("Failed to execute ScriptCommand", ex);
+			throw new RuntimeException("Failed to execute ScriptCommand", ex);
+		}
+	}
+	
+//	@Override
+//	//@HystrixCommand(fallbackMethod="pause",  commandKey="getBeanName", groupKey="Foo", threadPoolKey="CollectorThreadPool")
+//	public void doRunX() {
+//		run();		
+//	}
 	
 	/**
 	 * Adds a pending dependency
@@ -1314,6 +1394,23 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	@Override
 	public ObjectName getObjectName() {
 		return objectName;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.beans.factory.NamedBean#getBeanName()
+	 */
+	public String getBeanName() {
+		return getClass().getName();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
+	@Override
+	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+		this.appCtx = appCtx;				
 	}
 	
 }

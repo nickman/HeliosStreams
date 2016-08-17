@@ -55,6 +55,14 @@ public interface ManagedScriptFactoryMBean {
 	public static String NOTIF_TYPE_NEW_SCRIPT = NOTIF_TYPE_COMPILATION_NEW_PREFIX + "complete";
 	/** Compilation event notification type for a new script deployment failure */
 	public static String NOTIF_TYPE_NEW_SCRIPT_FAIL = NOTIF_TYPE_COMPILATION_NEW_PREFIX + "failed";
+	
+	
+	/**
+	 * Compiles and deploys the script in the passed file
+	 * @param source The file to compile the source from
+	 * @return the script instance
+	 */
+	public ManagedScript compileScript(final File source);
 
 	
 	/**

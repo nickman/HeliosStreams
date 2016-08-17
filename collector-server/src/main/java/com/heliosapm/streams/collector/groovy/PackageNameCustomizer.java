@@ -15,7 +15,10 @@
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.util.Iterator;
+
 import org.codehaus.groovy.ast.ClassNode;
+import org.codehaus.groovy.ast.InnerClassNode;
 import org.codehaus.groovy.classgen.GeneratorContext;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilePhase;
@@ -49,6 +52,12 @@ public class PackageNameCustomizer extends CompilationCustomizer {
 		final Class<?>[] ifaces = ManagedScript.class.getInterfaces();
 		for(Class<?> iface: ifaces) {
 			classNode.addInterface(new ClassNode(iface));
+		}
+		for(final Iterator<InnerClassNode> iter = classNode.getInnerClasses(); iter.hasNext();) {
+			InnerClassNode icn = iter.next();
+			if(ManagedScript.ScriptCommand.class.getName().equals(icn.getName())) {
+				icn.setName(classNode.getName());
+			}
 		}
 	}
 

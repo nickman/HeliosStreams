@@ -29,16 +29,26 @@ import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.context.web.SpringBootServletInitializer;
+import org.springframework.cloud.client.circuitbreaker.EnableCircuitBreaker;
+import org.springframework.cloud.netflix.hystrix.EnableHystrix;
+import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
+import org.springframework.cloud.netflix.turbine.EnableTurbine;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
 
-import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.url.URLHelper;
 
 /**
@@ -49,8 +59,15 @@ import com.heliosapm.utils.url.URLHelper;
  * <p><code>com.heliosapm.streams.collector.CollectorServer</code></p>
  * FIXME:  replace this ugly stuff with args4j
  */
+@Configuration
+@EnableAutoConfiguration
+@Controller
 @SpringBootApplication
-public class CollectorServer {
+@EnableHystrix
+@EnableCircuitBreaker
+@EnableHystrixDashboard
+@EnableTurbine
+public class CollectorServer extends  SpringBootServletInitializer {
 	
 	/** The command help text */
 	public static final String COMMAND_HELP = "Helios CollectionServer: Command Line Options: \n" +
@@ -70,12 +87,20 @@ public class CollectorServer {
 	/** Pattern match for <b>--</b> prefixed cmd line args */
 	public static final Pattern NON_SPRING_CMD_PATTERN = Pattern.compile("^\\-\\-(\\w+)?.*");
 	
+	public static final String BOOT_CLASS = "com.heliosapm.streams.collector.groovy.ManagedScriptFactory";
+	
+	/** The configuration key for the collector service root directory */
+	public static final String CONFIG_ROOT_DIR = "collector.service.rootdir";
+
 	/** The current booted app context */
 	private static ConfigurableApplicationContext appCtx = null;
 	/** The current booted spring app */
 	private static SpringApplication springApp = null;
 	/** The spring boot launch thread */
 	private static Thread springBootLaunchThread = null;
+	
+	/** Indicates if we're running in spring mode */
+	private static boolean springMode = false;
 	
 	
 
@@ -122,7 +147,7 @@ public class CollectorServer {
 				}
 			}
 		}
-		System.setProperty(ManagedScriptFactory.CONFIG_ROOT_DIR, rootDir);
+		System.setProperty(CONFIG_ROOT_DIR, rootDir);
 		final File confDir = new File(rootDir, "conf");
 		final File sysprops = new File(confDir, "sys.properties");
 		final File appprops = new File(confDir, "app.properties");
@@ -176,7 +201,7 @@ public class CollectorServer {
 				}
 			}
 			final File initDir = new File(dirName==null ? "." : dirName.trim());
-			initDir(initDir);
+//			initDir(initDir);
 		}
 		
 		final String jmxmpIface = findArg("--jmxmp=", "0.0.0.0:3456", args);
@@ -210,8 +235,9 @@ public class CollectorServer {
 		LogManager.getRootLogger();
 		ExtendedThreadManager.install();
 		JMXHelper.fireUpJMXMPServer(jmxmpIface);
-		final boolean bootInSpring = findArg("--nospring", null, args) == null;
-		if(bootInSpring) {
+		springMode = findArg("--nospring", null, args) == null;
+		if(springMode) {
+			System.out.println("Booting in Spring Mode");
 			final List<String> springArgs = new ArrayList<String>(args.length);
 			for(String cmd: args) {
 				final Matcher m = NON_SPRING_CMD_PATTERN.matcher(cmd);
@@ -220,21 +246,24 @@ public class CollectorServer {
 				}
 			}
 			appCtx = SpringApplication.run(CollectorServer.class, springArgs.toArray(new String[0]));
-			appCtx.getAutowireCapableBeanFactory().configureBean(ManagedScriptFactory.getInstance(), "ManagedScriptFactory");
+			//appCtx.getAutowireCapableBeanFactory().configureBean(ManagedScriptFactory.getInstance(), "ManagedScriptFactory");
 		} else {
-			ManagedScriptFactory.getInstance();
+			System.out.println("Booting in Standalone Mode");
+			PrivateAccessor.invokeStatic(BOOT_CLASS, "getInstance");			
 		}
 		
 		StdInCommandHandler.getInstance().run();
 	}
 	
-	private static void initDir(final File rootDirectory) {
-		ManagedScriptFactory.initSubDirs(rootDirectory);
-		System.out.println("Initialized directory [" + rootDirectory + "]");
-		System.exit(0);
+//	private static void initDir(final File rootDirectory) {
+//		ManagedScriptFactory.initSubDirs(rootDirectory);
+//		System.out.println("Initialized directory [" + rootDirectory + "]");
+//		System.exit(0);
+//	}
+	
+	public static final boolean isSpringMode() {
+		return springMode;
 	}
-	
-	
 
 	
 	/**
@@ -343,5 +372,15 @@ public class CollectorServer {
 //		}
 //		return new String[] {defaultValue};
 //	}
+	
+    @RequestMapping("/foo")
+    public String home() {
+        return "forward:/hystrix";
+    }
+
+//    @Override
+//    protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
+//        return application.sources(HystrixDashboardApplication.class).web(true);
+//    }	
 	
 }
