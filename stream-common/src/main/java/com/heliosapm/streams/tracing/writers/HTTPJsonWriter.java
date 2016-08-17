@@ -18,13 +18,26 @@ under the License.
  */
 package com.heliosapm.streams.tracing.writers;
 
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.charset.Charset;
+import java.util.Collection;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.heliosapm.streams.json.JSONOps;
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.tracing.writers.TelnetWriter.ResponseHandler;
-import com.heliosapm.streams.tracing.writers.TelnetWriter.StreamedMetricEncoder;
 
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufInputStream;
+import io.netty.buffer.ByteBufOutputStream;
+import io.netty.channel.ChannelHandler.Sharable;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.MessageToByteEncoder;
+import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 
 /**
@@ -34,7 +47,7 @@ import io.netty.handler.codec.string.StringEncoder;
  * <p><code>com.heliosapm.streams.tracing.writers.HTTPJsonWriter</code></p>
  */
 
-public class HTTPJsonWriter extends NetWriter<NioSocketChannel> {
+public class HTTPJsonWriter extends NetWriter<NioSocketChannel>  {
 	/** The UTF8 character set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
 	/** A string encoder */
@@ -43,22 +56,99 @@ public class HTTPJsonWriter extends NetWriter<NioSocketChannel> {
 	public static final ResponseHandler RESPONSE_HANDLER = new ResponseHandler();
 	
 	/** The config key for the enablement of gzip on submitted metrics */
-	public static final String CONFIG_COMPRESSION = "metricwriter.telnet.compression";
+	public static final String CONFIG_COMPRESSION = "metricwriter.httpjson.compression";
 	/** The default enablement of gzip on submitted metrics */
 	public static final boolean DEFAULT_COMPRESSION = false;
+	/** A streamed metric to string encoder */
+	protected final StreamedMetricEncoder METRIC_ENCODER = new StreamedMetricEncoder();
+
+	/** The telnet channel initializer */
+	protected final ChannelInitializer<NioSocketChannel> CHANNEL_INIT = new ChannelInitializer<NioSocketChannel>() {
+		@Override
+		protected void initChannel(final NioSocketChannel ch) throws Exception {
+			final ChannelPipeline p = ch.pipeline();
+			p.addLast("metricEncoder", METRIC_ENCODER);
+			p.addLast("responseHandler", RESPONSE_HANDLER);
+		}
+	};
+	
 	
 	
 //	/** A streamed metric to string encoder */
 //	protected final StreamedMetricEncoder METRIC_ENCODER = new StreamedMetricEncoder();
 
-	public HTTPJsonWriter(Class<NioSocketChannel> channelType, boolean confirmsMetrics) {
+	/**
+	 * Creates a new HTTPJsonWriter
+	 */
+	public HTTPJsonWriter() {
 		super(NioSocketChannel.class, false);		
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.writers.NetWriter#getChannelInitializer()
+	 */
 	@Override
 	protected ChannelInitializer<NioSocketChannel> getChannelInitializer() {
-		// TODO Auto-generated method stub
-		return null;
+		return CHANNEL_INIT;
 	}
+	
+	/**
+	 * <p>Title: StreamedMetricEncoder</p>
+	 * <p>Description: Encoder to encode streamed metrics into JSON</p> 
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.tracing.writers.HTTPJsonWriter.StreamedMetricEncoder</code></p>
+	 */
+	@Sharable
+	public class StreamedMetricEncoder extends MessageToByteEncoder<Object> {
+		
+		/**
+		 * {@inheritDoc}
+		 * @see io.netty.handler.codec.MessageToByteEncoder#encode(io.netty.channel.ChannelHandlerContext, java.lang.Object, io.netty.buffer.ByteBuf)
+		 */
+		@Override
+		protected void encode(final ChannelHandlerContext ctx, final Object msg, final ByteBuf out) throws Exception {
+			if(msg==null) return;
+			int sent = 0;
+			final OutputStream os = new ByteBufOutputStream(out);
+			final JsonGenerator j = JSONOps.generatorFor(os);
+			j.writeStartArray();
+			if(msg instanceof ByteBuf) {
+				final ByteBuf buff = (ByteBuf)msg;
+				final InputStream is = new ByteBufInputStream(buff);
+				for(StreamedMetric sm: StreamedMetric.streamedMetrics(is, true, false)) {
+					j.writeObject(sm);
+					sent++;
+				}
+			} else if(msg instanceof StreamedMetric) {
+				j.writeObject(msg);
+				sent++;
+			} else if(msg instanceof StreamedMetric[]) {
+				final StreamedMetric[] values = (StreamedMetric[])msg;
+				for(StreamedMetric sm: values) {
+					j.writeObject(sm);
+					sent++;
+				}				
+			}  else if(msg instanceof Collection) {
+				final Collection<Object> objects = (Collection<Object>)msg;
+				if(!objects.isEmpty()) {
+					for(Object o: objects) {
+						if(o != null && (o instanceof StreamedMetric)) {
+							j.writeObject(o);
+							sent++;
+						}
+					}
+				}
+			} else {
+				log.warn("Unknown type submitted: [{}]", msg.getClass().getName());
+			}
+			sentMetrics.add(sent);
+			j.writeEndArray();
+			j.flush();
+			os.flush();
+			ctx.channel().flush();
+		}
+	}
+	
 
 }

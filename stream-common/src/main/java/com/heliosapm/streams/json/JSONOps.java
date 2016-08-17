@@ -58,6 +58,9 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.util.JSONPObject;
 import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricJson;
+import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.ref.ReferenceService;
 
@@ -89,10 +92,27 @@ public class JSONOps {
 	
 
 	private static final ObjectMapper jsonMapper = new ObjectMapper();
+	private static final JsonFactory jsonFactory = jsonMapper.getFactory();
 	static {
 		jsonMapper.configure(JsonParser.Feature.ALLOW_NON_NUMERIC_NUMBERS, true);
+		registerSerialization(StreamedMetric.class, StreamedMetricJson.SM_DESERIALIZER, StreamedMetricJson.SM_SERIALIZER);
+		registerSerialization(StreamedMetricValue.class, StreamedMetricJson.SMV_DESERIALIZER, StreamedMetricJson.SMV_SERIALIZER);
 	}
 	
+	
+	/**
+	 * Creates a new JsonGenerator that will write to the passed output stream
+	 * @param os The output stream to write to 
+	 * @return the JsonGenerator
+	 */
+	public static JsonGenerator writeStartArray(final OutputStream os) {
+		if(os==null) throw new IllegalArgumentException("The passed output stream was null");		
+		try {
+			return jsonFactory.createGenerator(os);
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to create JsonGenerator for [" + os + "]", ex);
+		}
+	}
 	
 	/**
 	 * Registers a deser for the passed class
@@ -201,6 +221,30 @@ public class JSONOps {
 		} catch (JsonMappingException e) {
 			throw new IllegalArgumentException(e);
 		} catch (IOException e) {
+			throw new JSONException(e);
+		}
+	}
+
+	/**
+	 * Deserializes a JSON formatted string to a specific class type
+	 * <b>Note:</b> If you get mapping exceptions you may need to provide a 
+	 * TypeReference
+	 * @param json The string to deserialize
+	 * @param pojo The class type of the object used for deserialization
+	 * @return An object of the {@code pojo} type
+	 * @throws IllegalArgumentException if the data or class was null or parsing 
+	 * failed
+	 * @throws JSONException if the data could not be parsed
+	 */
+	public static final <T> T parseToObject(final JsonNode json, final TypeReference<T> pojo) {
+		if (json == null)
+			throw new IllegalArgumentException("Incoming data was null or empty");
+		if (pojo == null)
+			throw new IllegalArgumentException("Missing class type");
+
+		try {
+			return jsonMapper.convertValue(json, pojo);	
+		} catch (Exception e) {
 			throw new JSONException(e);
 		}
 	}

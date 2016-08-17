@@ -16,20 +16,25 @@
 package com.heliosapm.streams.collector;
 
 import java.io.File;
-import java.net.URI;
 import java.net.URL;
-import java.nio.file.FileSystem;
-import java.nio.file.FileSystems;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Properties;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ConfigurableApplicationContext;
 
 import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
 import com.heliosapm.utils.collections.Props;
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -44,7 +49,7 @@ import com.heliosapm.utils.url.URLHelper;
  * <p><code>com.heliosapm.streams.collector.CollectorServer</code></p>
  * FIXME:  replace this ugly stuff with args4j
  */
-
+@SpringBootApplication
 public class CollectorServer {
 	
 	/** The command help text */
@@ -54,8 +59,25 @@ public class CollectorServer {
 			"--log4j2=<log4j2 xml config> : Sets the file location of a custom log4j2 XML configuration file. If not supplied, defaults to the internal default location. \n" +
 			"--init : Initializes the root directory then exits\n" + 
 			"--console : Enables console logging in the internal logging config\n" +
+			"--nospring : Runs the collector server as a plain java app, not a spring boot app\n" +
 			"--help : Prints these options then exits \n";
 
+	/** Non spring cmd line arg prefixes */
+	public static final Set<String> NON_SPRING_CMDS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
+			"root", "jmxmp", "log4j2", "init", "console", "nospring", "help"
+	)));
+	
+	/** Pattern match for <b>--</b> prefixed cmd line args */
+	public static final Pattern NON_SPRING_CMD_PATTERN = Pattern.compile("^\\-\\-(\\w+)?.*");
+	
+	/** The current booted app context */
+	private static ConfigurableApplicationContext appCtx = null;
+	/** The current booted spring app */
+	private static SpringApplication springApp = null;
+	/** The spring boot launch thread */
+	private static Thread springBootLaunchThread = null;
+	
+	
 
 //	public static void main(String[] args) {
 //		final File f = new File("D:\\temp\\coll");
@@ -186,8 +208,23 @@ public class CollectorServer {
 			
 		}
 		LogManager.getRootLogger();
+		ExtendedThreadManager.install();
 		JMXHelper.fireUpJMXMPServer(jmxmpIface);
-		ManagedScriptFactory.getInstance();
+		final boolean bootInSpring = findArg("--nospring", null, args) == null;
+		if(bootInSpring) {
+			final List<String> springArgs = new ArrayList<String>(args.length);
+			for(String cmd: args) {
+				final Matcher m = NON_SPRING_CMD_PATTERN.matcher(cmd);
+				if(!m.matches() || !NON_SPRING_CMDS.contains(m.group(1).toLowerCase())) {
+					springArgs.add(cmd);
+				}
+			}
+			appCtx = SpringApplication.run(CollectorServer.class, springArgs.toArray(new String[0]));
+			appCtx.getAutowireCapableBeanFactory().configureBean(ManagedScriptFactory.getInstance(), "ManagedScriptFactory");
+		} else {
+			ManagedScriptFactory.getInstance();
+		}
+		
 		StdInCommandHandler.getInstance().run();
 	}
 	

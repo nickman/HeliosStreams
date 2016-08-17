@@ -174,6 +174,14 @@ public class StreamedMetricValue extends StreamedMetric {
 	}
 	
 	/**
+	 * Returns the value as a number
+	 * @return the value as a number
+	 */
+	public Number getValueNumber() {
+		return isDoubleValue ? doubleValue : longValue;
+	}
+	
+	/**
 	 * Indicates if this StreamedMetric has a value
 	 * @return true since this type has a value
 	 */

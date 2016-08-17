@@ -59,7 +59,7 @@ import net.openhft.chronicle.core.io.IORuntimeException;
  */
 
 public class StreamedMetric implements BytesMarshallable {
-	/** The metric timestamp in ms. since the epoch */
+	/** The metric timestamp in ms. since the epoch */	
 	protected long timestamp = -1L;
 	/** The metric name */
 	protected String metricName = null;
@@ -197,6 +197,17 @@ public class StreamedMetric implements BytesMarshallable {
 		if(isValued()) return (StreamedMetricValue)this;
 		return new StreamedMetricValue(this, value);
 	}
+	
+	/**
+	 * Casts this object to a StreamedMetricValue. 
+	 * Calling this if this is actually not a StreamedMetricValue
+	 * will void your warranty. 
+	 * @return a StreamedMetricValue
+	 */
+	public StreamedMetricValue forValue() {
+		return (StreamedMetricValue)this;
+	}
+	
 	
 	/**
 	 * Creates a new StreamedMetricValue from this StreamedMetric, the passed value and the passed timestamp
