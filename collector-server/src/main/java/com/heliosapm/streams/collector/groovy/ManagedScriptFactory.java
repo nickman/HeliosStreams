@@ -68,7 +68,6 @@ import org.springframework.beans.factory.NamedBean;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.annotation.Bean;
@@ -122,7 +121,6 @@ import jsr166e.LongAdder;
  * 	finish impl for linked files for windows platforms
  */
 @Component
-@EnableHystrixDashboard
 public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener, ApplicationContextAware, NamedBean, InitializingBean {
 	/** The singleton instance */
 	private static volatile ManagedScriptFactory instance;
@@ -434,11 +432,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 								log.info("Source file [{}] is disabled", sourceFile);
 								return false;
 							}												
-							if(springMode) {
-								newScript(sourceFile);
-							} else {
-								compileScript(sourceFile);
-							}
+							compileScript(sourceFile);
 							return true;
 						} catch (Exception ex) {
 							return false;
@@ -522,40 +516,6 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			}
 		};
 	}
-	
-	
-	
-	
-	/**
-	 * ManagedScript bean factory for spring mode
-	 * @param sourceFile the source of the script to compile
-	 * @return the created managed script
-	 */
-	public ManagedScript newScript(final File sourceFile) {
-		final ManagedScript ms =  (ManagedScript)appCtx.getBean("scriptFactory", sourceFile.getAbsolutePath());
-		log.info("\n\n############### Bean Name:" + ms.getBeanName());
-		return ms;
-	}
-	
-	@Bean
-	@Scope(BeanDefinition.SCOPE_PROTOTYPE)
-	@Value("")
-	public Object scriptFactory(final String sourceFile) {
-		if(sourceFile.isEmpty()) return new Object();
-		final ManagedScript ms = compileScript(new File(sourceFile));
-		if(appCtx.containsBean(ms.getBeanName())) {
-//			appCtx.getAutowireCapableBeanFactory().destroyBean(existingBean);
-//			((BeanDefinitionRegistry)appCtx.getAutowireCapableBeanFactory()).destroySingleton(ms.getBeanName());
-			((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).destroySingleton(ms.getBeanName());
-		}
-		ms.setApplicationContext(appCtx);
-		((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).registerSingleton(ms.getBeanName(), ms);
-		appCtx.getAutowireCapableBeanFactory().configureBean(ms, ms.getBeanName());
-		//appCtx.getAutowireCapableBeanFactory().
-		return ms;
-	}
-	
-	
 	
 	/**
 	 * Compiles and deploys the script in the passed file
@@ -852,11 +812,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 						log.info("Source file [{}] is disabled", file);
 						return false;
 					}		
-					if(springMode) {
-						newScript(file);
-					} else {
-						compileScript(file);
-					}
+					compileScript(file);
 					return true;
 				} catch (Exception ex) {
 					return false;
@@ -1004,11 +960,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 					return false;
 				}									
 				try {
-					if(springMode) {
-						newScript(file);
-					} else {
-						compileScript(file);
-					}					
+					compileScript(file);
 					return true;
 				} catch (Exception ex) {
 					return false;

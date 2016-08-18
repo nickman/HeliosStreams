@@ -38,6 +38,18 @@ import org.springframework.beans.factory.NamedBean;
 public interface ManagedScriptMBean extends NamedBean {
 	
 	/**
+	 * Indicates if the hystrix circuit-breaker is enabled for this script
+	 * @return true if the hystrix circuit-breaker is enabled, false otherwise
+	 */
+	public boolean isCircuiteBreaker();
+	
+	/**
+	 * Sets the enabled state of the hystrix circuit-breaker for this script
+	 * @param enabled true to enable, false to disable
+	 */
+	public void setCircuitBreaker(final boolean enabled);
+
+	/**
 	 * Closes the groovy class loader and unregisters the MBean
 	 * @throws IOException will not be thrown.
 	 */

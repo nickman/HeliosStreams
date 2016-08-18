@@ -85,15 +85,17 @@ public class KafkaSyncWriter extends AbstractMetricWriter {
 	@Override
 	public void configure(final Properties config) {
 		super.configure(config);
-		this.config = config;
 		final Properties nonKafkaProps = Props.extract(CONFIG_PREFIX, config, false, false);
 		topics = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_TOPICS, DEFAULT_TOPICS, nonKafkaProps);
+		this.config.put("topics", String.join(",", topics));
 		shutdownTime = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_SHUTDOWN_TIME, DEFAULT_SHUTDOWN_TIME, nonKafkaProps);
+		this.config.put("shutdownTime", shutdownTime);
 		if(topics.length==0) throw new IllegalArgumentException("No topics defined. Define some in the property [" + CONFIG_TOPICS + "]");
 		final Properties p = Props.extract(CONFIG_PREFIX, config, true, false);
 		final Properties sp = Props.extract(CONFIG_PREFIX, System.getProperties(), true, false);
 		producerProperties.putAll(sp);
 		producerProperties.putAll(p);		
+		this.config.putAll(producerProperties);
 	}
 	
 	/**

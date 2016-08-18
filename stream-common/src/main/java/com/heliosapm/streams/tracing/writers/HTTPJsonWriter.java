@@ -22,11 +22,14 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.Charset;
 import java.util.Collection;
+import java.util.List;
+import java.util.Properties;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.tracing.writers.TelnetWriter.ResponseHandler;
+import com.heliosapm.utils.config.ConfigurationHelper;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufInputStream;
@@ -37,8 +40,15 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.MessageToByteEncoder;
-import io.netty.handler.codec.string.StringDecoder;
+import io.netty.handler.codec.MessageToMessageEncoder;
+import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.HttpContentCompressor;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpRequestDecoder;
+import io.netty.handler.codec.http.HttpResponseEncoder;
+import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.string.StringEncoder;
+import io.netty.handler.stream.ChunkedWriteHandler;
 
 /**
  * <p>Title: HTTPJsonWriter</p>
@@ -59,14 +69,31 @@ public class HTTPJsonWriter extends NetWriter<NioSocketChannel>  {
 	public static final String CONFIG_COMPRESSION = "metricwriter.httpjson.compression";
 	/** The default enablement of gzip on submitted metrics */
 	public static final boolean DEFAULT_COMPRESSION = false;
+	/** The config key for the enablement of http chunking on submitted metrics */
+	public static final String CONFIG_CHUNKING = "metricwriter.httpjson.chunking";
+	/** The default enablement of chunking on submitted metrics */
+	public static final boolean DEFAULT_CHUNKING = false;
+	
 	/** A streamed metric to string encoder */
 	protected final StreamedMetricEncoder METRIC_ENCODER = new StreamedMetricEncoder();
+	/** A streamed metric to string encoder */
+	protected final MetricBufferHttpEncoder METRIC_HTTP_ENCODER = new MetricBufferHttpEncoder();
+	
+	/** Enable http chunking */
+	protected boolean chunkingEnabled = DEFAULT_CHUNKING;
+	/** Enable http compression */
+	protected boolean compressionEnabled = DEFAULT_COMPRESSION;
 
 	/** The telnet channel initializer */
 	protected final ChannelInitializer<NioSocketChannel> CHANNEL_INIT = new ChannelInitializer<NioSocketChannel>() {
 		@Override
 		protected void initChannel(final NioSocketChannel ch) throws Exception {
 			final ChannelPipeline p = ch.pipeline();
+			if(compressionEnabled) p.addLast("deflater", new HttpContentCompressor());
+			p.addLast("decoder", new HttpRequestDecoder());			
+			p.addLast("encoder", new HttpResponseEncoder());
+			if(chunkingEnabled) p.addLast("chunker", new ChunkedWriteHandler());	
+			p.addLast("httpRequestConverter", METRIC_HTTP_ENCODER);
 			p.addLast("metricEncoder", METRIC_ENCODER);
 			p.addLast("responseHandler", RESPONSE_HANDLER);
 		}
@@ -83,6 +110,19 @@ public class HTTPJsonWriter extends NetWriter<NioSocketChannel>  {
 	public HTTPJsonWriter() {
 		super(NioSocketChannel.class, false);		
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.writers.NetWriter#configure(java.util.Properties)
+	 */
+	@Override
+	public void configure(final Properties config) {		
+		super.configure(config);
+		chunkingEnabled = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_CHUNKING, DEFAULT_CHUNKING, config);
+		compressionEnabled = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_COMPRESSION, DEFAULT_COMPRESSION, config);
+		this.config.put("chunkingEnabled", chunkingEnabled);
+		this.config.put("compressionEnabled", compressionEnabled);
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -91,6 +131,29 @@ public class HTTPJsonWriter extends NetWriter<NioSocketChannel>  {
 	@Override
 	protected ChannelInitializer<NioSocketChannel> getChannelInitializer() {
 		return CHANNEL_INIT;
+	}
+	
+	/**
+	 * <p>Title: MetricBufferHttpEncoder</p>
+	 * <p>Description: Converts a ByteBuf of JSON to an HTTP POST request</p> 
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.tracing.writers.HTTPJsonWriter.MetricBufferHttpEncoder</code></p>
+	 */
+	@Sharable
+	public class MetricBufferHttpEncoder extends MessageToMessageEncoder<ByteBuf> {
+
+		/**
+		 * {@inheritDoc}
+		 * @see io.netty.handler.codec.MessageToMessageEncoder#encode(io.netty.channel.ChannelHandlerContext, java.lang.Object, java.util.List)
+		 */
+		@Override
+		protected void encode(final ChannelHandlerContext ctx, final ByteBuf msg, final List<Object> out) throws Exception {
+			out.add(
+				new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.PUT, "/api/put", msg, true)
+			);
+		}
+
+		
 	}
 	
 	/**
@@ -146,6 +209,7 @@ public class HTTPJsonWriter extends NetWriter<NioSocketChannel>  {
 			j.writeEndArray();
 			j.flush();
 			os.flush();
+			os.close();
 			ctx.channel().flush();
 		}
 	}

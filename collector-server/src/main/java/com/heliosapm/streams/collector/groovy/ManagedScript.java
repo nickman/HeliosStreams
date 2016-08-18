@@ -133,6 +133,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected Map<String, Object> bindingMap;
 	/** This script's binding */
 	protected Binding binding;
+	/** Flag indicating if script invocations should use the hystrix circuit-breaker */
+	protected final AtomicBoolean circuitBreaker = new AtomicBoolean(true);
 	/** The fork join pool to execute collections in */
 	protected final CollectorExecutionService executionService;
 	/** The names of pending dependencies */
@@ -490,7 +492,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			} finally {
 				if(pendingDependencies.isEmpty()) {
 					canReschedule.set(true);
-					updateProps();
+					updateProps();  // FIXME: too heavyweight
 					scheduleHandle = SharedScheduler.getInstance().schedule(ManagedScript.this, scheduledPeriod, scheduledPeriodUnit);					
 				} else {
 					log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
@@ -505,8 +507,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			try {
 				log.info("Starting collect");
 				final long start = System.currentTimeMillis();
-				if(springMode) {
-					doRun();
+				if(circuitBreaker.get()) {
+					runInCircuitBreaker();
 				} else {
 					run();
 				}
@@ -561,7 +563,10 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	
 	
 	
-	public void doRun() {
+	/**
+	 * Executes this script through the hystrix circuit breaker
+	 */
+	protected void runInCircuitBreaker() {
 		try {
 			new ScriptCommand().execute();
 		} catch (Exception ex) {
@@ -1411,6 +1416,24 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	@Override
 	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
 		this.appCtx = appCtx;				
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#isCircuiteBreaker()
+	 */
+	@Override
+	public boolean isCircuiteBreaker() {
+		return circuitBreaker.get();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#setCircuitBreaker(boolean)
+	 */
+	@Override
+	public void setCircuitBreaker(final boolean enabled) {
+		circuitBreaker.set(enabled);
 	}
 	
 }

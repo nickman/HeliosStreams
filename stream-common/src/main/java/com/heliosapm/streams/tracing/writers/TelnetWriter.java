@@ -22,11 +22,13 @@ import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.util.Collection;
 import java.util.List;
+import java.util.Properties;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.lang.StringHelper;
 
 import io.netty.buffer.ByteBuf;
@@ -34,9 +36,12 @@ import io.netty.buffer.ByteBufInputStream;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.MessageToMessageEncoder;
+import io.netty.handler.codec.compression.ZlibCodecFactory;
+import io.netty.handler.codec.compression.ZlibWrapper;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
 
@@ -62,6 +67,20 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 	public static final String CONFIG_COMPRESSION = "metricwriter.telnet.compression";
 	/** The default enablement of gzip on submitted metrics */
 	public static final boolean DEFAULT_COMPRESSION = false;
+
+	/** Enable text compression */
+	protected boolean compressionEnabled = DEFAULT_COMPRESSION;
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.writers.NetWriter#configure(java.util.Properties)
+	 */
+	@Override
+	public void configure(final Properties config) {		
+		super.configure(config);
+		compressionEnabled = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_COMPRESSION, DEFAULT_COMPRESSION, config);
+		this.config.put("compressionEnabled", compressionEnabled);
+	}
 	
 	
 	/** A streamed metric to string encoder */
@@ -70,10 +89,12 @@ public class TelnetWriter extends NetWriter<NioSocketChannel> {
 	protected final ChannelInitializer<NioSocketChannel> CHANNEL_INIT = new ChannelInitializer<NioSocketChannel>() {
 		@Override
 		protected void initChannel(final NioSocketChannel ch) throws Exception {
-			ch.pipeline().addLast("stringEncoder", STR_ENCODER);
-			ch.pipeline().addLast("metricEncoder", METRIC_ENCODER);
-			ch.pipeline().addLast("stringDecoder", new StringDecoder(UTF8));
-			ch.pipeline().addLast("responseHandler", RESPONSE_HANDLER);
+			final ChannelPipeline p = ch.pipeline();
+			if(compressionEnabled) p.addLast("gzipdeflater", ZlibCodecFactory.newZlibEncoder(ZlibWrapper.GZIP));
+			p.addLast("stringEncoder", STR_ENCODER);
+			p.addLast("metricEncoder", METRIC_ENCODER);
+			p.addLast("stringDecoder", new StringDecoder(UTF8));
+			p.addLast("responseHandler", RESPONSE_HANDLER);
 		}
 	};
 	

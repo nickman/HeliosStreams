@@ -54,7 +54,7 @@ public abstract class AbstractMetricWriter extends AbstractIdleService implement
 	protected final LongAdder failedMetrics = new LongAdder();
 	
 	/** The configuration properties */
-	protected Properties config = null;
+	protected final Properties config = new Properties();
 	
 	/** Indicates if this writer gets metric confirmations */
 	protected final boolean confirmsMetrics;

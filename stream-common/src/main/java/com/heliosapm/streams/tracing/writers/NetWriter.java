@@ -244,12 +244,14 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#configure(java.util.Properties)
 	 */
 	@Override
-	public void configure(final Properties config) {
-		this.config = config;
+	public void configure(final Properties config) {	
+		super.configure(config);
 		remotes = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_REMOTE_URIS, DEFAULT_REMOTE_URIS, config);
 		Collections.addAll(remoteUris,  remotes);
 		channelGroupThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_EXEC_THREADS, DEFAULT_EXEC_THREADS, config);
+		this.config.put("channelGroupThreads", channelGroupThreads);
 		eventLoopThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ELOOP_THREADS, DEFAULT_ELOOP_THREADS, config);
+		this.config.put("eventLoopThreads", eventLoopThreads);
 		eventExecutor = new UnorderedThreadPoolEventExecutor(channelGroupThreads, groupThreadFactory, this);		
 		channels = new DefaultChannelGroup(getClass().getSimpleName() + "Channels", eventExecutor);
 		group = new NioEventLoopGroup(eventLoopThreads, eventLoopThreadFactory);
@@ -260,6 +262,8 @@ public abstract class NetWriter<C extends Channel> extends AbstractMetricWriter 
 		;
 		bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 5000);  // FIXME: config
 		bootstrap.option(ChannelOption.ALLOCATOR, BufferManager.getInstance());
+		this.config.put("connectTimeout", 5000);
+		
 				
 			
 		// FIXME: Tweaks for channel configuration

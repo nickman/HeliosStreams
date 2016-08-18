@@ -69,9 +69,10 @@ public class MultiWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	public void configure(final Properties config) {
-		this.config = config;
+		super.configure(config);
 		final StringBuilder name = new StringBuilder(getClass().getSimpleName()).append("[");
 		writerClasses = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_WRITER_CLASSES, DEFAULT_WRITER_CLASSES, config);
+		this.config.put("writerClasses", String.join(",", writerClasses));
 		if(writerClasses.length==0) {
 			log.warn("MultiWriter has zero subwriters ! No tracing will be performed");
 			subWriters = null;

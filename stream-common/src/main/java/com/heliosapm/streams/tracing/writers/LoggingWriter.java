@@ -122,8 +122,8 @@ public class LoggingWriter extends AbstractMetricWriter {
 	 * @see com.heliosapm.streams.tracing.AbstractMetricWriter#configure(java.util.Properties)
 	 */
 	@Override
-	public void configure(Properties config) {				
-		this.config = config;
+	public void configure(final Properties config) {				
+		super.configure(config);
 		final String loggerName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOGGER_NAME, null, config);
 		
 		if(loggerName==null || !LogManager.getContext(true).hasLogger(loggerName)) {
@@ -136,9 +136,13 @@ public class LoggingWriter extends AbstractMetricWriter {
 			 *  - low gc message objects
 			 */
 			final String entryPrefix = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ENTRY_PREFIX, DEFAULT_ENTRY_PREFIX, config);
+			this.config.put("entryPrefix", entryPrefix);
 			final String entrySuffix = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ENTRY_SUFFIX, DEFAULT_ENTRY_SUFFIX, config);
+			this.config.put("entrySuffix", entrySuffix);
 			final boolean randomAccessFile = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_RA_FILE, DEFAULT_RA_FILE, config);
+			this.config.put("randomAccessFile", randomAccessFile);
 			final String fileName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_FILE_NAME, DEFAULT_FILE_NAME, config);
+			this.config.put("fileName", fileName);
 			final File file = new File(fileName);
 			final File dir = file.getParentFile();
 			if(dir.exists()) {
@@ -154,6 +158,7 @@ public class LoggingWriter extends AbstractMetricWriter {
 	        final DefaultRolloverStrategy strategy = DefaultRolloverStrategy.createStrategy("10", "1", null, null, null, true, loggingConfig);
 //	        final int lastIndex = fileName.lastIndexOf('.');
 	        final String format = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ROLL_PATTERN, DEFAULT_ROLL_PATTERN, config);
+	        this.config.put("format", format);
 	        final StringBuilder b = new StringBuilder(fileName).append(format);
 //	        if(lastIndex==-1) {
 //	        	b.append(".").append(format);
