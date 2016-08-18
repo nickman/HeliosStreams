@@ -22,11 +22,12 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Callable;
-import java.util.regex.Pattern;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
 import com.netflix.hystrix.HystrixCommand;
-import com.netflix.hystrix.HystrixCommand.Setter;
 import com.netflix.hystrix.HystrixCommandGroupKey;
 import com.netflix.hystrix.HystrixCommandKey;
 import com.netflix.hystrix.HystrixCommandProperties;
@@ -41,30 +42,32 @@ import com.netflix.hystrix.HystrixThreadPoolProperties;
  * <p><code>com.heliosapm.streams.hystrix.HystrixCommandFactory</code></p>
  */
 
-public class HystrixCommandFactory {
+public class HystrixCommandFactory<T> {
 	/** The singleton instance */
-	private static volatile HystrixCommandFactory instance = null;
+	private static volatile HystrixCommandFactory<?> instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
-
-	/** Property pattern for building keys */
-	public static final Pattern TOKE_KEY_PATTERN = Pattern.compile("\\$\\$\\{(.*?)(?::(.*?))??\\}");
 	
-//	protected final Cache<>
+	/** The cache of command factories keyed by the factory key */
+	protected final Cache<String, HystrixCommandFactory<T>.HystrixCommandBuilder> commandFactories = CacheBuilder.newBuilder()
+		.concurrencyLevel(Runtime.getRuntime().availableProcessors())
+		.initialCapacity(128)
+		.build();
 	
 	/**
 	 * Acquires and returns the HystrixCommandFactory singleton instance
 	 * @return the HystrixCommandFactory singleton instance
 	 */
-	public static HystrixCommandFactory getInstance() {
+	@SuppressWarnings("unchecked")
+	public static <T> HystrixCommandFactory<T> getInstance() {
 		if(instance==null) {
 			synchronized(lock) {
 				if(instance==null) {
-					instance = new HystrixCommandFactory();
+					instance = new HystrixCommandFactory<T>();
 				}
 			}
 		}
-		return instance;
+		return (HystrixCommandFactory<T>) instance;
 	}
 	
 	/**
@@ -72,6 +75,28 @@ public class HystrixCommandFactory {
 	 */
 	private HystrixCommandFactory() {
 	}
+	
+	/**
+	 * Creates and returns a new {@link HystrixCommandBuilder}
+	 * @param componentKey The config key for the specific component we're configuring a command builder for
+	 * @param groupKey The the group key or group key expression
+	 * @param tokens an optional map of tokens for resolving expressions
+	 * @return the builder
+	 */
+	public HystrixCommandBuilder builder(String componentKey, final CharSequence groupKey, final Map<String, Object> tokens) {
+		return new HystrixCommandBuilder(componentKey, groupKey, tokens);
+	}
+	
+	/**
+	 * Creates and returns a new {@link HystrixCommandBuilder}
+	 * @param componentKey The config key for the specific component we're configuring a command builder for
+	 * @param groupKey The the group key or group key expression
+	 * @return the builder
+	 */
+	public HystrixCommandBuilder builder(String componentKey, final CharSequence groupKey) {
+		return new HystrixCommandBuilder(componentKey, groupKey);
+	}
+
 	
 	/**
 	 * Resolves all <b><code>${key:default}</code></b> tokens in the passed expression
@@ -95,58 +120,126 @@ public class HystrixCommandFactory {
 	 */
 	public static String resolve(final CharSequence expression) {
 		return resolve(expression, null);
-	}	
-
+	}
+	
 	/**
-	 * <p>Title: HystrixCommandDefinition</p>
-	 * <p>Description: </p> 
+	 * <p>Title: HystrixCommandBuilder</p>
+	 * <p>Description: A fluent and json friendly {@link HystrixCommand} builder</p> 
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.streams.hystrix.HystrixCommandFactory.HystrixCommandDefinition</code></p>
-	 * @param <T> The expected type of the command return value
+	 * <p><code>com.heliosapm.streams.hystrix.HystrixCommandFactory.HystrixCommandBuilder</code></p>
+	 * @param <R> The expected type of the command return value
+	 * TODO:  implement JSON de/serializer
 	 */
-	public class HystrixCommandDefinition<T> {
+	public class HystrixCommandBuilder {
 		protected final HystrixCommand.Setter setter; 
 		protected final Map<String, Object> tokens;
 		protected final StringBuilder defKey = new StringBuilder();
 		protected final HystrixCommandProperties.Setter commandPropertySetter = HystrixCommandProperties.defaultSetter();
-		protected final HystrixThreadPoolProperties.Setter threadPoolPropertySetter = HystrixThreadPoolProperties.defaultSetter();
+		protected final HystrixThreadPoolProperties.Setter threadPoolPropertySetter = HystrixThreadPoolProperties.defaultSetter();	
+		protected volatile String builderKey = null;
 		
 		/**
 		 * Creates a new HystrixCommandDefinition
 		 * @param groupKey the group key or group key expression
 		 * @param tokens An optional map of tokens used to resolve expressions
 		 */
-		public HystrixCommandDefinition(final CharSequence groupKey, final Map<String, Object> tokens) {
+		private HystrixCommandBuilder(final String componentKey, final CharSequence groupKey, final Map<String, Object> tokens) {
 			this.tokens = tokens==null ? Collections.emptyMap() : tokens;
-			final String resolvedGroupKey = resolve(groupKey, tokens);
-			defKey.append(resolvedGroupKey);
+			final String resolvedGroupKey = HystrixCommandFactory.resolve(groupKey, tokens);
+			defKey.append("GroupKey=").append(resolvedGroupKey).append(",");
 			setter = HystrixCommand.Setter.withGroupKey(HystrixCommandGroupKey.Factory.asKey(resolvedGroupKey));
+			final HystrixCommandConfigDefault config = new HystrixCommandConfigDefault(componentKey==null ? "" : componentKey.trim());
+			loadDefaults(config);
 		}
 		
 		/**
 		 * Creates a new HystrixCommandDefinition
 		 * @param groupKey the group key or group key expression
 		 */
-		public HystrixCommandDefinition(final CharSequence groupKey) {
-			this(groupKey, null);
+		private HystrixCommandBuilder(final String componentKey, final CharSequence groupKey) {
+			this(componentKey, groupKey, null);
 		}
 		
+		public String getKey() {
+			if(builderKey==null) {
+				builderKey = defKey.deleteCharAt(defKey.length()-1).toString();
+			}
+			return builderKey;
+		}
 		
 		/**
 		 * Builds the command and returns it
 		 * @param executor The callable to execute in the returned command
 		 * @return the command The built command
 		 */
-		public HystrixCommand<T> build(final Callable<T> executor) {
-			if(executor==null) throw new IllegalArgumentException("The passed executor callable was null");
-			return new HystrixCommand<T>(setter) {
+		private HystrixCommandFactory<T>.HystrixCommandBuilder build() {			
+			final String key = getKey();
+			final Callable<HystrixCommandFactory<T>.HystrixCommandBuilder> builderBuilder = new Callable<HystrixCommandFactory<T>.HystrixCommandBuilder>() {
 				@Override
-				protected T run() throws Exception {
-					return executor.call();
+				public HystrixCommandFactory<T>.HystrixCommandBuilder call() throws Exception {
+					setter.andCommandPropertiesDefaults(commandPropertySetter);
+					setter.andThreadPoolPropertiesDefaults(threadPoolPropertySetter);					
+					final ManagedHystrixCommandFactory managed = new ManagedHystrixCommandFactory(setter, getKey(), commandPropertySetter, threadPoolPropertySetter); 
+					if(!JMXHelper.isRegistered(managed.getObjectName())) {
+						JMXHelper.registerMBean(managed.getObjectName(), managed);
+					}
+					return (HystrixCommandFactory<T>.HystrixCommandBuilder) HystrixCommandBuilder.this;
 				}
-				
 			};
+			try {
+				return commandFactories.get(key, builderBuilder);
+			} catch (Exception ex) {
+				throw new RuntimeException("Failed to retrieve CommandFactory", ex);
+			}
 		}
+		
+		/**
+		 * Creates a new {@link HystrixCommand} to run the passed executuion
+		 * @param executor The execution the {@link HystrixCommand} will wrap 
+		 * @param fallback The optional fallback callable
+		 * @return the command
+		 */
+		public HystrixCommand<T> commandFor(final Callable<T> executor, final Callable<T> fallback) {
+			if(executor==null) throw new IllegalArgumentException("The passed executor callable was null");
+			final HystrixCommandFactory<T>.HystrixCommandBuilder builder = build();
+			final HystrixCommand<T> command;
+			if(fallback!=null) {
+				commandPropertySetter.withFallbackEnabled(true);
+				command = new HystrixCommand<T>(builder.setter) {
+					@Override
+					protected T run() throws Exception {
+						return executor.call();
+					}
+					@Override
+					protected T getFallback() {
+						try {
+							return fallback.call();
+						} catch (Exception ex) {
+							throw new RuntimeException("Fallback failed on [" + getCommandGroup().name() + "/" + getCommandKey().name() + "]", ex);
+						}
+					}					
+				};
+			} else {
+				commandPropertySetter.withFallbackEnabled(false);
+				command = new HystrixCommand<T>(builder.setter) {
+					@Override
+					protected T run() throws Exception {
+						return executor.call();
+					}
+				};				
+			}
+			return command;
+		}
+		
+		/**
+		 * Creates a new {@link HystrixCommand} without a fallback to run the passed executuion
+		 * @param executor The execution the {@link HystrixCommand} will wrap 
+		 * @return the command
+		 */
+		public HystrixCommand<T> commandFor(final Callable<T> executor) {
+			return commandFor(executor, null);
+		}
+		
 
 		/**
 		 * Specifies the HystrixCommandKey
@@ -154,9 +247,9 @@ public class HystrixCommandFactory {
 		 * @return this definition
 		 * @see com.netflix.hystrix.HystrixCommand.Setter#andCommandKey(com.netflix.hystrix.HystrixCommandKey)
 		 */
-		public HystrixCommandDefinition<T> andCommandKey(final CharSequence commandKey) {
-			final String resolvedCommandKey = resolve(commandKey, tokens);
-			defKey.append(resolvedCommandKey);
+		public HystrixCommandBuilder andCommandKey(final CharSequence commandKey) {
+			final String resolvedCommandKey = HystrixCommandFactory.resolve(commandKey, tokens);			
+			defKey.append("CommandKey=").append(resolvedCommandKey).append(",");
 			setter.andCommandKey(HystrixCommandKey.Factory.asKey(resolvedCommandKey));
 			return this;
 		}
@@ -167,298 +260,427 @@ public class HystrixCommandFactory {
 		 * @return this definition
 		 * @see com.netflix.hystrix.HystrixCommand.Setter#andThreadPoolKey(com.netflix.hystrix.HystrixThreadPoolKey)
 		 */
-		public HystrixCommandDefinition<T> andThreadPoolKey(final CharSequence threadPoolKey) {
-			final String resolvedThreadPoolKey = resolve(threadPoolKey, tokens);
-			defKey.append(resolvedThreadPoolKey);
+		public HystrixCommandBuilder andThreadPoolKey(final CharSequence threadPoolKey) {
+			final String resolvedThreadPoolKey = HystrixCommandFactory.resolve(threadPoolKey, tokens);			
+			defKey.append("ThreadPoolKey=").append(resolvedThreadPoolKey).append(",");
 			setter.andThreadPoolKey(HystrixThreadPoolKey.Factory.asKey(resolvedThreadPoolKey));
 			return this;
 		}
+		
 
-		/**
-		 * Sets the command properties
-		 * @param commandPropertiesDefaults
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommand.Setter#andCommandPropertiesDefaults(com.netflix.hystrix.HystrixCommandProperties.Setter)
-		 */
-		public Setter andCommandPropertiesDefaults(
-				com.netflix.hystrix.HystrixCommandProperties.Setter commandPropertiesDefaults) {
-			return setter.andCommandPropertiesDefaults(commandPropertiesDefaults);
-		}
 
-		/**
-		 * @param threadPoolPropertiesDefaults
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommand.Setter#andThreadPoolPropertiesDefaults(com.netflix.hystrix.HystrixThreadPoolProperties.Setter)
-		 */
-		public Setter andThreadPoolPropertiesDefaults(
-				com.netflix.hystrix.HystrixThreadPoolProperties.Setter threadPoolPropertiesDefaults) {
-			return setter.andThreadPoolPropertiesDefaults(threadPoolPropertiesDefaults);
-		}
+	    /**
+	     * Sets the thread pool's metrics Rolling Statistical Window In Milliseconds setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withMetricsRollingStatisticalWindowInMilliseconds(int)
+	     */
+	    public HystrixCommandBuilder threadMetricsRollingStatisticalWindowInMilliseconds(final int value) {
+	        threadPoolPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerEnabled(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCircuitBreakerEnabled(boolean value) {
-			return commandPropertySetter.withCircuitBreakerEnabled(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerErrorThresholdPercentage(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCircuitBreakerErrorThresholdPercentage(
-				int value) {
-			return commandPropertySetter.withCircuitBreakerErrorThresholdPercentage(value);
-		}
+	    /**
+	     * Sets the thread pool's metrics Rolling Statistical Window Buckets setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withMetricsRollingStatisticalWindowBuckets(int)
+	     */
+	    public HystrixCommandBuilder threadMetricsRollingStatisticalWindowBuckets(final int value) {
+	        threadPoolPropertySetter.withMetricsRollingStatisticalWindowBuckets(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerForceClosed(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCircuitBreakerForceClosed(boolean value) {
-			return commandPropertySetter.withCircuitBreakerForceClosed(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerForceOpen(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCircuitBreakerForceOpen(boolean value) {
-			return commandPropertySetter.withCircuitBreakerForceOpen(value);
-		}
+	    /**
+	     * Sets the thread pool's core Size setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withCoreSize(int)
+	     */
+	    public HystrixCommandBuilder coreSize(final int value) {
+	        threadPoolPropertySetter.withCoreSize(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerRequestVolumeThreshold(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCircuitBreakerRequestVolumeThreshold(int value) {
-			return commandPropertySetter.withCircuitBreakerRequestVolumeThreshold(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerSleepWindowInMilliseconds(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCircuitBreakerSleepWindowInMilliseconds(
-				int value) {
-			return commandPropertySetter.withCircuitBreakerSleepWindowInMilliseconds(value);
-		}
+	    /**
+	     * Sets the thread pool's keep Alive Time Minutes setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withKeepAliveTimeMinutes(int)
+	     */
+	    public HystrixCommandBuilder keepAliveTimeMinutes(final int value) {
+	        threadPoolPropertySetter.withKeepAliveTimeMinutes(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionIsolationSemaphoreMaxConcurrentRequests(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withExecutionIsolationSemaphoreMaxConcurrentRequests(
-				int value) {
-			return commandPropertySetter.withExecutionIsolationSemaphoreMaxConcurrentRequests(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionIsolationStrategy(com.netflix.hystrix.HystrixCommandProperties.ExecutionIsolationStrategy)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withExecutionIsolationStrategy(
-				ExecutionIsolationStrategy value) {
-			return commandPropertySetter.withExecutionIsolationStrategy(value);
-		}
+	    /**
+	     * Sets the thread pool's max Queue Size setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withMaxQueueSize(int)
+	     */
+	    public HystrixCommandBuilder maxQueueSize(final int value) {
+	        threadPoolPropertySetter.withMaxQueueSize(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionIsolationThreadInterruptOnTimeout(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withExecutionIsolationThreadInterruptOnTimeout(
-				boolean value) {
-			return commandPropertySetter.withExecutionIsolationThreadInterruptOnTimeout(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionTimeoutInMilliseconds(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withExecutionTimeoutInMilliseconds(int value) {
-			return commandPropertySetter.withExecutionTimeoutInMilliseconds(value);
-		}
+	    /**
+	     * Sets the thread pool's queue Size Rejection Threshold setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withQueueSizeRejectionThreshold(int)
+	     */
+	    public HystrixCommandBuilder queueSizeRejectionThreshold(final int value) {
+	        threadPoolPropertySetter.withQueueSizeRejectionThreshold(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionTimeoutEnabled(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withExecutionTimeoutEnabled(boolean value) {
-			return commandPropertySetter.withExecutionTimeoutEnabled(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withFallbackIsolationSemaphoreMaxConcurrentRequests(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withFallbackIsolationSemaphoreMaxConcurrentRequests(
-				int value) {
-			return commandPropertySetter.withFallbackIsolationSemaphoreMaxConcurrentRequests(value);
-		}
+		
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withFallbackEnabled(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withFallbackEnabled(boolean value) {
-			return commandPropertySetter.withFallbackEnabled(value);
-		}
+	    /**
+	     * Sets the circuit's BreakerEnabled setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerEnabled(boolean)
+	     */
+	    public HystrixCommandBuilder circuitBreakerEnabled(final boolean value) {
+	        commandPropertySetter.withCircuitBreakerEnabled(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsHealthSnapshotIntervalInMilliseconds(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withMetricsHealthSnapshotIntervalInMilliseconds(
-				int value) {
-			return commandPropertySetter.withMetricsHealthSnapshotIntervalInMilliseconds(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileBucketSize(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withMetricsRollingPercentileBucketSize(int value) {
-			return commandPropertySetter.withMetricsRollingPercentileBucketSize(value);
-		}
+	    /**
+	     * Sets the circuit's BreakerErrorThresholdPercentage setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerErrorThresholdPercentage(int)
+	     */
+	    public HystrixCommandBuilder circuitBreakerErrorThresholdPercentage(final int value) {
+	        commandPropertySetter.withCircuitBreakerErrorThresholdPercentage(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileEnabled(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withMetricsRollingPercentileEnabled(boolean value) {
-			return commandPropertySetter.withMetricsRollingPercentileEnabled(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileWindowInMilliseconds(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withMetricsRollingPercentileWindowInMilliseconds(
-				int value) {
-			return commandPropertySetter.withMetricsRollingPercentileWindowInMilliseconds(value);
-		}
+	    /**
+	     * Sets the circuit's BreakerForceClosed setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerForceClosed(boolean)
+	     */
+	    public HystrixCommandBuilder circuitBreakerForceClosed(final boolean value) {
+	        commandPropertySetter.withCircuitBreakerForceClosed(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileWindowBuckets(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withMetricsRollingPercentileWindowBuckets(
-				int value) {
-			return commandPropertySetter.withMetricsRollingPercentileWindowBuckets(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingStatisticalWindowInMilliseconds(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCommandMetricsRollingStatisticalWindowInMilliseconds(
-				int value) {
-			return commandPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(value);
-		}
+	    /**
+	     * Sets the circuit's BreakerForceOpen setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerForceOpen(boolean)
+	     */
+	    public HystrixCommandBuilder circuitBreakerForceOpen(final boolean value) {
+	        commandPropertySetter.withCircuitBreakerForceOpen(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingStatisticalWindowBuckets(int)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withCommandMetricsRollingStatisticalWindowBuckets(
-				int value) {
-			return commandPropertySetter.withMetricsRollingStatisticalWindowBuckets(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withRequestCacheEnabled(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withRequestCacheEnabled(boolean value) {
-			return commandPropertySetter.withRequestCacheEnabled(value);
-		}
+	    /**
+	     * Sets the circuit's BreakerRequestVolumeThreshold setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerRequestVolumeThreshold(int)
+	     */
+	    public HystrixCommandBuilder circuitBreakerRequestVolumeThreshold(final int value) {
+	        commandPropertySetter.withCircuitBreakerRequestVolumeThreshold(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withRequestLogEnabled(boolean)
-		 */
-		public com.netflix.hystrix.HystrixCommandProperties.Setter withRequestLogEnabled(boolean value) {
-			return commandPropertySetter.withRequestLogEnabled(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withCoreSize(int)
-		 */
-		public com.netflix.hystrix.HystrixThreadPoolProperties.Setter withCoreSize(int value) {
-			return threadPoolPropertySetter.withCoreSize(value);
-		}
+	    /**
+	     * Sets the circuit's BreakerSleepWindowInMilliseconds setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withCircuitBreakerSleepWindowInMilliseconds(int)
+	     */
+	    public HystrixCommandBuilder circuitBreakerSleepWindowInMilliseconds(final int value) {
+	        commandPropertySetter.withCircuitBreakerSleepWindowInMilliseconds(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withKeepAliveTimeMinutes(int)
-		 */
-		public com.netflix.hystrix.HystrixThreadPoolProperties.Setter withKeepAliveTimeMinutes(int value) {
-			return threadPoolPropertySetter.withKeepAliveTimeMinutes(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withMaxQueueSize(int)
-		 */
-		public com.netflix.hystrix.HystrixThreadPoolProperties.Setter withMaxQueueSize(int value) {
-			return threadPoolPropertySetter.withMaxQueueSize(value);
-		}
+	    /**
+	     * Sets the execution's IsolationSemaphoreMaxConcurrentRequests setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionIsolationSemaphoreMaxConcurrentRequests(int)
+	     */
+	    public HystrixCommandBuilder executionIsolationSemaphoreMaxConcurrentRequests(final int value) {
+	        commandPropertySetter.withExecutionIsolationSemaphoreMaxConcurrentRequests(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withQueueSizeRejectionThreshold(int)
-		 */
-		public com.netflix.hystrix.HystrixThreadPoolProperties.Setter withQueueSizeRejectionThreshold(int value) {
-			return threadPoolPropertySetter.withQueueSizeRejectionThreshold(value);
-		}
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withMetricsRollingStatisticalWindowInMilliseconds(int)
-		 */
-		public com.netflix.hystrix.HystrixThreadPoolProperties.Setter withMetricsRollingStatisticalWindowInMilliseconds(
-				int value) {
-			return threadPoolPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(value);
-		}
+	    /**
+	     * Sets the execution's IsolationStrategy setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionIsolationStrategy(com.netflix.hystrix.HystrixCommandProperties$ExecutionIsolationStrategy)
+	     */
+	    public HystrixCommandBuilder executionIsolationStrategy(final ExecutionIsolationStrategy value) {
+	        commandPropertySetter.withExecutionIsolationStrategy(value);
+	        return this;
+	    }        
 
-		/**
-		 * @param value
-		 * @return
-		 * @see com.netflix.hystrix.HystrixThreadPoolProperties.Setter#withMetricsRollingStatisticalWindowBuckets(int)
-		 */
-		public com.netflix.hystrix.HystrixThreadPoolProperties.Setter withMetricsRollingStatisticalWindowBuckets(
-				int value) {
-			return threadPoolPropertySetter.withMetricsRollingStatisticalWindowBuckets(value);
-		}
-	}
+
+	    /**
+	     * Sets the execution's IsolationThreadInterruptOnTimeout setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionIsolationThreadInterruptOnTimeout(boolean)
+	     */
+	    public HystrixCommandBuilder executionIsolationThreadInterruptOnTimeout(final boolean value) {
+	        commandPropertySetter.withExecutionIsolationThreadInterruptOnTimeout(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the execution's TimeoutInMilliseconds setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionTimeoutInMilliseconds(int)
+	     */
+	    public HystrixCommandBuilder executionTimeoutInMilliseconds(final int value) {
+	        commandPropertySetter.withExecutionTimeoutInMilliseconds(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the execution's TimeoutEnabled setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withExecutionTimeoutEnabled(boolean)
+	     */
+	    public HystrixCommandBuilder executionTimeoutEnabled(final boolean value) {
+	        commandPropertySetter.withExecutionTimeoutEnabled(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the fallback's IsolationSemaphoreMaxConcurrentRequests setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withFallbackIsolationSemaphoreMaxConcurrentRequests(int)
+	     */
+	    public HystrixCommandBuilder fallbackIsolationSemaphoreMaxConcurrentRequests(final int value) {
+	        commandPropertySetter.withFallbackIsolationSemaphoreMaxConcurrentRequests(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the fallback's Enabled setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withFallbackEnabled(boolean)
+	     */
+	    public HystrixCommandBuilder fallbackEnabled(final boolean value) {
+	        commandPropertySetter.withFallbackEnabled(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the metrics's HealthSnapshotIntervalInMilliseconds setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsHealthSnapshotIntervalInMilliseconds(int)
+	     */
+	    public HystrixCommandBuilder metricsHealthSnapshotIntervalInMilliseconds(final int value) {
+	        commandPropertySetter.withMetricsHealthSnapshotIntervalInMilliseconds(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the metrics's RollingPercentileBucketSize setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileBucketSize(int)
+	     */
+	    public HystrixCommandBuilder metricsRollingPercentileBucketSize(final int value) {
+	        commandPropertySetter.withMetricsRollingPercentileBucketSize(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the metrics's RollingPercentileEnabled setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileEnabled(boolean)
+	     */
+	    public HystrixCommandBuilder metricsRollingPercentileEnabled(final boolean value) {
+	        commandPropertySetter.withMetricsRollingPercentileEnabled(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the metrics's RollingPercentileWindowInMilliseconds setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileWindowInMilliseconds(int)
+	     */
+	    public HystrixCommandBuilder metricsRollingPercentileWindowInMilliseconds(final int value) {
+	        commandPropertySetter.withMetricsRollingPercentileWindowInMilliseconds(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the metrics's RollingPercentileWindowBuckets setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingPercentileWindowBuckets(int)
+	     */
+	    public HystrixCommandBuilder metricsRollingPercentileWindowBuckets(final int value) {
+	        commandPropertySetter.withMetricsRollingPercentileWindowBuckets(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the metrics's RollingStatisticalWindowInMilliseconds setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingStatisticalWindowInMilliseconds(int)
+	     */
+	    public HystrixCommandBuilder metricsRollingStatisticalWindowInMilliseconds(final int value) {
+	        commandPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the metrics's RollingStatisticalWindowBuckets setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withMetricsRollingStatisticalWindowBuckets(int)
+	     */
+	    public HystrixCommandBuilder metricsRollingStatisticalWindowBuckets(final int value) {
+	        commandPropertySetter.withMetricsRollingStatisticalWindowBuckets(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the request's CacheEnabled setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withRequestCacheEnabled(boolean)
+	     */
+	    public HystrixCommandBuilder requestCacheEnabled(final boolean value) {
+	        commandPropertySetter.withRequestCacheEnabled(value);
+	        return this;
+	    }        
+
+
+	    /**
+	     * Sets the request's LogEnabled setting
+	     * @param value The value to set
+	     * @return this builder
+	     * @see com.netflix.hystrix.HystrixCommandProperties.Setter#withRequestLogEnabled(boolean)
+	     */
+	    public HystrixCommandBuilder requestLogEnabled(final boolean value) {
+	        commandPropertySetter.withRequestLogEnabled(value);
+	        return this;
+	    }
+	    
+	    
+	    private void loadDefaults(final HystrixCommandConfigDefault config) {
+	    	commandPropertySetter.withCircuitBreakerEnabled(config.circuitBreakerEnabled);
+	    	commandPropertySetter.withCircuitBreakerErrorThresholdPercentage(config.circuitBreakerErrorThresholdPercentage);
+	    	commandPropertySetter.withCircuitBreakerForceClosed(config.circuitBreakerForceClosed);
+	    	commandPropertySetter.withCircuitBreakerForceOpen(config.circuitBreakerForceOpen);
+	    	commandPropertySetter.withCircuitBreakerRequestVolumeThreshold(config.circuitBreakerRequestVolumeThreshold);
+	    	commandPropertySetter.withCircuitBreakerSleepWindowInMilliseconds(config.circuitBreakerSleepWindowInMilliseconds);
+	    	commandPropertySetter.withExecutionIsolationSemaphoreMaxConcurrentRequests(config.executionIsolationSemaphoreMaxConcurrentRequests);
+	    	commandPropertySetter.withExecutionIsolationStrategy(config.executionIsolationStrategy);
+	    	commandPropertySetter.withExecutionIsolationThreadInterruptOnTimeout(config.executionIsolationThreadInterruptOnTimeout);
+	    	commandPropertySetter.withExecutionTimeoutInMilliseconds(config.executionTimeoutInMilliseconds);
+	    	commandPropertySetter.withExecutionTimeoutEnabled(config.executionTimeoutEnabled);
+	    	commandPropertySetter.withFallbackIsolationSemaphoreMaxConcurrentRequests(config.fallbackIsolationSemaphoreMaxConcurrentRequests);
+	    	commandPropertySetter.withFallbackEnabled(config.fallbackEnabled);
+	    	commandPropertySetter.withMetricsHealthSnapshotIntervalInMilliseconds(config.metricsHealthSnapshotIntervalInMilliseconds);
+	    	commandPropertySetter.withMetricsRollingPercentileBucketSize(config.metricsRollingPercentileBucketSize);
+	    	commandPropertySetter.withMetricsRollingPercentileEnabled(config.metricsRollingPercentileEnabled);
+	    	commandPropertySetter.withMetricsRollingPercentileWindowInMilliseconds(config.metricsRollingPercentileWindowInMilliseconds);
+	    	commandPropertySetter.withMetricsRollingPercentileWindowBuckets(config.metricsRollingPercentileWindowBuckets);
+	    	commandPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(config.metricsRollingStatisticalWindowInMilliseconds);
+	    	commandPropertySetter.withMetricsRollingStatisticalWindowBuckets(config.metricsRollingStatisticalWindowBuckets);
+	    	commandPropertySetter.withRequestCacheEnabled(config.requestCacheEnabled);
+	    	commandPropertySetter.withRequestLogEnabled(config.requestLogEnabled);
+	    	
+	    	threadPoolPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(config.metricsRollingStatisticalWindowInMilliseconds);
+	    	threadPoolPropertySetter.withMetricsRollingStatisticalWindowBuckets(config.metricsRollingStatisticalWindowBuckets);
+	    	threadPoolPropertySetter.withCoreSize(config.coreSize);
+	    	threadPoolPropertySetter.withKeepAliveTimeMinutes(config.keepAliveTimeMinutes);
+	    	threadPoolPropertySetter.withMaxQueueSize(config.maxQueueSize);
+	    	threadPoolPropertySetter.withQueueSizeRejectionThreshold(config.queueSizeRejectionThreshold);
+	    	
+	    }
+		
+
+	}	
+	
+	
+/*
+
+threadPoolPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(config.metricsRollingStatisticalWindowInMilliseconds);
+threadPoolPropertySetter.withMetricsRollingStatisticalWindowBuckets(config.metricsRollingStatisticalWindowBuckets);
+threadPoolPropertySetter.withCoreSize(config.coreSize);
+threadPoolPropertySetter.withKeepAliveTimeMinutes(config.keepAliveTimeMinutes);
+threadPoolPropertySetter.withMaxQueueSize(config.maxQueueSize);
+threadPoolPropertySetter.withQueueSizeRejectionThreshold(config.queueSizeRejectionThreshold);
+
+commandPropertySetter.withCircuitBreakerEnabled(config.circuitBreakerEnabled);
+commandPropertySetter.withCircuitBreakerErrorThresholdPercentage(config.circuitBreakerErrorThresholdPercentage);
+commandPropertySetter.withCircuitBreakerForceClosed(config.circuitBreakerForceClosed);
+commandPropertySetter.withCircuitBreakerForceOpen(config.circuitBreakerForceOpen);
+commandPropertySetter.withCircuitBreakerRequestVolumeThreshold(config.circuitBreakerRequestVolumeThreshold);
+commandPropertySetter.withCircuitBreakerSleepWindowInMilliseconds(config.circuitBreakerSleepWindowInMilliseconds);
+commandPropertySetter.withExecutionIsolationSemaphoreMaxConcurrentRequests(config.executionIsolationSemaphoreMaxConcurrentRequests);
+commandPropertySetter.withExecutionIsolationStrategy(config.executionIsolationStrategy);
+commandPropertySetter.withExecutionIsolationThreadInterruptOnTimeout(config.executionIsolationThreadInterruptOnTimeout);
+commandPropertySetter.withExecutionIsolationThreadTimeoutInMilliseconds(config.executionIsolationThreadTimeoutInMilliseconds);
+commandPropertySetter.withExecutionTimeoutInMilliseconds(config.executionTimeoutInMilliseconds);
+commandPropertySetter.withExecutionTimeoutEnabled(config.executionTimeoutEnabled);
+commandPropertySetter.withFallbackIsolationSemaphoreMaxConcurrentRequests(config.fallbackIsolationSemaphoreMaxConcurrentRequests);
+commandPropertySetter.withFallbackEnabled(config.fallbackEnabled);
+commandPropertySetter.withMetricsHealthSnapshotIntervalInMilliseconds(config.metricsHealthSnapshotIntervalInMilliseconds);
+commandPropertySetter.withMetricsRollingPercentileBucketSize(config.metricsRollingPercentileBucketSize);
+commandPropertySetter.withMetricsRollingPercentileEnabled(config.metricsRollingPercentileEnabled);
+commandPropertySetter.withMetricsRollingPercentileWindowInMilliseconds(config.metricsRollingPercentileWindowInMilliseconds);
+commandPropertySetter.withMetricsRollingPercentileWindowBuckets(config.metricsRollingPercentileWindowBuckets);
+commandPropertySetter.withMetricsRollingStatisticalWindowInMilliseconds(config.metricsRollingStatisticalWindowInMilliseconds);
+commandPropertySetter.withMetricsRollingStatisticalWindowBuckets(config.metricsRollingStatisticalWindowBuckets);
+commandPropertySetter.withRequestCacheEnabled(config.requestCacheEnabled);
+commandPropertySetter.withRequestLogEnabled(config.requestLogEnabled);
+
+
+
+
+
+ */
 	
 }

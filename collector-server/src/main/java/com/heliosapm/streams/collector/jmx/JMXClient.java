@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.regex.Pattern;
 
@@ -66,6 +67,8 @@ import com.google.common.cache.RemovalNotification;
 import com.heliosapm.streams.collector.TimeoutService;
 import com.heliosapm.streams.collector.jmx.protocol.tunnel.ClientProvider;
 import com.heliosapm.streams.common.naming.AgentName;
+import com.heliosapm.streams.hystrix.HystrixCommandFactory;
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
 
@@ -102,12 +105,25 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 	/** The tracing host name */
 	protected final String remoteHost;
 	
+	/** The hystrix command factory to use if hystrix is enabled */
+	protected final HystrixCommandFactory<Object>.HystrixCommandBuilder commandBuilder;
+	/** Indicates if hystrix circuit breakers should be used for jmx clients */
+	protected final AtomicBoolean hystrixEnabled = new AtomicBoolean(false);
+	
+	
 	/** The default connect timeout in seconds */
 	public static final long DEFAULT_CONNECT_TIMEOUT = 10;
 	/** The URL path query arg for the tracing app name we're connecting to */
 	public static final String APP_QUERY_ARG = "app";
 	/** The URL path query arg for the tracing host name we're connecting to */
 	public static final String HOST_QUERY_ARG = "host";
+	
+	/** The config key for jmx-clients hystrix circuit breaker commands */
+	public static final String CONFIG_HYSTRIX = "component.jmxclient.hystrix";
+	/** The config key for hystrix circuit breaker enablement */
+	public static final String CONFIG_HYSTRIX_ENABLED = CONFIG_HYSTRIX + ".enabled";
+	/** The default hystrix circuit breaker enablement */
+	public static final boolean DEFAULT_HYSTRIX_ENABLED = false;
 	
 	/** Listener registrations that should be saved an re-applied on re-connect */
 	protected final NonBlockingHashSet<SavedNotificationEvent> registrations = new NonBlockingHashSet<SavedNotificationEvent>();
@@ -228,6 +244,11 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 		final Map<String, String> qArgs = queryArgsToMap(jmxServiceUrl);
 		remoteApp = qArgs.get(APP_QUERY_ARG);
 		remoteHost = qArgs.get(HOST_QUERY_ARG);
+		hystrixEnabled.set(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_HYSTRIX_ENABLED, DEFAULT_HYSTRIX_ENABLED));
+		commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, "jmx-remote-" + jmxServiceUrl.getProtocol())
+				.andCommandKey(jmxServiceUrl.getHost().replace('.', '-') + "." + jmxServiceUrl.getPort())
+				.andThreadPoolKey("jmxremoting");
+		
 		
 		try {
 			jmxConnector = JMXConnectorFactory.newJMXConnector(jmxServiceUrl, env);
@@ -284,7 +305,18 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 								log.warn("JMXConnector interrupted after timeout");
 							}
 						});
-						jmxConnector.connect();
+						if(hystrixEnabled.get()) {
+							commandBuilder.commandFor(new Callable<Object>(){
+								@Override
+								public Void call() throws Exception {
+									jmxConnector.connect();
+									return null;
+								}
+							}).execute();
+						} else {
+							jmxConnector.connect();
+						}
+						
 //						server = jmxConnector.getMBeanServerConnection();
 						final MBeanServerConnection conn = jmxConnector.getMBeanServerConnection();
 						try {

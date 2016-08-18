@@ -27,7 +27,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -35,7 +34,6 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
-import java.util.Stack;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -76,9 +74,12 @@ import com.heliosapm.streams.collector.TimeoutService;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
+import com.heliosapm.streams.hystrix.HystrixCommandFactory;
 import com.heliosapm.streams.tracing.ITracer;
 import com.heliosapm.streams.tracing.TracerFactory;
 import com.heliosapm.streams.tracing.deltas.DeltaManager;
+import com.heliosapm.utils.collections.FluentMap;
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedNotificationExecutor;
@@ -133,8 +134,6 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected Map<String, Object> bindingMap;
 	/** This script's binding */
 	protected Binding binding;
-	/** Flag indicating if script invocations should use the hystrix circuit-breaker */
-	protected final AtomicBoolean circuitBreaker = new AtomicBoolean(true);
 	/** The fork join pool to execute collections in */
 	protected final CollectorExecutionService executionService;
 	/** The names of pending dependencies */
@@ -143,6 +142,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable();
 	/** The dependency manager for this script */
 	protected final DependencyManager<? extends ManagedScript> dependencyManager;
+	
 	/** The source file */
 	protected File sourceFile = null;
 	/** The linked source file */
@@ -183,6 +183,16 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			return collectionTimer.getSnapshot();
 		}
 	};
+	/** Indicates if hystrix circuit breakers should be used for jmx clients */
+	protected final AtomicBoolean hystrixEnabled = new AtomicBoolean(false);
+	
+	/** The config key for jmx-clients hystrix circuit breaker commands */
+	public static final String CONFIG_HYSTRIX = "component.managedscript.hystrix";
+	/** The config key for hystrix circuit breaker enablement */
+	public static final String CONFIG_HYSTRIX_ENABLED = CONFIG_HYSTRIX + ".enabled";
+	/** The default hystrix circuit breaker enablement */
+	public static final boolean DEFAULT_HYSTRIX_ENABLED = false;
+	
 	/** A counter for the number of consecutive collection errors */ 
 	protected final AtomicLong consecutiveErrors = new AtomicLong();
 	/** A counter for the total number of collection errors */
@@ -197,6 +207,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected final AtomicReference<ScriptState> state = new AtomicReference<ScriptState>(ScriptState.INIT);
 	/** flag indicating if rescheduling can occur */
 	protected final AtomicBoolean canReschedule = new AtomicBoolean(false);
+	/** The hystrix command factory to use if hystrix is enabled */
+	protected final HystrixCommandFactory<Object>.HystrixCommandBuilder commandBuilder;
 	
 	/** The deployment sequence id */
 	protected int deploymentId = 0;
@@ -246,7 +258,23 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 				f.setAccessible(true);
 			}
 		}
+		packageSegs = StringHelper.splitString(getClass().getPackage().getName(), '.');
+		packageElems = packageSegs.length;
+		packageKey = getClass().getPackage().getName();	
+		regionKey = packageKey.substring(packageKey.indexOf('.')+1);
+		classKey = getClass().getName();		
+		hystrixEnabled.set(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_HYSTRIX_ENABLED, DEFAULT_HYSTRIX_ENABLED));
+			
+		commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, packageSegs[0] + packageSegs[1])
+			.andCommandKey(classKey)
+			.andThreadPoolKey(regionKey.replace('.', '-'));
 	}
+	
+	private final int packageElems;
+	private final String[] packageSegs;
+	private final String packageKey;	
+	private final String regionKey;
+	private final String classKey;	
 
 //	/**
 //	 * Creates a new ManagedScript
@@ -507,7 +535,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			try {
 				log.info("Starting collect");
 				final long start = System.currentTimeMillis();
-				if(circuitBreaker.get()) {
+				if(hystrixEnabled.get()) {
 					runInCircuitBreaker();
 				} else {
 					run();
@@ -519,47 +547,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		}
 	}
 	
-	private final int packageElems = StringHelper.splitString(getClass().getPackage().getName(), '.').length;
-	private final String packageKey = getClass().getPackage().getName();	
-	private final String regionKey = packageKey.substring(packageKey.indexOf('.')+1);
-	private final String classKey = getClass().getName();
-	
-	
-	protected class ScriptCommand extends HystrixCommand<Void> {
 
-	    public ScriptCommand() {
-	        super(Setter
-	        		.withGroupKey(HystrixCommandGroupKey.Factory.asKey("ExampleGroup"))
-	                .andCommandKey(HystrixCommandKey.Factory.asKey(classKey))
-	                .andThreadPoolKey(HystrixThreadPoolKey.Factory.asKey(regionKey))	                
-	                .andCommandPropertiesDefaults(HystrixCommandProperties.defaultSetter()
-	                	.withExecutionIsolationThreadInterruptOnTimeout(true)
-	                	.withFallbackEnabled(true)
-	                ).andThreadPoolPropertiesDefaults(HystrixThreadPoolProperties.defaultSetter()
-	                	.withCoreSize(3)
-	                	.withMaxQueueSize(10)	                	
-	                )
-	         );
-	        
-	    }
-
-	    @Override
-	    protected Void run() throws Exception {
-	    	ManagedScript.this.run();
-	        return null;
-	    }
-	    
-	    @Override
-	    protected Void getFallback() {
-	    	log.warn("Fallback used on [{}]", toString());
-	    	return null;
-	    }
-	    
-	    
-	    public String getPublicCacheKey() {
-	    	return classKey;
-	    }
-	}
+	
 	
 	
 	
@@ -568,7 +557,12 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 */
 	protected void runInCircuitBreaker() {
 		try {
-			new ScriptCommand().execute();
+			commandBuilder.commandFor(new Callable<Object>(){
+				@Override
+				public Object call() throws Exception {					
+					return ManagedScript.this.run();
+				}
+			}).execute();
 		} catch (Exception ex) {
 			log.error("Failed to execute ScriptCommand", ex);
 			throw new RuntimeException("Failed to execute ScriptCommand", ex);
@@ -1418,13 +1412,9 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		this.appCtx = appCtx;				
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#isCircuiteBreaker()
-	 */
 	@Override
-	public boolean isCircuiteBreaker() {
-		return circuitBreaker.get();
+	public boolean isHystrixEnabled() {
+		return hystrixEnabled.get();
 	}
 	
 	/**
@@ -1432,8 +1422,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#setCircuitBreaker(boolean)
 	 */
 	@Override
-	public void setCircuitBreaker(final boolean enabled) {
-		circuitBreaker.set(enabled);
+	public void setHystrixEnabled(final boolean enabled) {
+		hystrixEnabled.set(enabled);
 	}
 	
 }

@@ -53,12 +53,6 @@ public class PackageNameCustomizer extends CompilationCustomizer {
 		for(Class<?> iface: ifaces) {
 			classNode.addInterface(new ClassNode(iface));
 		}
-		for(final Iterator<InnerClassNode> iter = classNode.getInnerClasses(); iter.hasNext();) {
-			InnerClassNode icn = iter.next();
-			if(ManagedScript.ScriptCommand.class.getName().equals(icn.getName())) {
-				icn.setName(classNode.getName());
-			}
-		}
 	}
 
 }

@@ -42,7 +42,11 @@
 		  <artifactId>hystrix-core</artifactId>		  
 		</dependency>
 		
-
+		<dependency>
+	        <groupId>com.netflix.archaius</groupId>
+	        <artifactId>archaius-core</artifactId>
+	        <version>0.7.4</version>
+	    </dependency>
 
 		<!-- ==========================================================
 		    Chronicle Dependencies
