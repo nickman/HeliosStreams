@@ -75,10 +75,10 @@ import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.hystrix.HystrixCommandFactory;
+import com.heliosapm.streams.hystrix.HystrixCommandProvider;
 import com.heliosapm.streams.tracing.ITracer;
 import com.heliosapm.streams.tracing.TracerFactory;
 import com.heliosapm.streams.tracing.deltas.DeltaManager;
-import com.heliosapm.utils.collections.FluentMap;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.enums.TimeUnitSymbol;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -87,12 +87,6 @@ import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
-import com.netflix.hystrix.HystrixCommand;
-import com.netflix.hystrix.HystrixCommandGroupKey;
-import com.netflix.hystrix.HystrixCommandKey;
-import com.netflix.hystrix.HystrixCommandProperties;
-import com.netflix.hystrix.HystrixThreadPoolKey;
-import com.netflix.hystrix.HystrixThreadPoolProperties;
 
 import groovy.lang.Binding;
 import groovy.lang.Closure;
@@ -208,7 +202,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** flag indicating if rescheduling can occur */
 	protected final AtomicBoolean canReschedule = new AtomicBoolean(false);
 	/** The hystrix command factory to use if hystrix is enabled */
-	protected final HystrixCommandFactory<Object>.HystrixCommandBuilder commandBuilder;
+	protected final HystrixCommandProvider<Object> commandBuilder;
 	
 	/** The deployment sequence id */
 	protected int deploymentId = 0;
@@ -267,7 +261,9 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			
 		commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, packageSegs[0] + packageSegs[1])
 			.andCommandKey(classKey)
-			.andThreadPoolKey(regionKey.replace('.', '-'));
+			.andThreadPoolKey(regionKey.replace('.', '-'))
+			.build();
+			
 	}
 	
 	private final int packageElems;

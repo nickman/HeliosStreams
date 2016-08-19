@@ -41,8 +41,6 @@ public class ManagedHikariDataSource extends HikariDataSource {
 	
 	/** The groovy sql wrapping the data source */
 	protected final Sql groovySql;
-	/** The cache where the ds and groovy sql are registered */
-	protected final GlobalCacheService cache;
 	/** The pool name */
 	protected final String poolName;
 	/** The data source cache key */
@@ -55,18 +53,14 @@ public class ManagedHikariDataSource extends HikariDataSource {
 	/**
 	 * Creates a new ManagedHikariDataSource
 	 * @param configuration the data source configuration
-	 * @param cache The cache where the ds and groovy sql are registered
 	 * @param listeners Optional close listeners
 	 */
-	public ManagedHikariDataSource(final HikariConfig configuration, final GlobalCacheService cache, final DataSourceListener... listeners) {
+	public ManagedHikariDataSource(final HikariConfig configuration, final DataSourceListener... listeners) {
 		super(configuration);
 		poolName = getPoolName();
 		groovySql = new Sql(this);
-		this.cache = cache;
 		dsCacheKey = CACHE_DS_PREFIX + poolName;
 		groovydsCacheKey = CACHE_GSQL_PREFIX + poolName;
-		cache.put(dsCacheKey, this);
-		cache.put(groovydsCacheKey, groovySql);
 		if(listeners!=null) {
 			for(DataSourceListener listener: listeners) {
 				if(listener==null) continue;
@@ -104,8 +98,6 @@ public class ManagedHikariDataSource extends HikariDataSource {
 	 */
 	@Override
 	public void shutdown() {
-		cache.remove(dsCacheKey);
-		cache.remove(groovydsCacheKey);		
 		try { groovySql.close(); } catch (Exception x) {/* No Op */}
 		super.shutdown();		
 		for(final DataSourceListener listener: listeners) {

@@ -68,6 +68,7 @@ import com.heliosapm.streams.collector.TimeoutService;
 import com.heliosapm.streams.collector.jmx.protocol.tunnel.ClientProvider;
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.hystrix.HystrixCommandFactory;
+import com.heliosapm.streams.hystrix.HystrixCommandProvider;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
@@ -106,7 +107,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 	protected final String remoteHost;
 	
 	/** The hystrix command factory to use if hystrix is enabled */
-	protected final HystrixCommandFactory<Object>.HystrixCommandBuilder commandBuilder;
+	protected final HystrixCommandProvider<Object> commandBuilder;
 	/** Indicates if hystrix circuit breakers should be used for jmx clients */
 	protected final AtomicBoolean hystrixEnabled = new AtomicBoolean(false);
 	
@@ -247,7 +248,8 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 		hystrixEnabled.set(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_HYSTRIX_ENABLED, DEFAULT_HYSTRIX_ENABLED));
 		commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, "jmx-remote-" + jmxServiceUrl.getProtocol())
 				.andCommandKey(jmxServiceUrl.getHost().replace('.', '-') + "." + jmxServiceUrl.getPort())
-				.andThreadPoolKey("jmxremoting");
+				.andThreadPoolKey("jmxremoting")
+				.build();
 		
 		
 		try {
@@ -261,19 +263,14 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 	
 	public static Map<String, String> queryArgsToMap(final JMXServiceURL jmxUrl) {
 		final String urlPath = jmxUrl.getURLPath();
-		final String[] frags = QARG_SPLITTER.split(urlPath);
+		final String[] frags = StringHelper.splitString(urlPath, '&', true);		
 		final Map<String, String> map = new HashMap<String, String>();
-		final int x = frags.length-1;
-		for(int i = 0; i < frags.length; i++) {
-			
-			final String key = frags[i];
-			if(key!=null && !key.trim().isEmpty()) {
-				i++;
-				if(i==x) break;
-				final String value = frags[i];
-				if(value!=null && !value.trim().isEmpty()) {
-					map.put(key.trim(), value.trim());
-				}				
+		for(String pair: frags) {
+			String[] keyValue = StringHelper.splitString(pair, '=', true);
+			if(keyValue.length==2) {
+				if(!keyValue[0].isEmpty() && !keyValue[1].isEmpty()) {
+					map.put(keyValue[0], keyValue[1]);
+				}
 			}
 		}
 		return map;

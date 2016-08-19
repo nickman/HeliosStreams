@@ -28,6 +28,10 @@ import java.util.concurrent.Future;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
@@ -42,7 +46,6 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
 import jsr166e.LongAdder;
-import jsr166y.ForkJoinTask;
 
 /**
  * <p>Title: JDBCDataSourceManager</p>
@@ -51,14 +54,14 @@ import jsr166y.ForkJoinTask;
  * <p><code>com.heliosapm.streams.collector.ds.JDBCDataSourceManager</code></p>
  */
 
-public class JDBCDataSourceManager implements FileChangeEventListener {
+public class JDBCDataSourceManager implements FileChangeEventListener, ApplicationContextAware {
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The data source definition directory */
 	protected final File dsDirectory;
 	/** A cache of datasources keyed by the definition file name */
-	protected final NonBlockingHashMap<String, HikariDataSource> dataSources = new NonBlockingHashMap<String, HikariDataSource>();
+	protected final NonBlockingHashMap<String, ManagedHikariDataSource> dataSources = new NonBlockingHashMap<String, ManagedHikariDataSource>();
 	/** The global cache */
 	protected final GlobalCacheService gcache = GlobalCacheService.getInstance(); 
 	/** The file finder */
@@ -71,7 +74,8 @@ public class JDBCDataSourceManager implements FileChangeEventListener {
 	protected final LongAdder successfulDeploys = new LongAdder();
 	/** A counter of failed deployments */
 	protected final LongAdder failedDeploys = new LongAdder();
-	
+	/** The spring app context */
+	protected ApplicationContext appCtx = null;
 
 
 	/**
@@ -157,13 +161,16 @@ public class JDBCDataSourceManager implements FileChangeEventListener {
 				throw new RuntimeException(ex);
 			}
 			
-			final HikariDataSource ds = new ManagedHikariDataSource(config, gcache, new DataSourceListener(){
+			final ManagedHikariDataSource ds = new ManagedHikariDataSource(config, new DataSourceListener(){
 				@Override
 				public void onDataSourceStopped(String poolName, String dataSourceCacheName, String groovySqlCacheName) {
 					dataSources.remove(dsDef.getAbsolutePath());
 				}
 			});
 			dataSources.put(dsDef.getAbsolutePath(), ds);
+			gcache.put(ds.dsCacheKey, this);
+			gcache.put(ds.groovydsCacheKey, ds.groovySql);
+			
 			successfulDeploys.increment();
 			log.info("<<< DataSource [{}] deployed from [{}]", name, dsDef);
 		} catch (Exception ex) {
@@ -185,10 +192,18 @@ public class JDBCDataSourceManager implements FileChangeEventListener {
 	protected void undeploy(final File dsDef) {
 		if(dsDef!=null) {
 			final String key = dsDef.getAbsolutePath();
-			final HikariDataSource ds = dataSources.remove(key);
+			final ManagedHikariDataSource ds = dataSources.remove(key);
 			if(ds!=null) {
 				log.info(">>> Stopping DataSource from [{}]", dsDef);
 				try { ds.close(); } catch (Exception x) {/* No Op */}
+				try { GlobalCacheService.getInstance().remove(ds.dsCacheKey); } catch (Exception x) {/* No Op */}
+				try { GlobalCacheService.getInstance().remove(ds.groovydsCacheKey); } catch (Exception x) {/* No Op */}
+				if(appCtx!=null) {
+					try {
+						((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).destroySingleton("ds/" + ds.getPoolName());
+					} catch (Exception x) {/* No Op */}
+					
+				}
 				log.info("<<< DataSource [{}] stopped", dsDef);
 			}
 		}
@@ -268,6 +283,19 @@ public class JDBCDataSourceManager implements FileChangeEventListener {
 	@Override
 	public void setFileChangeWatcher(final FileChangeWatcher fileChangeWatcher) {
 		/* No Op */
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
+	@Override
+	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+		this.appCtx = appCtx;
+		for(HikariDataSource ds: dataSources.values()) {
+			appCtx.getAutowireCapableBeanFactory().initializeBean(ds, "ds/" + ds.getPoolName());
+		}
 	}
 
 }

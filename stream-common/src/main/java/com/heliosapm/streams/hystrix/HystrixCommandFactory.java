@@ -49,7 +49,7 @@ public class HystrixCommandFactory<T> {
 	private static final Object lock = new Object();
 	
 	/** The cache of command factories keyed by the factory key */
-	protected final Cache<String, HystrixCommandFactory<T>.HystrixCommandBuilder> commandFactories = CacheBuilder.newBuilder()
+	protected final Cache<String, HystrixCommandProvider<T>> commandFactories = CacheBuilder.newBuilder()
 		.concurrencyLevel(Runtime.getRuntime().availableProcessors())
 		.initialCapacity(128)
 		.build();
@@ -127,10 +127,9 @@ public class HystrixCommandFactory<T> {
 	 * <p>Description: A fluent and json friendly {@link HystrixCommand} builder</p> 
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
 	 * <p><code>com.heliosapm.streams.hystrix.HystrixCommandFactory.HystrixCommandBuilder</code></p>
-	 * @param <R> The expected type of the command return value
 	 * TODO:  implement JSON de/serializer
 	 */
-	public class HystrixCommandBuilder {
+	public class HystrixCommandBuilder  {
 		protected final HystrixCommand.Setter setter; 
 		protected final Map<String, Object> tokens;
 		protected final StringBuilder defKey = new StringBuilder();
@@ -169,21 +168,38 @@ public class HystrixCommandFactory<T> {
 		
 		/**
 		 * Builds the command and returns it
-		 * @param executor The callable to execute in the returned command
 		 * @return the command The built command
 		 */
-		private HystrixCommandFactory<T>.HystrixCommandBuilder build() {			
+		public HystrixCommandProvider<T> build() {			
 			final String key = getKey();
-			final Callable<HystrixCommandFactory<T>.HystrixCommandBuilder> builderBuilder = new Callable<HystrixCommandFactory<T>.HystrixCommandBuilder>() {
+			final Callable<HystrixCommandProvider<T>> builderBuilder = new Callable<HystrixCommandProvider<T>>() {
 				@Override
-				public HystrixCommandFactory<T>.HystrixCommandBuilder call() throws Exception {
+				public HystrixCommandProvider<T> call() throws Exception {
 					setter.andCommandPropertiesDefaults(commandPropertySetter);
 					setter.andThreadPoolPropertiesDefaults(threadPoolPropertySetter);					
 					final ManagedHystrixCommandFactory managed = new ManagedHystrixCommandFactory(setter, getKey(), commandPropertySetter, threadPoolPropertySetter); 
 					if(!JMXHelper.isRegistered(managed.getObjectName())) {
 						JMXHelper.registerMBean(managed.getObjectName(), managed);
 					}
-					return (HystrixCommandFactory<T>.HystrixCommandBuilder) HystrixCommandBuilder.this;
+					return new HystrixCommandProvider<T>() {
+						/**
+						 * {@inheritDoc}
+						 * @see com.heliosapm.streams.hystrix.HystrixCommandProvider#commandFor(java.util.concurrent.Callable, java.util.concurrent.Callable)
+						 */
+						@Override
+						public HystrixCommand<T> commandFor(final Callable<T> executor, final Callable<T> fallback) {
+							return _commandFor(executor, fallback);
+						}
+						
+						/**
+						 * {@inheritDoc}
+						 * @see com.heliosapm.streams.hystrix.HystrixCommandProvider#commandFor(java.util.concurrent.Callable)
+						 */
+						@Override
+						public HystrixCommand<T> commandFor(final Callable<T> executor) {
+							return _commandFor(executor);
+						}
+					};
 				}
 			};
 			try {
@@ -193,19 +209,21 @@ public class HystrixCommandFactory<T> {
 			}
 		}
 		
+		
+		
+		
 		/**
 		 * Creates a new {@link HystrixCommand} to run the passed executuion
 		 * @param executor The execution the {@link HystrixCommand} will wrap 
 		 * @param fallback The optional fallback callable
 		 * @return the command
 		 */
-		public HystrixCommand<T> commandFor(final Callable<T> executor, final Callable<T> fallback) {
+		private HystrixCommand<T> _commandFor(final Callable<T> executor, final Callable<T> fallback) {
 			if(executor==null) throw new IllegalArgumentException("The passed executor callable was null");
-			final HystrixCommandFactory<T>.HystrixCommandBuilder builder = build();
 			final HystrixCommand<T> command;
 			if(fallback!=null) {
 				commandPropertySetter.withFallbackEnabled(true);
-				command = new HystrixCommand<T>(builder.setter) {
+				command = new HystrixCommand<T>(setter) {
 					@Override
 					protected T run() throws Exception {
 						return executor.call();
@@ -221,7 +239,7 @@ public class HystrixCommandFactory<T> {
 				};
 			} else {
 				commandPropertySetter.withFallbackEnabled(false);
-				command = new HystrixCommand<T>(builder.setter) {
+				command = new HystrixCommand<T>(setter) {
 					@Override
 					protected T run() throws Exception {
 						return executor.call();
@@ -236,8 +254,8 @@ public class HystrixCommandFactory<T> {
 		 * @param executor The execution the {@link HystrixCommand} will wrap 
 		 * @return the command
 		 */
-		public HystrixCommand<T> commandFor(final Callable<T> executor) {
-			return commandFor(executor, null);
+		private HystrixCommand<T> _commandFor(final Callable<T> executor) {
+			return _commandFor(executor, null);
 		}
 		
 

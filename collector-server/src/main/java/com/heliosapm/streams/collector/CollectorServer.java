@@ -42,6 +42,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
+import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -100,7 +101,7 @@ public class CollectorServer extends  SpringBootServletInitializer {
 	private static Thread springBootLaunchThread = null;
 	
 	/** Indicates if we're running in spring mode */
-	private static boolean springMode = false;
+	private static boolean noSpringMode = false;
 	
 	
 
@@ -235,8 +236,8 @@ public class CollectorServer extends  SpringBootServletInitializer {
 		LogManager.getRootLogger();
 		ExtendedThreadManager.install();
 		JMXHelper.fireUpJMXMPServer(jmxmpIface);
-		springMode = findArg("--nospring", null, args) == null;
-		if(springMode) {
+		noSpringMode = findArg("--nospring", null, args) == null;
+		if(noSpringMode) {
 			System.out.println("Booting in Spring Mode");
 			final List<String> springArgs = new ArrayList<String>(args.length);
 			for(String cmd: args) {
@@ -246,6 +247,7 @@ public class CollectorServer extends  SpringBootServletInitializer {
 				}
 			}
 			appCtx = SpringApplication.run(CollectorServer.class, springArgs.toArray(new String[0]));
+			GlobalCacheService.getInstance().put("spring/ApplicationContext", appCtx);
 			//appCtx.getAutowireCapableBeanFactory().configureBean(ManagedScriptFactory.getInstance(), "ManagedScriptFactory");
 		} else {
 			System.out.println("Booting in Standalone Mode");
@@ -262,7 +264,7 @@ public class CollectorServer extends  SpringBootServletInitializer {
 //	}
 	
 	public static final boolean isSpringMode() {
-		return springMode;
+		return noSpringMode;
 	}
 
 	
