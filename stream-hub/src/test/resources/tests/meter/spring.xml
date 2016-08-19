@@ -21,22 +21,13 @@
 		<property name="inMemory" value="${streamhub.statestore.metrictimestamp.inmemory:false}"/>		
     </bean>
     
-    <bean id="accumulatorStoreDefinition" class="com.heliosapm.streams.metrics.store.StateStoreDefinition">
-		<property name="keySerde">
-			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-		</property>
-		<property name="valueSerde">
-			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.LONG_SERDE"/>
-		</property>
-		<property name="inMemory" value="${streamhub.statestore.accumulator.inmemory:false}"/>		
-    </bean>
     
     
     <bean id="meterSupplier" class="com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier">
-    	<property name="aggregationPeriod" value="${streamhub.streamed.metric.supplier.meter.aggregationperiod:5}"/>
-    	<property name="period" value="${streamhub.streamed.metric.supplier.meter.period:5000}"/>
-    	<property name="sources" value="${streamhub.streamed.metric.supplier.meter.source:tsdb.metrics.meter}"/>
-    	<property name="topicSink" value="${streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary}"/>
+    	<property name="aggregationPeriod" value="5"/>
+    	<property name="period" value="5000"/>
+    	<property name="sources" value="tsdb.metrics.metrics"/>
+    	<property name="topicSink" value="tsdb.metrics.binary"/>
     	<property name="sourceKeySerde">
     		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
     	</property>
@@ -56,24 +47,6 @@
     	</property>
     </bean>
     
-    <bean id="strightThroughSupplier" class="com.heliosapm.streams.metrics.processors.impl.StraightThroughMetricProcessorSupplier">
-    	<property name="maxForwards" value="${streamhub.streamed.metric.supplier.straightthrough.maxforwards:100}"/>
-    	<property name="period" value="${streamhub.streamed.metric.supplier.straightthrough.period:10000}"/>
-    	<property name="sources" value="${streamhub.streamed.metric.supplier.straightthrough.source:tsdb.metrics.st}"/>
-    	<property name="topicSink" value="${streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary}"/>
-    	<property name="sourceKeySerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-    	</property>
-    	<property name="sourceValueSerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE_THROUGH_STRING"/>
-    	</property>    	
-    	<property name="sinkKeySerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-    	</property>
-    	<property name="sinkValueSerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE"/>
-    	</property>
-    </bean>
     
     
     <bean id="textRouter" class="com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter">
@@ -81,7 +54,6 @@
     	<property name="processorSuppliers">
     		<util:list>
     			<ref bean="meterSupplier"/>
-    			<ref bean="strightThroughSupplier"/>
     		</util:list>
     	</property>
     </bean>
@@ -92,8 +64,8 @@
     
     <bean id="streamsConfig" class="com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder" >
     	<property name="applicationId" value="StreamHub"/>
-    	<property name="bootstrapServers" value="${streamhub.config.bootstrapservers:localhost:9092}"/>
-    	<property name="zookeeperConnect" value="${streamhub.config.zookeeperconnect:localhost:2181}"/>
+    	<property name="bootstrapServers" value="${test.kafka.connect}"/>
+    	<property name="zookeeperConnect" value="${test.zookeeper.connect}"/>
     	<property name="clientId">
     		<util:constant static-field="com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder.DEFAULT_CLIENT_ID" />
     	</property>

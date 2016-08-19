@@ -829,8 +829,12 @@ public class StreamedMetric implements BytesMarshallable {
 	 * @return the created StreamedMetric 
 	 */
 	public static StreamedMetric fromString(final String value) {
-		if(value==null || value.trim().isEmpty()) throw new IllegalArgumentException("The passed value was null");
-		return fromArray(Utils.splitString(value, ',', true));
+		try {
+			if(value==null || value.trim().isEmpty()) throw new IllegalArgumentException("The passed value was null");
+			return fromArray(Utils.splitString(value, ',', true));
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to parse StreamedMetric from String [" + value + "]", ex);
+		}
 	}
 	
 	/**
@@ -895,7 +899,7 @@ public class StreamedMetric implements BytesMarshallable {
 		boolean isDouble = true;
 		Number n = null;
 		Map<String, String> tags = new HashMap<String, String>();		
-		if(valueType==ValueType.DIRECTED) {
+		if(valueType==null) {
 			timestamp = Utils.toMsTime(values[0]);
 			n = Utils.numeric(values[1]);
 			if(n!=null) {

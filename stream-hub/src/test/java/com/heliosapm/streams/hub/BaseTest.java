@@ -1,28 +1,19 @@
-/**
- * Helios, OpenSource Monitoring
- * Brought to you by the Helios Development Group
+/*
+ * Copyright 2015 the original author or authors.
  *
- * Copyright 2016, Helios Development Group and individual contributors
- * as indicated by the @author tags. See the copyright.txt file in the
- * distribution for a full listing of individual contributors.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This is free software; you can redistribute it and/or modify it
- * under the terms of the GNU Lesser General Public License as
- * published by the Free Software Foundation; either version 2.1 of
- * the License, or (at your option) any later version.
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
- * This software is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this software; if not, write to the Free
- * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
- * 02110-1301 USA, or see the FSF site: http://www.fsf.org. 
- *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
-package com.heliosapm.streams.metrics;
+package com.heliosapm.streams.hub;
 
 import java.io.File;
 import java.io.PrintStream;
@@ -39,6 +30,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -49,13 +41,18 @@ import org.junit.rules.TestName;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
 
+import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.utils.concurrency.ExtendedThreadManager;
+
+
 
 /**
  * <p>Title: BaseTest</p>
- * <p>Description: </p> 
+ * <p>Description: Stream hub base test</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.BaseTest</code></p>
+ * <p><code>com.heliosapm.streams.hub.BaseTest</code></p>
  */
 
 @Ignore
@@ -77,7 +74,9 @@ public class BaseTest {
 	/** Synthetic UIDMeta counter for tag values */
 	protected static final AtomicInteger TAGV_COUNTER = new AtomicInteger();
 	
-	
+	static {
+		ExtendedThreadManager.install();
+	}
 	
 	/** A shared testing scheduler */
 	protected static final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2, new ThreadFactory(){
@@ -469,6 +468,37 @@ public class BaseTest {
 //	}
 
 	
+	public static StreamedMetric randomStreamedMetric(final String metricName) {
+		final String mn = metricName==null ? getRandomFragment() : metricName.trim();
+		final Map<String, String> tags = getRandomTags();
+		return new StreamedMetric(mn, tags);
+	}
+	
+	public static ProducerRecord<String, String> randomStreamedMetricRecordString(final String topicName, final String metricName) {
+		final StreamedMetric sm = randomStreamedMetric(metricName);
+		return new ProducerRecord<String, String>(topicName, sm.getMetricName(), sm.toString()); 
+	}
+	
+	public static StreamedMetricValue randomLongStreamedMetric(final String metricName) {
+		return randomStreamedMetric(metricName).forValue(nextPosInt(10000));
+	}
+	
+	public static ProducerRecord<String, String> randomLongStreamedMetricRecordString(final String topicName, final String metricName) {
+		final StreamedMetricValue smv = randomLongStreamedMetric(metricName);
+		return new ProducerRecord<String, String>(topicName, smv.getMetricName(), smv.toString()); 
+	}
+	
+	
+	public static StreamedMetricValue randomDoubleStreamedMetric(final String metricName) {
+		return randomStreamedMetric(metricName).forValue(nextPosInt(10000) + nextPosDouble());
+	}
+	
+	public static ProducerRecord<String, String> randomDoubleStreamedMetricRecordString(final String topicName, final String metricName) {
+		final StreamedMetricValue smv = randomDoubleStreamedMetric(metricName);
+		return new ProducerRecord<String, String>(topicName, smv.getMetricName(), smv.toString()); 
+	}
+	
+	
 	/**
 	 * Validates that the passed {@link StreamedMetric}s are equal
 	 * @param tr1 One trace
@@ -502,4 +532,5 @@ public class BaseTest {
 	}
 	
 }
+
 

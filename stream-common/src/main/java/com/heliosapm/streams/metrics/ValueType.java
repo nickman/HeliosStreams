@@ -114,7 +114,7 @@ public enum ValueType {
 	public static ValueType decode(final String value) {
 		if(value==null || value.trim().isEmpty()) throw new IllegalArgumentException("The passed value was null");
 		final ValueType v = decodeByInt.get(value.trim().charAt(0));
-		return v==null ? DIRECTED : v;
+		return v;//==null ? DIRECTED : v;
 	}
 	
 	

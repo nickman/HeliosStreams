@@ -33,6 +33,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.jmx.JMXHelper;
 
 import io.netty.buffer.ByteBuf;
@@ -139,6 +140,13 @@ public class StreamValueTest extends BaseTest {
 		assertEquals(new StreamedMetricValue(now, value, metricName, StreamedMetric.tagsFromArray(tags)).setValueType(ValueType.PERIODAGG), StreamedMetric.fromString(dv));
 		assertEquals(new StreamedMetricValue(now, value, metricName, StreamedMetric.tagsFromArray(tags)), StreamedMetric.fromString(uv));
 		
+	}
+	
+	@Test
+	public void testFromString() {
+		final String template = "123456789, 3, x.y.z, app-09, hoo-haa";
+		final StreamedMetric sm = StreamedMetric.fromString(template);
+		log(JSONOps.serializeToString(sm));
 	}
 
 	

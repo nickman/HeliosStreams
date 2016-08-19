@@ -1,0 +1,12 @@
+[
+  {
+    "name": "tsdb.metrics.binary",
+    "partitions": 1,
+    "replicas": 1
+  },
+  {
+    "name": "tsdb.metrics.meter",
+    "partitions": 1,
+    "replicas": 1
+  }
+]

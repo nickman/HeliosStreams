@@ -101,10 +101,11 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 		@SuppressWarnings("null")
 		@Override
 		protected boolean doProcess(final String key, final StreamedMetric sm) {
-			TimestampedMetricKey tmk = metricTimestampStore.get(key);
+			final String mkey = sm.metricKey();
+			TimestampedMetricKey tmk = metricTimestampStore.get(mkey);
 			if(tmk==null) {
 				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
-				metricTimestampStore.put(key, tmk);
+				metricTimestampStore.put(mkey, tmk);
 				log.debug("Wrote MTS: [{}]", tmk);
 			} else {
 				log.debug("MTS from Store: [{}]", tmk);
@@ -131,7 +132,7 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 						log.info("Committed Batch: [{}]:[{}]",  tmk.getMetricKey(), tmk.getCount());
 					}
 					tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
-					metricTimestampStore.put(key, tmk);				
+					metricTimestampStore.put(mkey, tmk);				
 				}
 			}
 			return true;

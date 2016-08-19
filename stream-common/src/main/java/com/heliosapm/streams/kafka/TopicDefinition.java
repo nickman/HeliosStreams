@@ -152,7 +152,7 @@ public class TopicDefinition {
 		String line = null;
 		try {
 			isr = new InputStreamReader(json);
-			br = new BufferedReader(br);
+			br = new BufferedReader(isr);
 			while((line = br.readLine())!=null) {
 				b.append(line);
 			}
