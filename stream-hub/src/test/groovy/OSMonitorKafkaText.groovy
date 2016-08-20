@@ -59,7 +59,7 @@ trace = { metric, value, tags ->
     now = System.currentTimeMillis();
     // 1466684806814,0.6563913125582113,sys.cpu.total,webserver05,login-sso,host=webserver05,app=login-sso,colo=false,dc=us-west1
 
-    buff.append("A,$now,$value,$metric,$HOST,perfagent,dc=$DC");
+    buff.append("$now,$value,$metric,$HOST,perfagent,dc=$DC");
     tags.each() { k, v ->
         buff.append(",").append(clean(k)).append("=").append(clean(v));
     }

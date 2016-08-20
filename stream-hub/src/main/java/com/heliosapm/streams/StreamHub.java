@@ -35,6 +35,7 @@ import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.EnableMBeanExport;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -53,6 +54,7 @@ import com.heliosapm.utils.url.URLHelper;
 @SpringBootApplication
 @ImportResource("classpath:streamhub.xml")
 @EnableAutoConfiguration 
+@EnableMBeanExport
 public class StreamHub implements Watcher {
 	/** The current booted app context */
 	private static ConfigurableApplicationContext appCtx = null;

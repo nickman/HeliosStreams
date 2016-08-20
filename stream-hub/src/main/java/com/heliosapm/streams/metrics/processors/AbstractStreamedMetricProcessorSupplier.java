@@ -28,9 +28,11 @@ import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.TopologyBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanNameAware;
-import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.annotation.Required;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.store.StateStoreDefinition;
@@ -45,10 +47,11 @@ import com.heliosapm.streams.metrics.store.StateStoreDefinition;
  * @param <SK> The expected type of the sink key
  * @param <SV> The expected type of the sink value
  */
-public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> implements BeanNameAware, StreamedMetricProcessorSupplier<K, V, SK, SV> {
+public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> implements ApplicationContextAware, BeanNameAware, StreamedMetricProcessorSupplier<K, V, SK, SV> {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
-	
+	/** The spring app context */
+	protected ApplicationContext appCtx = null;
 	/** The punctuation period in ms. */
 	protected long period = -1L;
 	/** The topic sink name for this processor */
@@ -305,6 +308,15 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 		}
 		startedProcessors.clear();		
 		log.info("<<<<<  Stopped [{}]", getClass().getSimpleName());
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+	 */
+	@Override
+	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+		this.appCtx = appCtx;		
 	}
 
 //	/**

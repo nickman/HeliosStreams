@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
@@ -35,6 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.requests.MetadataResponse.TopicMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -42,11 +44,18 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.io.StdInCommandHandler;
 
+import kafka.admin.AdminClient;
+import kafka.admin.AdminClient.ConsumerSummary;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicExistsException;
+import kafka.coordinator.GroupOverview;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import scala.collection.JavaConversions;
@@ -94,6 +103,9 @@ public class KafkaAdminClient implements Watcher, Closeable {
 	protected final ZkClient zkClient;
 	/** A zookeeper connection for admin ops */
 	protected final ZkConnection zkConnection;
+	/** The kafka admin client, required for some ops */
+	protected final AdminClient adminClient;
+	
 	/** The connected flag */
 	protected final AtomicBoolean connected = new AtomicBoolean(false);
 	
@@ -134,12 +146,24 @@ public class KafkaAdminClient implements Watcher, Closeable {
 	}
 	
 	/**
+	 * Acquires a KafkaAdminClient for the specified zk port on <b>localhost</b> using the default session and connect timeouts
+	 * @param zkPort The zk connect port
+	 * @return the client
+	 */
+	public static KafkaAdminClient getClient(final int zkPort) {
+		return getClient("localhost:" + zkPort);
+	}
+	
+	/**
 	 * Acquires a KafkaAdminClient for <b><code>localhost:2181</code></b> using the default session and connect timeouts
 	 * @return the client
 	 */
 	public static KafkaAdminClient getClient() {
 		return getClient("localhost:2181", DEFAULT_SESSION_TIMEOUT, DEFAULT_CONNECTION_TIMEOUT);
 	}
+	
+	private static final TypeReference<Map<String, String>>  MAP_TYPEREF = new TypeReference<Map<String, String>>() {/* No Ops */};
+
 	
 	/**
 	 * Creates and connects a new KafkaAdminClient
@@ -158,8 +182,22 @@ public class KafkaAdminClient implements Watcher, Closeable {
 			    ZKStringSerializer$.MODULE$);
 		zkConnection = new ZkConnection(zkConnect, DEFAULT_SESSION_TIMEOUT);
 		zkConnection.connect(this);
-		zkUtils = new ZkUtils(zkClient, zkConnection, false);					
+		zkUtils = new ZkUtils(zkClient, zkConnection, false);
+		final String endPoint = findEndpoint(zkConnection);
+		adminClient = endPoint==null ? null : AdminClient.createSimplePlaintext(endPoint);
 		
+	}
+	
+	protected static String findEndpoint(final ZkConnection conn) {
+		try {
+			final String brokerId = conn.getChildren("/brokers/ids", false).iterator().next();
+			final String brokerJson = new String(conn.readData("/brokers/ids/" + brokerId, null, false));
+			final JsonNode rootNode = JSONOps.parseToNode(brokerJson);
+			final ArrayNode endpoints = (ArrayNode)rootNode.get("endpoints");
+			return endpoints.iterator().next().textValue();
+		} catch (Exception ex) {
+			return null;
+		}
 	}
 	
 	private KafkaAdminClient() {
@@ -168,7 +206,8 @@ public class KafkaAdminClient implements Watcher, Closeable {
 		connectionTimeout = -1;
 		zkClient = null;
 		zkConnection = null;
-		zkUtils = null;									
+		zkUtils = null;			
+		adminClient = null;
 	}
 
 	/**
@@ -260,6 +299,7 @@ public class KafkaAdminClient implements Watcher, Closeable {
 		try { zkClient.close(); } catch (Exception x) { /* No Op */ }
 		try { zkConnection.close(); } catch (Exception x) { /* No Op */ }
 		try { zkUtils.close(); } catch (Exception x) { /* No Op */ }
+		if(adminClient!=null) try { adminClient.close(); } catch (Exception x) { /* No Op */ }
 	}
 	
 	/**
@@ -279,6 +319,18 @@ public class KafkaAdminClient implements Watcher, Closeable {
 	}
 	
 	/**
+	 * Returns the ZK topic meta-data for the named topic
+	 * @param topicName The name of the topic
+	 * @return the topic meta-data
+	 */
+	public TopicMetadata getZKTopicMetadata(final String topicName) {
+		if(!connected.get()) throw new IllegalStateException("The KafkaTestServer is not running");
+		if(topicName==null || topicName.trim().isEmpty()) throw new IllegalArgumentException("The passed topic name was null or empty");
+		return AdminUtils.fetchTopicMetadataFromZk(topicName, zkUtils);
+	}
+	
+	
+	/**
 	 * Determines if the passed topic name represents an existing topic
 	 * @param topicName the topic name to test for 
 	 * @return true if the passed topic name represents an existing topic, false otherwise
@@ -288,6 +340,36 @@ public class KafkaAdminClient implements Watcher, Closeable {
 		if(topicName==null || topicName.trim().isEmpty()) throw new IllegalArgumentException("The passed topic name was null or empty");
 		return AdminUtils.topicExists(zkUtils, topicName.trim());
 	}
+	
+	/**
+	 * Returns the bootstrap broker nodes
+	 * @return the bootstrap broker nodes
+	 */
+	public Collection<Node> getBrokers() {
+		if(adminClient==null) throw new IllegalStateException("Admin client not created");
+		return JavaConversions.asJavaCollection(adminClient.bootstrapBrokers());		
+	}
+	
+	/**
+	 * Returns the meta data on all consumer groups
+	 * @return the meta data on all consumer groups
+	 */
+	public Collection<GroupOverview> getAllConsumerGroups() {
+		if(adminClient==null) throw new IllegalStateException("Admin client not created");
+		return JavaConversions.asJavaCollection(adminClient.listAllConsumerGroupsFlattened());				
+	}
+	
+	/**
+	 * Returns the meta data on all consumers in the passed consumer group
+	 * @param consumerGroup The consumer group name
+	 * @return the meta data on all consumers in the passed consumer group
+	 */
+	public Collection<ConsumerSummary> getConsumers(final String consumerGroup) {
+		if(adminClient==null) throw new IllegalStateException("Admin client not created");
+		return JavaConversions.asJavaCollection(adminClient.describeConsumerGroup(consumerGroup));				
+	}	
+	
+	
 	
 	/**
 	 * Determines if the passed consumer group is active

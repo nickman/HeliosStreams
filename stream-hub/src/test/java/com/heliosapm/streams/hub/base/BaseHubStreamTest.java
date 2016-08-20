@@ -33,6 +33,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.Resource;
 
 import com.heliosapm.streams.hub.BaseTest;
+import com.heliosapm.streams.kafka.KafkaAdminClient;
 import com.heliosapm.streams.kafka.KafkaTestServer;
 import com.heliosapm.streams.kafka.TopicDefinition;
 import com.heliosapm.utils.collections.Props;
@@ -83,7 +84,7 @@ public class BaseHubStreamTest extends BaseTest {
 		KTS = new KafkaTestServer();
 		try {
 			KTS.start();
-			zooKeepPort = KTS.getZooKeeperPort(); 
+			zooKeepPort = KTS.getZooKeepPort(); 
 			kafkaPort = KTS.getKafkaPort(); 
 			System.setProperty(ZOOKEEP_PORT_PROP, "" + zooKeepPort);
 			System.setProperty(ZOOKEEP_CONNECT_PROP, "localhost:" + zooKeepPort);
@@ -192,6 +193,7 @@ public class BaseHubStreamTest extends BaseTest {
 						URLHelper.getStrBuffFromURL(getClass().getClassLoader().getResource("tests/" + name + "/consumer.properties"))
 				)
 		);
+		log("Consumer Properties:\n" + p);
 		p.setProperty("group.id", consumerGroup==null ? (name + "TestGroup") : consumerGroup.trim());
 		final KafkaConsumer<K,V> consumer = new KafkaConsumer<K,V>(p);
 		closeables.add(consumer);
@@ -211,6 +213,26 @@ public class BaseHubStreamTest extends BaseTest {
 		return newConsumer(name, null, keyType, valueType);
 	}
 	
+	/**
+	 * Acquires an admin client for the local test server
+	 * @param port The zookeep port
+	 * @return the admin client
+	 */
+	protected static KafkaAdminClient newAdminClient(final int port) {		  
+		return closeOnComplete(KafkaAdminClient.getClient(port));
+	}
+	
+	
+	/**
+	 * Registers a closeable to be closed on completion
+	 * @param t The closeable to register
+	 * @return the registered closeable
+	 * @param <T> The type of the closeable
+	 */
+	public static <T extends Closeable> T closeOnComplete(final T t) {
+		closeables.add(t);
+		return t;
+	}
 	
 			
 	

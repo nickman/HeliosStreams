@@ -19,36 +19,39 @@ under the License.
 package com.heliosapm.streams.kafka;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.kafka.common.requests.MetadataResponse.TopicMetadata;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.server.ServerConfig;
 import org.apache.zookeeper.server.ZooKeeperServerMain;
 import org.apache.zookeeper.server.quorum.QuorumPeerConfig;
+import org.apache.zookeeper.server.quorum.QuorumPeerMain;
 
-import com.heliosapm.streams.TestZooKeeperServer;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.net.SocketUtil;
+import com.heliosapm.utils.net.SocketUtil.AcquiredPorts;
+import com.heliosapm.utils.net.SocketUtil.BoundPort;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 
 import kafka.admin.AdminUtils;
@@ -56,9 +59,12 @@ import kafka.admin.RackAwareMode;
 import kafka.common.TopicExistsException;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
-import kafka.utils.SystemTime$;
+import kafka.utils.MockTime;
+import kafka.utils.TestUtils;
+import kafka.utils.Time;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
+import scala.Option;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 /**
@@ -105,7 +111,7 @@ public class KafkaTestServer {
 	/** The config key for the embedded zookeeper listening port */
 	public static final String CONFIG_ZK_PORT = ZK_PREFIX  + "clientPort";	
 	/** The default embedded zookeeper listening port */
-	public static final int DEFAULT_ZK_PORT = 0;	
+	public static final int DEFAULT_ZK_PORT = 2181;	
 	/** The config key for the embedded zookeeper listener binding interface */
 	public static final String CONFIG_ZK_IFACE = ZK_PREFIX  + "clientPortAddress";	
 	/** The default embedded zookeeper listener binding interface */
@@ -124,6 +130,8 @@ public class KafkaTestServer {
 	public static final int DEFAULT_ZK_MAXTO = -1;
 	
 	
+	/** The default embedded kafka listening URI */
+	public static final String DEFAULT_LISTENER = "0:localhost:9092";
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -141,7 +149,7 @@ public class KafkaTestServer {
 	/** The embedded zookeeper configurator */
 	protected QuorumPeerConfig zkConfig = null;
 	/** The embedded zookeeper server */
-	protected TestZooKeeperServer zkServer = null;
+	protected QuorumPeerMain zkServer = null;
 	/** The standalone zookeeper config */
 	protected ServerConfig sc = null;
 	/** The standalone zookeeper server */
@@ -157,17 +165,44 @@ public class KafkaTestServer {
 	/** A zookeeper connection for admin ops */
 	protected ZkConnection zkConnection = null;
 	
-	protected int zooKeeperPort = -1;
-	protected int kafkaPort = -1;
+	List<KafkaServer> servers = new ArrayList<KafkaServer>();	
+	
+	/** The assigned zooKeep port */
+	protected int zooKeepPort = 0;
+	/** The assigned kafka port */
+	protected int kafkaPort = 0;
+	
+	/** The reserved zooKeep port */
+	protected final BoundPort zooKeepReservedPort;
+	/** The reserved kafka port */
+	protected final BoundPort kafkaReservedPort;
+	
+	/** The listener port reserver */
+	protected final AcquiredPorts portReserver;
 	
 	
 	/**
 	 * Creates a new KafkaTestServer
 	 */
 	public KafkaTestServer() {
-		 System.setProperty("zookeeper.jmx.log4j.disable", "true");
+		 this(0,0);
 	}
 	
+	/**
+	 * Creates a new KafkaTestServer
+	 * @param zooKeepPort The zookeeper listener port
+	 * @param kafkaPort The kafka listener port
+	 */
+	public KafkaTestServer(final int zooKeepPort, final int kafkaPort) {
+		System.setProperty("zookeeper.jmx.log4j.disable", "true");
+		int portsToReserve = 0;
+		if(zooKeepPort==0) portsToReserve++;
+		if(kafkaPort==0) portsToReserve++;
+		portReserver = SocketUtil.acquirePorts(portsToReserve);
+		zooKeepReservedPort = zooKeepPort==0 ? portReserver.nextBoundPort() : SocketUtil.preAssigned(zooKeepPort);
+		kafkaReservedPort = kafkaPort==0 ? portReserver.nextBoundPort() : SocketUtil.preAssigned(kafkaPort);
+		
+	}
 	/**
 	 * Starts the test server
 	 * @throws Exception thrown on any error
@@ -183,96 +218,127 @@ public class KafkaTestServer {
 				delTree(zkLogDir);
 				delTree(kLogDir);
 				zkConfigProperties.clear();
-				final String[] scArgs = new String[4];
-				
-				
 				if(launchZooKeeper) {
 					zkConfigProperties.setProperty("tickTime", "2000");
 					zkConfigProperties.setProperty("syncEnabled", "false");
 					zkConfigProperties.setProperty("dataDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR));
 					zkConfigProperties.setProperty("dataLogDir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR));
 				}
-				final int clientPort = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_PORT, DEFAULT_ZK_PORT);
+				zooKeepPort = zooKeepReservedPort.getPort();
 				final String clientPortAddress = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_IFACE, DEFAULT_ZK_IFACE);				
-				scArgs[0] = "" + clientPort;
-				scArgs[1] = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR);
-				scArgs[2] = "2000";
-				scArgs[3] = "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXCONNS, DEFAULT_ZK_MAXCONNS);
-				sc = new ServerConfig();
-				sc.parse(scArgs);
+				zookeepConnect = clientPortAddress + ":" + zooKeepPort;
 				if(launchZooKeeper) {
-					zkConfigProperties.setProperty("clientPort", "" + clientPort);
+					zkConfigProperties.setProperty("clientPort", "" + zooKeepPort);
 					zkConfigProperties.setProperty("clientPortAddress", clientPortAddress);
 					zkConfigProperties.setProperty("maxClientCnxns", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXCONNS, DEFAULT_ZK_MAXCONNS));
 					zkConfigProperties.setProperty("minSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MINTO, DEFAULT_ZK_MINTO));
 					zkConfigProperties.setProperty("maxSessionTimeout", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_ZK_MAXTO, DEFAULT_ZK_MAXTO));
 				}
-//				zkConfigProperties.setProperty("server.0", "PP-DT-NWHI-01:" + clientPort + ":" + (clientPort+1)); //  + ":PARTICIPANT");
-				configProperties.clear();
-				
-				configProperties.setProperty("brokerid", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BROKERID, DEFAULT_BROKERID));
 				
 				if(launchZooKeeper) {
 					log.info(">>>>> Starting Embedded ZooKeeper...");
 					log.info("Embedded Kafka ZooKeeper Config: {}",  zkConfigProperties);
-//					zkConfig = new QuorumPeerConfig();
+					zkConfig = new QuorumPeerConfig();
 	//				zkConfig.parse(System.getenv("ZOOKEEPER_HOME") + File.separator + "conf" + File.separator + "zoo.cfg");
-//					zkConfig.parseProperties(zkConfigProperties);
+					zkConfig.parseProperties(zkConfigProperties);
 					final Thread zkRunThread;
 					final Throwable[] t = new Throwable[1];
-					final CountDownLatch latch = new CountDownLatch(1);
-					zkRunThread = new Thread("ZKRunThread") {
-						@Override
-						public void run() {
-							zkServer = new TestZooKeeperServer();
-							try {
-								zkServer.runFromConfig(sc);
-								latch.countDown();
-							} catch (Exception ex) {								
-								log.error("Failed to start TestZooKeeperServer", ex);
-								t[0] = ex;
+					if(zkConfig.getServers().size() > 1) {
+						standalone.set(false);
+						zkServer = new QuorumPeerMain();
+						zkRunThread = new Thread("ZooKeeperRunThread") {
+							@Override
+							public void run() {
+								try {
+									zkServer.runFromConfig(zkConfig);
+								} catch (IOException ex) {
+									log.error("Failed to start ZooKeeper", ex);
+									t[0] = ex;
+								}
 							}
-						}
-					};
+						};
+					} else {
+						standalone.set(true);
+						sc = new ServerConfig();
+						sc.readFrom(zkConfig);
+						zkSoServer = new ZooKeeperServerMain();					
+						zkRunThread = new Thread("ZooKeeperStandaloneRunThread") {
+							@Override
+							public void run() {
+								try {
+									zkSoServer.runFromConfig(sc);
+								} catch (IOException ex) {
+									log.error("Failed to start standalone ZooKeeper", ex);
+									t[0] = ex;
+								}
+							}
+						};
+					}
 					zkRunThread.setDaemon(true);
 					zkRunThread.start();
-					if(!latch.await(5, TimeUnit.SECONDS)) {
-						throw new RuntimeException("Timed out waiting for zookeeper to start");
-					}
-					if(t[0]!=null) {
-						throw new RuntimeException("Failed to start zookeeper", t[0]);
-					}
 					log.info("<<<<< Embedded ZooKeeper started.");
-					zooKeeperPort = zkServer.getPort();
-					zookeepConnect = clientPortAddress + ":" + zooKeeperPort;
 				}
-				configProperties.setProperty("zookeeper.connect", zookeepConnect);
+				
+//				ZooKeeperServer zkServer  = new ZooKeeperServer(new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR)), new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR)), 200);
+				configProperties.clear();
+				kafkaPort = kafkaReservedPort.getPort();
 				configProperties.setProperty("delete.topic.enable", "true");
 				configProperties.setProperty("log.dir", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOG_DIR, DEFAULT_LOG_DIR));
-				configProperties.setProperty("port", "" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_PORT, DEFAULT_PORT));
-				configProperties.setProperty("enable.zookeeper", "" + ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_ZOOKEEP, DEFAULT_ZOOKEEP));
-				configProperties.setProperty("auto.create.topics.enable", "false");
-				configProperties.setProperty("delete.topic.enable", "true");
-//				configProperties.setProperty("listeners", "PLAINTEXT://0.0.0.0:0");
-				configProperties.setProperty("broker.id", "1");
-				configProperties.setProperty("advertised.host.name", "localhost");
-				configProperties.setProperty("advertised.port", "" + zooKeeperPort);
+				configProperties.setProperty("log.dirs", ConfigurationHelper.getSystemThenEnvProperty(CONFIG_LOG_DIR, DEFAULT_LOG_DIR));
+				configProperties.setProperty("port", "" + kafkaPort);
+//				configProperties.setProperty("enable.zookeeper", "" + ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_ZOOKEEP, DEFAULT_ZOOKEEP));
+				configProperties.setProperty("zookeeper.connect", zookeepConnect);
+				configProperties.setProperty("broker.id", "0");//"" + ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BROKERID, DEFAULT_BROKERID));
 				
+				configProperties.setProperty("socket.request.max.bytes", "104857600");
+				configProperties.setProperty("num.io.threads", "8");
+				configProperties.setProperty("socket.send.buffer.bytes", "102400");
+				configProperties.setProperty("log.retention.check.interval.ms", "300000");
+				configProperties.setProperty("log.retention.hours", "168");
+				configProperties.setProperty("zookeeper.connection.timeout.ms", "20000");
+				configProperties.setProperty("num.recovery.threads.per.data.dir", "1");
+				configProperties.setProperty("socket.receive.buffer.bytes", "102400");
+				configProperties.setProperty("num.network.threads", "3");
+				configProperties.setProperty("num.partitions", "1");
+				configProperties.setProperty("log.segment.bytes", "1073741824");
 				
+				configProperties.setProperty("key.converter", "org.apache.kafka.connect.json.JsonConverter");
+				configProperties.setProperty("internal.key.converter.schemas.enable", "false");
+				configProperties.setProperty("value.converter", "org.apache.kafka.connect.json.JsonConverter");
+				configProperties.setProperty("offset.storage.file.filename", "/tmp/connect.offsets");
+				configProperties.setProperty("key.converter.schemas.enable", "true");
+				configProperties.setProperty("offset.flush.interval.ms", "10000");
+				configProperties.setProperty("internal.key.converter", "org.apache.kafka.connect.json.JsonConverter");
+				configProperties.setProperty("internal.value.converter.schemas.enable", "false");
+				configProperties.setProperty("value.converter.schemas.enable", "true");
+				configProperties.setProperty("internal.value.converter", "org.apache.kafka.connect.json.JsonConverter");
 				
-				
-				
-				log.info("ZooKeep Connect: [{}]", zookeepConnect);
-//				TestZooKeeperServer zkServer  = new TestZooKeeperServer(new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_DATA_DIR, DEFAULT_ZK_DATA_DIR)), new File(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_ZK_LOG_DIR, DEFAULT_ZK_LOG_DIR)), 200);
 				
 				
 				log.info(">>>>> Starting Embedded Kafka...");
 				log.info("Embedded Kafka Broker Config: {}",  configProperties);
 				kafkaConfig = new KafkaConfig(configProperties);
-				kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, null);
-				kafkaServer.startup();
-				kafkaPort = kafkaServer.boundPort(SecurityProtocol.PLAINTEXT); 
-				log.info("<<<<< Embedded Kafka started on port [" + kafkaPort + "]");
+				Option<String> pref = Option.apply("KafkaThread");
+//				KafkaServerStartable startable = KafkaServerStartable.fromProps(configProperties);
+//				startable.startup();
+				Time mock = new MockTime();
+				kafkaServer = TestUtils.createServer(kafkaConfig, mock);
+				
+//				kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, pref);				
+				kafkaServer.startup();				
+				servers.add(kafkaServer);
+				
+								
+//				BrokerState brokerState = kafkaServer.brokerState();
+				log.info("Base Kafka Server Up. Creating Offsets topic...");
+				final Properties offsetTopicProps = new Properties();
+				offsetTopicProps.setProperty("compression.type", "uncompressed");
+				offsetTopicProps.setProperty("cleanup.policy", "compact");
+				offsetTopicProps.setProperty("segment.bytes", "1048576");
+				createTopic("__consumer_offsets", 1, 1, offsetTopicProps);
+				TestUtils.waitUntilLeaderIsKnown(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
+				TestUtils.waitUntilMetadataIsPropagated(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
+				log.info("<<<<< Embedded Kafka started. State ");
 			} catch (Exception ex) {
 				running.set(false);
 				configProperties.clear();
@@ -591,21 +657,20 @@ public class KafkaTestServer {
 	}
 
 	/**
-	 * Returns the zookeeper port 
-	 * @return the zooKeeperPort
+	 * Returns 
+	 * @return the zooKeepPort
 	 */
-	public int getZooKeeperPort() {
-		return zooKeeperPort;
+	public int getZooKeepPort() {
+		return zooKeepPort;
 	}
-	
+
 	/**
-	 * Returns the kafka port 
-	 * @return the kafka port
+	 * Returns 
+	 * @return the kafkaPort
 	 */
 	public int getKafkaPort() {
 		return kafkaPort;
 	}
-	
 
 }
 

@@ -26,6 +26,8 @@ import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.springframework.beans.factory.annotation.Required;
+import org.springframework.jmx.export.annotation.ManagedAttribute;
+import org.springframework.jmx.export.annotation.ManagedResource;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
@@ -43,6 +45,8 @@ import com.heliosapm.streams.metrics.processors.TimestampedMetricKey;
 public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessorSupplier<String, StreamedMetric, String, StreamedMetric> {
 	/** The aggregation period to supply to created StreamedMetricMeter instances  */
 	protected int aggregationPeriod = -1;
+	/** The timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store */
+	protected int idleTimeout = -1;
 	
 	
 	/**
@@ -51,8 +55,14 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 	 */
 	@Override
 	public Processor<String, StreamedMetric> get() {
-		final StreamedMetricMeter processor = new StreamedMetricMeter(aggregationPeriod, period, getStateStoreNames()[0]);
+		final StreamedMetricMeter processor = new StreamedMetricMeter(aggregationPeriod, period, getStateStoreNames()[0], idleTimeout);		
 		startedProcessors.add(processor);
+//		if(appCtx!=null) {
+//			
+//			appCtx.getAutowireCapableBeanFactory().applyBeanPostProcessorsAfterInitialization(processor, beanName);
+//			appCtx.getAutowireCapableBeanFactory().autowireBean(processor);
+//			appCtx.getAutowireCapableBeanFactory().configureBean(processor, beanName + "Instance");
+//		}
 		return processor;
 	}
 	
@@ -62,21 +72,27 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
 	 * <p><code>com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier.StreamedMetricMeter</code></p>
 	 */
+	@ManagedResource
 	static class StreamedMetricMeter extends AbstractStreamedMetricProcessor<String, StreamedMetric> {
 		/** The aggregation period of this meter in seconds */
 		protected final int aggregationPeriod;
 		/** The first timestamp for each unique metric key in the current period */
 		protected KeyValueStore<String, TimestampedMetricKey> metricTimestampStore;
+		/** The timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store */
+		protected final int idleTimeout;
+		
 		
 		/**
 		 * Creates a new StreamedMetricMeter
 		 * @param aggregationPeriod The aggregation period of this meter in seconds.
 		 * @param period The punctuation period in ms.
 		 * @param metricTimestampStoreName The name of the metric timestamp state store
+		 * @param idleTimeout the idle timeout period in secs.
 		 */
-		protected StreamedMetricMeter(final int aggregationPeriod, final long period, final String metricTimestampStoreName) {
+		protected StreamedMetricMeter(final int aggregationPeriod, final long period, final String metricTimestampStoreName, final int idleTimeout) {
 			super(ValueType.METER, period, new String[]{metricTimestampStoreName});
 			this.aggregationPeriod = aggregationPeriod;
+			this.idleTimeout = idleTimeout;
 			log.info("Created Instance [" + System.identityHashCode(this) + "]");
 		}
 		
@@ -110,7 +126,7 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 			} else {
 				log.debug("MTS from Store: [{}]", tmk);
 				if(!tmk.isSameSecondAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong(), aggregationPeriod)) {
-					log.debug("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
+					log.info("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
 					final StreamedMetric f = StreamedMetric.fromKey(System.currentTimeMillis(), tmk.getMetricKey(), tmk.getCount());
 					boolean ok = true;
 					if(context==null) {
@@ -128,7 +144,7 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 					if(ok) {
 						context.forward(f.metricKey(), f);
 						context.commit();
-						
+						forwardCounter.inc();
 						log.info("Committed Batch: [{}]:[{}]",  tmk.getMetricKey(), tmk.getCount());
 					}
 					tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
@@ -149,10 +165,12 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 				while(iter.hasNext()) {
 					try {
 						final KeyValue<String, TimestampedMetricKey> kv = iter.next();
-						if(kv.value.isExpired(timestamp, aggregationPeriod)) {					
-							context.forward(kv.key, StreamedMetric.fromKey(timestamp, kv.value.getMetricKey(), kv.value.getCount()));
+						if(kv.value.isExpired(timestamp, aggregationPeriod, idleTimeout)) {
+							context.forward(kv.key, StreamedMetric.fromKey(timestamp, kv.value.getMetricKey(), kv.value.reset()));
+							metricTimestampStore.put(kv.key, kv.value);
+						} else {
 							metricTimestampStore.delete(kv.key);
-						}						
+						}
 					} catch (Exception x) {
 						/* No Op */
 					}
@@ -161,6 +179,24 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 			} finally {
 				iter.close();
 			}
+		}
+
+		/**
+		 * Returns the length of the time in seconds window within which incoming metrics will be aggregated and forwarded 
+		 * @return the length of the time in seconds window within which incoming metrics will be aggregated and forwarded
+		 */
+		@ManagedAttribute(description="The the length of the time in seconds window within which incoming metrics will be aggregated and forwarded")
+		public int getAggregationPeriod() {
+			return aggregationPeriod;
+		}
+
+		/**
+		 * Returns the timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store 
+		 * @return the timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store
+		 */
+		@ManagedAttribute(description="The timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store")
+		public int getIdleTimeout() {
+			return idleTimeout;
 		}
 	}
 	
@@ -183,6 +219,23 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 	public void setAggregationPeriod(final int aggregationPeriod) {
 		if(aggregationPeriod<1) throw new IllegalArgumentException("Invalid aggregation period: " + aggregationPeriod);
 		this.aggregationPeriod = aggregationPeriod;
+	}
+
+	/**
+	 * Returns the timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store
+	 * @return the idle timeout
+	 */
+	public int getIdleTimeout() {
+		return idleTimeout;
+	}
+
+	/**
+	 * Sets the timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store
+	 * @param idleTimeout the idle timeout in seconds
+	 */
+	public void setIdleTimeout(final int idleTimeout) {
+		if(idleTimeout<1) throw new IllegalArgumentException("Invalid idle timeout: " + idleTimeout);
+		this.idleTimeout = idleTimeout;
 	}
 
 }

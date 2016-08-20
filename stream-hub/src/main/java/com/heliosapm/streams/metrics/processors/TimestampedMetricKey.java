@@ -24,7 +24,6 @@
  */
 package com.heliosapm.streams.metrics.processors;
 
-import java.nio.ByteOrder;
 import java.nio.charset.Charset;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -33,7 +32,7 @@ import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serializer;
 
-import com.heliosapm.utils.time.SystemClock;
+import io.undertow.conduits.IdleTimeoutConduit;
 
 /**
  * <p>Title: TimestampedMetricKey</p>
@@ -59,7 +58,7 @@ public class TimestampedMetricKey {
 	
 	/**
 	 * Creates a new TimestampedMetricKey
-	 * @param unixTime The effective time of this key
+	 * @param unixTime The effective time of this key in unix time
 	 * @param initialCount The initial count
 	 * @param metricKey The metric key
 	 */
@@ -83,30 +82,29 @@ public class TimestampedMetricKey {
 		return ser;
 	}
 	
-	public static void main(String args[]) {
-		log("Ser Test");
-		final long now = SystemClock.unixTime();
-		log("Time Width:" + ("" + now).length());
-		final TimestampedMetricKey tmk = new TimestampedMetricKey(now, 7, "foo-bar");
-		log("TMK1:" + tmk);
-		final byte[] b = tmk.toBytes();
-		final TimestampedMetricKey tmk2 = new TimestampedMetricKey(b);
-		log("TMK2:" + tmk2);
+	/**
+	 * Resets the count to zero
+	 * @return the prior count
+	 */
+	public long reset() {
+		final long priorCount = count;
+		count = 0;
+		return priorCount;
+	}
 		
-	}
-
-	public static void log(Object msg) {
-		System.out.println(msg);
-	}
 	
-	
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
 	public String toString() {
 		return metricKey + ":" + unixTime + ":" + count;
 	}
 	
 	
 	/**
-	 * Returns the effective time of this key
+	 * Returns the effective time of this key as a unix time
 	 * @return the unixTime
 	 */
 	public long getUnixTime() {
@@ -130,7 +128,7 @@ public class TimestampedMetricKey {
 	}
 	
 	/**
-	 * Indicates if the passed timestamp is in the same seco
+	 * Indicates if the passed timestamp is in the same sec
 	 * @param mstime The ms timestamp
 	 * @param count The number to increment by
 	 * @param windowSize The window period in seconds
@@ -144,41 +142,91 @@ public class TimestampedMetricKey {
 	}
 	
 	/**
-	 * Indicates if this TimestampedMetricKey is expired
+	 * Indicates if this TimestampedMetricKey is expired but not idle
 	 * @param mstime The ms timestamp
 	 * @param windowSize The window period in seconds
+	 * @param idleTimeout The idle timeout in seconds
 	 * @return true if this TimestampedMetricKey is expired, false otherwise
 	 */
-	public boolean isExpired(final long mstime, final long windowSize) {
+	public boolean isExpired(final long mstime, final long windowSize, final long idleTimeout) {
+		final long sec = TimeUnit.MILLISECONDS.toSeconds(mstime);		
+		return sec >= unixTime && sec <= (unixTime + windowSize) && unixTime < (unixTime + idleTimeout);		
+	}
+	
+	/**
+	 * Determines if this {@link TimestampedMetricKey} has been idle for at least the idle timeout
+	 * @param mstime The current time in ms.
+	 * @param idleTimeout The idle timeout in seconds
+	 * @return true if idle, false otherwise
+	 */
+	public boolean isIdle(final long mstime, final long idleTimeout) {
 		final long sec = TimeUnit.MILLISECONDS.toSeconds(mstime);
-		return sec >= unixTime && sec <= (unixTime + windowSize);		
+		return (sec - unixTime) > idleTimeout;
 	}
 	
 	
+	/**
+	 * <p>Title: TimestampedMetricKeySerializer</p>
+	 * <p>Description: Serializers for TimestampedMetric instances</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.metrics.processors.TimestampedMetric.TimestampedMetricKeySerializer</code></p>
+	 */
 	public static class TimestampedMetricKeySerializer implements Serializer<TimestampedMetricKey> {
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Serializer#configure(java.util.Map, boolean)
+		 */
 		@Override
 		public void configure(final Map<String, ?> configs, final boolean isKey) {
 			/* Nop Op */			
 		}
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Serializer#close()
+		 */
 		@Override
 		public void close() {
 			/* No Op */
 		}
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Serializer#serialize(java.lang.String, java.lang.Object)
+		 */
 		@Override
 		public byte[] serialize(final String topic, final TimestampedMetricKey data) {
 			return data.toBytes();
 		}
 	}
 	
+	/**
+	 * <p>Title: TimestampedMetricKeyDeserializer</p>
+	 * <p>Description: Deserializer for TimestampedMetric instances</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.metrics.processors.TimestampedMetric.TimestampedMetricKeyDeserializer</code></p>
+	 */
 	public static class TimestampedMetricKeyDeserializer implements Deserializer<TimestampedMetricKey> {
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Deserializer#configure(java.util.Map, boolean)
+		 */
 		@Override
 		public void configure(final Map<String, ?> configs, final boolean isKey) {
 			/* Nop Op */			
 		}
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Deserializer#close()
+		 */
 		@Override
 		public void close() {
 			/* No Op */
 		}
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Deserializer#deserialize(java.lang.String, byte[])
+		 */
 		@Override
 		public TimestampedMetricKey deserialize(final String topic, final byte[] data) {
 			if(data==null || data.length==0) return null;
@@ -207,6 +255,12 @@ public class TimestampedMetricKey {
     	
     }	
     
+    /**
+     * Deseralizes a long from the passed byte array
+     * @param data The bytes to deserialize from
+     * @param offset the offset in the passed byte array to start at
+     * @return the long value
+     */
     public static long deserialize(final byte[] data, final int offset) {
         if (data.length < 8) {
             throw new SerializationException("Size of data received by LongDeserializer is " +
