@@ -127,18 +127,32 @@ public class TimestampedMetricKey {
 		return count;
 	}
 	
+	
+	public static long periodFromMs(final long time, final long windowSize) {
+		final long secs = TimeUnit.MILLISECONDS.toSeconds(time);
+		final long mod = secs%windowSize;
+		return secs - mod;
+	}
+	
+	public static long periodFromSec(final long secs, final long windowSize) {
+		final long mod = secs%windowSize;
+		return secs - mod;
+	}
+	
+	
 	/**
-	 * Indicates if the passed timestamp is in the same sec
+	 * Indicates if the passed timestamp is in the same aggregation period
 	 * @param mstime The ms timestamp
 	 * @param count The number to increment by
-	 * @param windowSize The window period in seconds
+	 * @param windowSize The aggregation period in seconds
 	 * @return true if in the range, false otherwise
 	 */
-	public boolean isSameSecondAs(final long mstime, final long count, final long windowSize) {
-		final long sec = TimeUnit.MILLISECONDS.toSeconds(mstime);
-		final boolean in = sec >= unixTime && sec <= (unixTime + windowSize);
-		if(in) this.count += count;
-		return in;
+	public boolean isSameAggPeriodAs(final long mstime, final long count, final long windowSize) {
+		if(periodFromMs(mstime, windowSize)==periodFromSec(unixTime, windowSize)) {
+			this.count += count;
+			return true;
+		}
+		return false;
 	}
 	
 	/**

@@ -28,11 +28,12 @@ import java.util.Properties;
 import javax.management.remote.jmxmp.JMXMPConnectorServer;
 
 import org.springframework.boot.SpringApplication;
-import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.ApplicationContext;
 
 import com.heliosapm.streams.common.zoo.AdminFinder;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
+import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
 
@@ -78,7 +79,7 @@ public class StreamHubBoot {
 	 */
 	
 	/** The current spring boot instantiated application context */
-	protected ConfigurableApplicationContext appCtx = null;
+	protected static ApplicationContext appCtx = null;
 	/** The current spring boot application instance */
 	protected SpringApplication springApp = null;
 	/** The AdminFinder instance */

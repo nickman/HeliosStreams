@@ -11,13 +11,27 @@
         
     <context:property-placeholder/>
     <context:annotation-config/>
+    <context:spring-configured/>
     <context:mbean-export registration="ignoreExisting" server="MBeanServer" />
     
-	<bean id="MBeanServer" class="java.lang.management.ManagementFactory"
-		lazy-init="false" factory-method="getPlatformMBeanServer">
+	<bean id="MBeanServer" class="com.heliosapm.utils.jmx.JMXHelper"
+		lazy-init="false" factory-method="getHeliosMBeanServer">
 	</bean>
     
+     <!-- 
+    <bean id="exporter" class="org.springframework.jmx.export.MBeanExporter">
+        <property name="assembler" ref="assembler"/>
+        <property name="autodetect" value="true"/>
+    </bean>
     
+	<bean id="jmxAttributeSource"
+            class="org.springframework.jmx.export.annotation.AnnotationJmxAttributeSource"/>    
+    
+   <bean id="assembler" class="org.springframework.jmx.export.assembler.MetadataMBeanInfoAssembler">
+        <property name="attributeSource" ref="jmxAttributeSource"/>
+    </bean>
+            
+    -->
 
     <bean id="metricTimestampStoreDefinition" class="com.heliosapm.streams.metrics.store.StateStoreDefinition">
 		<property name="keySerde">
@@ -42,6 +56,7 @@
     
     <bean id="meterTextSupplier" class="com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier">
     	<property name="aggregationPeriod" value="${streamhub.streamed.metric.supplier.meter.aggregationperiod:5}"/>
+    	<property name="idleTimeout" value="${streamhub.streamed.metric.supplier.meter.idletimeout:120}"/>
     	<property name="period" value="${streamhub.streamed.metric.supplier.meter.period:5000}"/>
     	<property name="sources" value="${streamhub.streamed.metric.supplier.meter.source:tsdb.metrics.meter}"/>
     	<property name="topicSink" value="${streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary}"/>
@@ -64,7 +79,7 @@
     	</property>
     </bean>
     
-    <bean id="meterText" factory-bean="meterTextSupplier" factory-method="get" />
+    <bean id="textMetricsMeter" factory-bean="meterTextSupplier" factory-method="get" />
     
     <bean id="straightThroughText" class="com.heliosapm.streams.metrics.processors.impl.StraightThroughMetricProcessorSupplier">
     	<property name="maxForwards" value="${streamhub.streamed.metric.supplier.straightthrough.maxforwards:100}"/>
@@ -84,6 +99,8 @@
     		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE"/>
     	</property>
     </bean>
+    
+    <bean id="textMetrics" factory-bean="straightThroughText" factory-method="get" />
     
     
     <bean id="textRouter" class="com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter">

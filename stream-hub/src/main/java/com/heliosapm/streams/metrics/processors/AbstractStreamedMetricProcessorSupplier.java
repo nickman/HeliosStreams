@@ -33,9 +33,10 @@ import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.annotation.Required;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.jmx.export.annotation.ManagedAttribute;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
-import com.heliosapm.streams.metrics.store.StateStoreDefinition;
+import com.heliosapm.streams.metrics.store.StateStoreDefinition;import com.heliosapm.utils.jmx.ManagedForkJoinPoolMXBean;
 
 /**
  * <p>Title: AbstractStreamedMetricProcessorSupplier</p>
@@ -68,7 +69,11 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	protected Serde<SV> sinkValueSerde = null;
 	
 	/** All processors created from this supplier */
-	protected final List<Processor<String, StreamedMetric>> startedProcessors = new CopyOnWriteArrayList<Processor<String, StreamedMetric>>();
+	protected final List<Processor<K, V>> startedProcessors = new CopyOnWriteArrayList<Processor<K, V>>();
+	
+	/** The maximum number of forwarded messages without a commit */
+	protected int maxForwardsWithoutCommit = 100;
+
 	
 	/** The topology name for this processor's source */
 	protected String sourceName = null;
@@ -82,6 +87,9 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	
 	/** The spring bean name */
 	protected String beanName = null;
+	
+	/** The processor instance */
+	protected volatile AbstractStreamedMetricProcessor<K,V> processor = null;
 	
 	/**
 	 * Creates a new AbstractStreamedMetricProcessorSupplier
@@ -102,6 +110,30 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 		sinkName = beanName + SINK_NAME_SUFFIX;
 		
 	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.kafka.streams.processor.ProcessorSupplier#get()
+	 */
+	@Override
+	public Processor<K, V> get() {
+		if(processor==null) {
+			synchronized(this) {
+				if(processor==null) {
+					processor = getProcessor();
+					startedProcessors.add(processor);
+				}
+			}
+		}
+		return processor;
+	}
+	
+	/**
+	 * Creates and returns the processor
+	 * @return the processor
+	 */
+	protected abstract AbstractStreamedMetricProcessor<K,V> getProcessor();
 	
 	/**
 	 * {@inheritDoc}
@@ -297,7 +329,7 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	@Override
 	public void shutdown() {
 		log.info(">>>>>  Stopping [{}]...", getClass().getSimpleName());
-		for(Processor<String, StreamedMetric> p: startedProcessors) {
+		for(Processor<K, V> p: startedProcessors) {
 			try {
 				log.info(">>>>>  Stopping Processor [{}]...", p.getClass().getSimpleName());
 				p.close();
@@ -319,15 +351,22 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 		this.appCtx = appCtx;		
 	}
 
-//	/**
-//	 * {@inheritDoc}
-//	 * @see org.apache.kafka.streams.processor.ProcessorSupplier#get()
-//	 */
-//	@Override
-//	public Processor<K, V> get() {
-//		// TODO Auto-generated method stub
-//		return null;
-//	}
-
+	/**
+	 * Returns the max number of forwards without a commit
+	 * @return the max number of forwards without a commit
+	 */
+	public int getMaxForwardsWithoutCommit() {
+		return maxForwardsWithoutCommit;
+	}
+	
+	/**
+	 * Sets the max number of forwards without a commit
+	 * @param maxForwards the maxForwards
+	 */
+	public void setMaxForwardsWithoutCommit(final int maxForwards) {
+		if(maxForwards < 1) throw new IllegalArgumentException("Invalid max forwards: [" + maxForwards + "]");
+		this.maxForwardsWithoutCommit = maxForwards;
+	}
+	
 
 }

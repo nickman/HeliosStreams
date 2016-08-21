@@ -21,6 +21,9 @@ package com.heliosapm.streams.metrics.processors;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
@@ -54,7 +57,7 @@ import com.heliosapm.utils.jmx.JMXHelper;
  * @param <K> The key type
  * @param <V> The value type
  */
-
+@ManagedResource
 public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<K, V>, BeanNameAware, SelfNaming {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -65,7 +68,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	/** The names of state stores used by this processor */
 	protected final String[] stateStoreNames;
 	/** The injected processor context */
-	protected ProcessorContext context = null;
+	private ProcessorContext context = null;
 	/** The punctuation period */
 	protected final long period;
 	/** The state stores allocated for this processor */
@@ -77,7 +80,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	//protected final Counter dropCounter = SharedMetricsRegistry.getInstance().counter("StreamedMetricProcessor." + getClass().getSimpleName() + ".dropped");
 	protected final Counter dropCounter = SharedMetricsRegistry.getInstance().counter(getClass().getSimpleName() + ".dropped");
 	/** The forwarded message counter */
-	protected final Counter forwardCounter = SharedMetricsRegistry.getInstance().counter(getClass().getSimpleName() + ".forwarded");
+	private final Counter forwardCounter = SharedMetricsRegistry.getInstance().counter(getClass().getSimpleName() + ".forwarded");
 	/** A timed cache of the timer's snapshot */
 	protected final CachedGauge<Snapshot> timerSnapshot = new CachedGauge<Snapshot>(15, TimeUnit.SECONDS) {
 		@Override
@@ -85,6 +88,22 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 			return timer.getSnapshot();
 		}
 	};
+	/** A counter for failed forwards */
+	private final LongAdder forwardFailures = new LongAdder();
+	
+	// ================
+	// Forwarding
+	// ================
+	/** The maximum number of forwarded messages without a commit */
+	protected final int maxForwardsWithoutCommit;
+	/** The number of uncommited forwards */
+	protected final AtomicInteger uncomittedForwards = new AtomicInteger(0);
+	/** CAS lock on commit */
+	protected final AtomicBoolean inCommit = new AtomicBoolean(false);
+	
+	
+	
+	// ================
 	
 	/** The processor's bean name */
 	protected String beanName = null;
@@ -96,12 +115,14 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * Creates a new AbstractStreamedMetricProcessor
 	 * @param valueType The value type this processor supplies stream processing for
 	 * @param period The punctuation period (ignored if less than 1)
+	 * @param maxForwards The max forwards without a commit
 	 * @param stateStoreNames The names of the state stores used by this processor
 	 */
-	protected AbstractStreamedMetricProcessor(final ValueType valueType, final long period, final String...stateStoreNames) {
+	protected AbstractStreamedMetricProcessor(final ValueType valueType, final long period, final int maxForwards, final String...stateStoreNames) {
 		this.valueType = valueType;
 		this.period = period;
 		this.stateStoreNames = stateStoreNames;
+		this.maxForwardsWithoutCommit = maxForwards; 
 	}
 
 	/**
@@ -122,6 +143,8 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 		}
 		applicationId = context.applicationId();
 	}
+	
+	
 	
 	/**
 	 * Returns the named state store
@@ -163,6 +186,31 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	public void punctuate(final long timestamp) {
 		/* No Op */
 	}
+	
+	/**
+	 * Commits the context
+	 */
+	protected final void commit() {
+		for(; ;) {
+			if(inCommit.compareAndSet(false, true)) {
+				try {
+					final int current = uncomittedForwards.get(); 
+					if(current > 0) {
+						context.commit();
+						forwardCounter.inc(
+							uncomittedForwards.getAndSet(0)
+						);
+						log.info("Comitted [{}] messages", current);
+						return;
+					}
+				} finally {
+					inCommit.set(false);					
+				}
+				break;
+			}			
+		}
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -183,15 +231,6 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 //			}
 //		}
 //		log.info("<<<<< Stopped [{}].", getClass().getSimpleName());
-	}
-	
-	/**
-	 * Returns the application id
-	 * @return the application id
-	 */
-	@ManagedAttribute(description="The consumer application id")
-	public String getApplicationId() {
-		return applicationId;
 	}
 	
 	/**
@@ -266,7 +305,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Timer#getCount()
 	 */
 	@ManagedMetric(metricType=MetricType.COUNTER, category="MetricProcessors", description="The total number of processed inbound messages")
-	public long getCount() {
+	public long getInboundCount() {
 		return timer.getCount();
 	}
 
@@ -276,7 +315,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Timer#getFifteenMinuteRate()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The rate of processed inbound messages in the last 15 minutes")
-	public double getFifteenMinuteRate() {
+	public double getInboundRate15m() {
 		return timer.getFifteenMinuteRate();
 	}
 
@@ -286,7 +325,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Timer#getFiveMinuteRate()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The rate of processed inbound messages in the last 5 minutes")
-	public double getFiveMinuteRate() {
+	public double getInboundRate5m() {
 		return timer.getFiveMinuteRate();
 	}
 
@@ -296,7 +335,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Timer#getMeanRate()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The mean rate of processed inbound messages")
-	public double getMeanRate() {
+	public double getInboundMeanRate() {
 		return timer.getMeanRate();
 	}
 
@@ -306,7 +345,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Timer#getOneMinuteRate()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The rate of processed inbound messages in the last minute")
-	public double getOneMinuteRate() {
+	public double getInboundRate1m() {
 		return timer.getOneMinuteRate();
 	}
 
@@ -317,7 +356,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#getMedian()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The median time in ms to process inbound messages", unit="ms")
-	public double getMedian() {
+	public double getInboundElapsedMedian() {
 		return timerSnapshot.getValue().getMedian();
 	}
 
@@ -327,7 +366,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#get75thPercentile()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The median time in ms at which 75% of inbound messages are processed", unit="ms")
-	public double get75thPercentile() {
+	public double getInboundElapsed75Pct() {
 		return timerSnapshot.getValue().get75thPercentile();
 	}
 
@@ -337,7 +376,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#get95thPercentile()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The median time in ms at which 95% of inbound messages are processed", unit="ms")
-	public double get95thPercentile() {
+	public double getInboundElapsed95Pct() {
 		return timerSnapshot.getValue().get95thPercentile();
 	}
 
@@ -347,7 +386,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#get98thPercentile()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The median time in ms at which 98% of inbound messages are processed", unit="ms")
-	public double get98thPercentile() {
+	public double getInboundElapsed98Pct() {
 		return timerSnapshot.getValue().get98thPercentile();
 	}
 
@@ -357,7 +396,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#get99thPercentile()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The median time in ms at which 99% of inbound messages are processed", unit="ms")
-	public double get99thPercentile() {
+	public double getInboundElapsed99Pct() {
 		return timerSnapshot.getValue().get99thPercentile();
 	}
 
@@ -367,7 +406,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#get999thPercentile()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The median time in ms at which 99.9% of inbound messages are processed", unit="ms")
-	public double get999thPercentile() {
+	public double getInboundElapsed999Pct() {
 		return timerSnapshot.getValue().get999thPercentile();
 	}
 
@@ -377,7 +416,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#getMax()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The max time in ms to process inbound messages", unit="ms")
-	public long getMax() {
+	public long getInboundElapsedMax() {
 		return timerSnapshot.getValue().getMax();
 	}
 
@@ -387,7 +426,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#getMean()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The mean time in ms to process inbound messages", unit="ms")
-	public double getMean() {
+	public double getInboundElapsedMean() {
 		return timerSnapshot.getValue().getMean();
 	}
 
@@ -397,7 +436,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @see com.codahale.metrics.Snapshot#getMin()
 	 */
 	@ManagedMetric(metricType=MetricType.GAUGE, category="MetricProcessors", description="The minimum time in ms to process inbound messages", unit="ms")
-	public long getMin() {
+	public long getInboundElapsedMin() {
 		return timerSnapshot.getValue().getMin();
 	}
 
@@ -406,8 +445,183 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @return the forwardCounter
 	 */
 	@ManagedMetric(metricType=MetricType.COUNTER, category="MetricProcessors", description="The count of forwarded messages")
-	public long getForwardedCount() {
+	public long getForwardCount() {
 		return forwardCounter.getCount();
 	}
+
+	/**
+	 * Returns the max number of forwards without a commit
+	 * @return the max number of forwards without a commit
+	 */
+	@ManagedAttribute(description="The max number of forwards without a commit")
+	public int getMaxForwardsWithoutCommit() {
+		return maxForwardsWithoutCommit;
+	}
+
+	/**
+	 * Returns the number of forwards without a commit
+	 * @return the uncomittedForwards
+	 */
+	@ManagedAttribute(description="The number of forwards without a commit")
+	public int getUncomittedForwards() {
+		return uncomittedForwards.get();
+	}
+
+	/**
+	 * Returns the application id
+	 * @return the application id
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#applicationId()
+	 */
+	@ManagedAttribute(description="The processor application id")
+	public String getApplicationId() {
+		return applicationId;
+	}
+
+	/**
+	 * Returns the task id
+	 * @return the task id
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#taskId()
+	 */
+	@ManagedAttribute(description="The processor task id")
+	public String getTaskId() {
+		return context.taskId().toString();
+	}
+
+	/**
+	 * Returns the name of the key serde class
+	 * @return the name of the key serde class
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#keySerde()
+	 */
+	@ManagedAttribute(description="The processor key serde type")
+	public String getKeySerde() {
+		return context.keySerde().getClass().getName();
+	}
+
+	/**
+	 * Returns the name of the value serde class
+	 * @return the name of the value serde class
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#valueSerde()
+	 */
+	@ManagedAttribute(description="The processor value serde type")
+	public String getValueSerde() {
+		return context.valueSerde().getClass().getName();
+	}
+
+	/**
+	 * Returns this processor's state directory
+	 * @return this processor's state directory
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#stateDir()
+	 */
+	@ManagedAttribute(description="The processor state directory")
+	public String getStateDir() {
+		return context.stateDir().getAbsolutePath();
+	}
+	
+	/**
+	 * Returns the total number of failed forwards
+	 * @return the total number of failed forwards
+	 */
+	@ManagedAttribute(description="The total number of failed forwards")
+	public long getFailedForwards() {
+		return forwardFailures.sum();
+	}
+
+//	/**
+//	 * @param store
+//	 * @param loggingEnabled
+//	 * @param stateRestoreCallback
+//	 * @see org.apache.kafka.streams.processor.ProcessorContext#register(org.apache.kafka.streams.processor.StateStore, boolean, org.apache.kafka.streams.processor.StateRestoreCallback)
+//	 */
+//	public void register(StateStore store, boolean loggingEnabled, StateRestoreCallback stateRestoreCallback) {
+//		context.register(store, loggingEnabled, stateRestoreCallback);
+//	}
+
+	/**
+     * Forwards a key/value pair to the downstream processors
+     * @param key key
+     * @param value value     * 
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#forward(java.lang.Object, java.lang.Object)
+	 */
+	protected final void forward(final K key, final V value) {
+		if(key==null || value==null) {
+			log.warn("KorV null [{}}:[{}]", key, value);
+			return;
+		}
+		if(context!=null) {
+			try {
+				context.forward(key, value);
+				if(uncomittedForwards.incrementAndGet() > maxForwardsWithoutCommit) {
+					commit();
+				}
+			} catch (Exception ex) {
+//				log.error("Forwarding failed", ex);
+				forwardFailures.increment();
+			}
+		} else {
+			log.warn("Context is null !!");
+		}
+	}
+
+	/**
+     * Forwards a key/value pair to one of the downstream processors designated by childIndex
+     * @param key key
+     * @param value value
+     * @param childIndex index in list of children of this node
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#forward(java.lang.Object, java.lang.Object, int)
+	 */
+	protected final void forward(final K key, final V value, final int childIndex) {
+		context.forward(key, value, childIndex);
+		if(uncomittedForwards.incrementAndGet() > maxForwardsWithoutCommit) {
+			commit();
+		}		
+	}
+
+	/**
+     * Forwards a key/value pair to one of the downstream processors designated by the downstream processor name
+     * @param key key
+     * @param value value
+     * @param childName name of downstream processor
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#forward(java.lang.Object, java.lang.Object, java.lang.String)
+	 */
+	protected final void forward(final K key, final V value, final String childName) {
+		context.forward(key, value, childName);
+		if(uncomittedForwards.incrementAndGet() > maxForwardsWithoutCommit) {
+			commit();
+		}				
+	}
+
+	/**
+     * Returns the topic name of the current input record; could be null if it is not
+     * available (for example, if this method is invoked from the punctuate call)
+     * @return the topic name
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#topic()
+	 */
+	@ManagedAttribute(description="The topic name of the current input record")
+	public String getTopic() {
+		return context.topic();
+	}
+
+	/**
+     * Returns the partition id of the current input record; could be -1 if it is not
+     * available (for example, if this method is invoked from the punctuate call)
+     * @return the partition id
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#partition()
+	 */
+	@ManagedAttribute(description="The partition id of the current input record")
+	public int getPartition() {
+		return context.partition();
+	}
+
+	/**
+     * Returns the offset of the current input record; could be -1 if it is not
+     * available (for example, if this method is invoked from the punctuate call)
+     * @return the offset
+	 * @see org.apache.kafka.streams.processor.ProcessorContext#offset()
+	 */
+	@ManagedAttribute(description="The partition id of the current input record")
+	public long getOffset() {
+		return context.offset();
+	}
+
 
 }

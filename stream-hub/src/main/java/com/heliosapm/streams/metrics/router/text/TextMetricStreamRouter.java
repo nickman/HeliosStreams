@@ -15,27 +15,27 @@
  */
 package com.heliosapm.streams.metrics.router.text;
 
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
-import org.apache.kafka.streams.processor.Processor;
-import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.processor.ProcessorSupplier;
 import org.apache.kafka.streams.processor.TopologyBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.jmx.export.annotation.ManagedAttribute;
+import org.springframework.jmx.export.annotation.ManagedResource;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.processors.StreamedMetricProcessorSupplier;
 import com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder;
 import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 
 /**
  * <p>Title: TextMetricStreamRouter</p>
@@ -45,7 +45,7 @@ import com.heliosapm.utils.io.StdInCommandHandler;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter</code></p>
  */
-
+@ManagedResource(objectName="com.heliosapm.streams.metrics.router.text:service=TextMetricStreamRouter")
 public class TextMetricStreamRouter implements InitializingBean, DisposableBean, BeanNameAware {
 	
 	/** The configuration key for the names of the topics to listen on */
@@ -127,7 +127,14 @@ public class TextMetricStreamRouter implements InitializingBean, DisposableBean,
 		for(StreamedMetricProcessorSupplier<?,?,?,?> processorSupplier : processorSuppliers) {
 			processorSupplier.configure(builder, null);
 		}
-		kafkaStreams = new KafkaStreams(builder, config);		
+		kafkaStreams = new KafkaStreams(builder, config);
+		kafkaStreams.setUncaughtExceptionHandler(new UncaughtExceptionHandler() {
+			@Override
+			public void uncaughtException(final Thread t, final Throwable e) {
+				log.error("Uncaught exception on thread [{}]", t, e);
+				
+			}
+		});
 		kafkaStreams.start(); 		
 		log.info("\n\t=================================================\n\t{} Started\n\t=================================================", beanName);
 	}
@@ -148,6 +155,32 @@ public class TextMetricStreamRouter implements InitializingBean, DisposableBean,
 		log.info("\n\t=================================================\n\t{} Stopped\n\t=================================================", beanName);
 	}
 
+	public static enum StreamState {
+	    CREATED,
+	    RUNNING,
+	    STOPPED,
+	    UNKNOWN;
+		
+		private static final StreamState[] values = values();
+		
+		public static StreamState decode(final int code) {
+			try {
+				return values[code];
+			} catch (Exception ex) {
+				return StreamState.UNKNOWN;
+			}
+		}
+		
+		
+	}
+	
+	@ManagedAttribute(description="The KafkaStreams state")
+	public String getStreamState() {
+		if(kafkaStreams!=null) {
+			return StreamState.decode((Integer)PrivateAccessor.getFieldValue(kafkaStreams, "state")).name();
+		}
+		return null;
+	}
 
 	/**
 	 * Returns the processor suppliers

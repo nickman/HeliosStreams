@@ -20,10 +20,12 @@ package com.heliosapm.streams;
 
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeSet;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -33,6 +35,7 @@ import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.EnableMBeanExport;
@@ -112,7 +115,25 @@ public class StreamHub implements Watcher {
 				@Override
 				public void onApplicationEvent(final ContextRefreshedEvent event) {
 					try {
-						log.info("\n\t==================================================\n\tStreamHubNode Started\n\t==================================================\n");
+						log.info("\n\t==================================================\n\tStreamHubNode Started [{}]\n\t==================================================\n", event.getApplicationContext().getId());
+						StdInCommandHandler.getInstance()
+						.registerCommandIfNotInstalled("beans", new Runnable(){
+							@Override
+							public void run() {
+								if(appCtx==null) {
+									loge("AppContext Not Loaded Yet");
+									return;
+								}
+
+								final TreeSet<String> beanNames = new TreeSet<String>(Arrays.asList(appCtx.getBeanDefinitionNames()));
+								log("Bean Names:\n==========");
+								for(String beanName: beanNames) {
+									log("\t" + beanName);
+								}
+								log("==========");
+							}
+						});
+						
 					} catch (Exception ex) {
 						System.err.println("AppContext Startup Failure. Shutting down. Stack trace follows.");
 						ex.printStackTrace(System.err);
@@ -123,7 +144,7 @@ public class StreamHub implements Watcher {
 			springApp.addListeners(new ApplicationListener<ContextClosedEvent>(){
 				@Override
 				public void onApplicationEvent(final ContextClosedEvent event) {
-					log.info("\n\t==================================================\n\tStreamHubNode Stopped\n\t==================================================\n");											
+					log.info("\n\t==================================================\n\tStreamHubNode Stopped\n\t==================================================\n");					
 				}
 			});
 //			springApp.setResourceLoader(resourceLoader);
@@ -133,6 +154,7 @@ public class StreamHub implements Watcher {
 //			StandardEnvironment environment = new StandardEnvironment();
 			
 			springBootLaunchThread = new Thread("SpringBootLaunchThread") {
+				@Override
 				public void run() {
 					appCtx = springApp.run(args);
 				}
@@ -144,6 +166,7 @@ public class StreamHub implements Watcher {
 			log.info("Starting StdIn Handler");
 			final Thread MAIN = Thread.currentThread();
 			StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
+				@Override
 				public void run() {
 					log.info("StdIn Handler Shutting Down AppCtx....");
 //					Thread stopThread = new Thread("ShutdownThread") {
@@ -160,7 +183,8 @@ public class StreamHub implements Watcher {
 					MAIN.interrupt();
 					
 				}
-			}).runAsync(true).join();
+			})
+			.runAsync(true).join();
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw new RuntimeException("Failed to start StreamHub Instance", ex);
@@ -168,6 +192,33 @@ public class StreamHub implements Watcher {
 		}
 		
 	}
+	
+	SpringApplication getSpringApp() {
+		return springApp;
+	}
+	
+	ApplicationContext getAppContext() {
+		return appCtx;
+	}
+	
+	/**
+	 * Formatted out printer
+	 * @param fmt The format specifier
+	 * @param args The arguments
+	 */
+	public static void log(final Object fmt, final Object...args) {
+		System.out.println(String.format(fmt.toString(), args));
+	}
+	
+	/**
+	 * Formatted err printer
+	 * @param fmt The format specifier
+	 * @param args The arguments
+	 */
+	public static void loge(final Object fmt, final Object...args) {
+		System.err.println(String.format(fmt.toString(), args));
+	}
+	
 	
 	/**
 	 * Starts the stream hub

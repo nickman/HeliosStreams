@@ -81,14 +81,16 @@ flush = {
         long start = System.currentTimeMillis();
         totalSize = 0;
         parts = new HashSet();
+        topic = null;
         futures.each() { f ->
              sent = f.get();
              totalSize += sent.serializedKeySize();
              totalSize += sent.serializedValueSize();
              parts.add(sent.partition());
+             topic = sent.topic();
         }
         long sentElapsed = System.currentTimeMillis() - start;
-        println "Sent $mod messages. Total Size: $totalSize, Per Message: ${totalSize/mod} Partitions: $parts";
+        println "[$topic] Sent $mod messages. Total Size: $totalSize, Per Message: ${totalSize/mod} Partitions: $parts";
         futures.clear();
         pendingBuffer.clear();
     }

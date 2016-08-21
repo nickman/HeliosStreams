@@ -73,6 +73,11 @@
 		    <artifactId>spring-boot-admin-starter-client</artifactId>
 		</dependency>
 
+		<dependency>
+		  <groupId>org.springframework</groupId>
+		  <artifactId>spring-aspects</artifactId>
+		</dependency>
+
 
 		
 
