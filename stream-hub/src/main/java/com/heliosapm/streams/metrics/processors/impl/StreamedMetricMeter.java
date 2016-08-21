@@ -70,11 +70,11 @@ import com.heliosapm.streams.metrics.processors.TimestampedMetricKey;
 			TimestampedMetricKey tmk = metricTimestampStore.get(mkey);
 			if(tmk==null) {
 				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
-				log.info("New MTS: [{}]", tmk);
+				log.debug("New MTS: [{}]", tmk);
 			} else {
-				log.info("MTS from Store: [{}]", tmk);
+				log.debug("MTS from Store: [{}]", tmk);
 				if(!tmk.isSameAggPeriodAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong(), aggregationPeriod)) {
-					log.info("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
+					log.debug("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
 					final StreamedMetric f = StreamedMetric.fromKey(System.currentTimeMillis(), tmk.getMetricKey(), tmk.getCount());
 					boolean ok = true;
 					if(f==null) {
