@@ -6,6 +6,7 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
+import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
@@ -28,6 +29,8 @@ import com.heliosapm.streams.metrics.processors.TimestampedMetricKey;
 		protected KeyValueStore<String, TimestampedMetricKey> metricTimestampStore;
 		/** The timeout period in seconds after which an idle TimestampedMetricKey will be removed from the store */
 		protected final int idleTimeout;
+		/** Period accumulator, replaces metricTimestampStore */
+		protected final NonBlockingHashMap<String, TimestampedMetricKey> periodAccumulator = new NonBlockingHashMap<String, TimestampedMetricKey>(1024); 
 		
 		
 		/**
@@ -67,14 +70,18 @@ import com.heliosapm.streams.metrics.processors.TimestampedMetricKey;
 		@Override
 		protected boolean doProcess(final String key, final StreamedMetric sm) {
 			final String mkey = sm.metricKey();
-			TimestampedMetricKey tmk = metricTimestampStore.get(mkey);
-			if(tmk==null) {
-				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey());
+			TimestampedMetricKey tmk = periodAccumulator.putIfAbsent(mkey, TimestampedMetricKey.PLACEHOLDER);
+			if(tmk==null || tmk==TimestampedMetricKey.PLACEHOLDER) {
+				tmk = new TimestampedMetricKey(TimeUnit.MILLISECONDS.toSeconds(sm.getTimestamp()), sm.forValue(1L).getValueAsLong(), sm.metricKey(), aggregationPeriod);
+				periodAccumulator.replace(mkey, tmk);
 				log.debug("New MTS: [{}]", tmk);
 			} else {
 				log.debug("MTS from Store: [{}]", tmk);
-				if(!tmk.isSameAggPeriodAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong(), aggregationPeriod)) {
-					log.debug("Commiting Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
+				// if is same period, we just add the count (done internally)
+				// otherwise we forward the count for the prior window and start a new one
+				if(!tmk.isSameAggPeriodAs(sm.getTimestamp(), sm.forValue(1L).getValueAsLong())) {
+					log.debug("Forwarding Batch: [{}]:[{}]", tmk.getMetricKey(), tmk.getCount());
+					final NVP<Long, Double> timeRate = tmk.reset(sm.getTimestamp(), sm.forValue(1L).getValueAsLong());
 					final StreamedMetric f = StreamedMetric.fromKey(System.currentTimeMillis(), tmk.getMetricKey(), tmk.getCount());
 					boolean ok = true;
 					if(f==null) {

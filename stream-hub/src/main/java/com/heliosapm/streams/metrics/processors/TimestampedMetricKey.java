@@ -25,14 +25,12 @@
 package com.heliosapm.streams.metrics.processors;
 
 import java.nio.charset.Charset;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReferenceFieldUpdater;
 
 import org.apache.kafka.common.errors.SerializationException;
-import org.apache.kafka.common.serialization.Deserializer;
-import org.apache.kafka.common.serialization.Serializer;
 
-import io.undertow.conduits.IdleTimeoutConduit;
+import com.heliosapm.utils.tuples.NVP;
 
 /**
  * <p>Title: TimestampedMetricKey</p>
@@ -43,53 +41,79 @@ import io.undertow.conduits.IdleTimeoutConduit;
  */
 
 public class TimestampedMetricKey {
-	/** The effective time of this key */
-	protected final long unixTime;
+	/** The effective time window of this key in unit time*/
+	protected volatile long[] timeWindow;
 	/** The count of instances of metrics with this key */
 	protected long count = 0;	
 	/** The metric key */
 	protected final String metricKey;
+	/** The width of the window in seconds */
+	protected final long windowWidth;
 	
+	
+	/** Atomic field updated for the time window */
+	private static final AtomicReferenceFieldUpdater<TimestampedMetricKey, long[]> TIME_WINDOW_UPDATER
+	  	 = AtomicReferenceFieldUpdater.newUpdater(TimestampedMetricKey.class, long[].class, "timeWindow");
 	
 	/** The string character set */
 	public static final Charset UTF8 = Charset.forName("UTF8");
+	/** Placeholder TimestampedMetricKey */
+	public static final TimestampedMetricKey PLACEHOLDER = new TimestampedMetricKey();
 	
-	private static final int LONG_BYTES = 16;
+//	private static final int LONG_BYTES = 16;
 	
 	/**
 	 * Creates a new TimestampedMetricKey
 	 * @param unixTime The effective time of this key in unix time
 	 * @param initialCount The initial count
 	 * @param metricKey The metric key
+	 * @param windowWidth the width of the time window in seconds
 	 */
-	public TimestampedMetricKey(final long unixTime, final long initialCount, final String metricKey) {
-		this.unixTime = unixTime;
+	public TimestampedMetricKey(final long unixTime, final long initialCount, final String metricKey, final long windowWidth) {		
 		this.metricKey = metricKey;
+		this.windowWidth = windowWidth;
 		this.count = initialCount;
+		this.timeWindow = windowRangeFromSec(unixTime, windowWidth);
 	}
 	
-	private TimestampedMetricKey(final byte[] bytes) {
-		unixTime = deserialize(bytes, 0);
-		count = deserialize(bytes, 8);
-		metricKey = new String(bytes, LONG_BYTES, bytes.length-LONG_BYTES, UTF8);
+	private TimestampedMetricKey() {
+		timeWindow = null;
+		count = -1L;
+		windowWidth = -1L;
+		metricKey = null;
 	}
 	
-	private byte[] toBytes() {
-		final byte[] sbytes = metricKey.getBytes(UTF8);
-		final byte[] ser = new byte[sbytes.length + LONG_BYTES];
-		serialize(unixTime, count, ser);
-		System.arraycopy(sbytes, 0, ser, LONG_BYTES, sbytes.length);
-		return ser;
-	}
+	
+//	private TimestampedMetricKey(final byte[] bytes) {
+//		unixTime = deserialize(bytes, 0);
+//		count = deserialize(bytes, 8);
+//		metricKey = new String(bytes, LONG_BYTES, bytes.length-LONG_BYTES, UTF8);
+//	}
+//	
+//	private byte[] toBytes() {
+//		final byte[] sbytes = metricKey.getBytes(UTF8);
+//		final byte[] ser = new byte[sbytes.length + LONG_BYTES];
+//		serialize(unixTime, count, ser);
+//		System.arraycopy(sbytes, 0, ser, LONG_BYTES, sbytes.length);
+//		return ser;
+//	}
 	
 	/**
-	 * Resets the count to zero
-	 * @return the prior count
+	 * Resets the count to zero and sets the time window according to the passed ms timestamp
+	 * @param newStartMs The new window start time in ms
+	 * @param newCount The new count to start at
+	 * @return An NVP of the the prior window end time and the effective count per second
 	 */
-	public long reset() {
+	public NVP<Long, Double> reset(final long newStartMs, final long newCount) {
+		final long[] priorWindow = TIME_WINDOW_UPDATER.getAndSet(this, windowRangeFromMs(newStartMs, windowWidth));
 		final long priorCount = count;
-		count = 0;
-		return priorCount;
+		count = newCount;
+		return new NVP<Long, Double>(priorWindow[1], calcRate(priorCount, windowWidth));
+	}
+	
+	private static double calcRate(final double count, final double windowWidth) {
+		if(count==0D || windowWidth==0D) return  0D;
+		return count / windowWidth;
 	}
 		
 	
@@ -99,18 +123,27 @@ public class TimestampedMetricKey {
 	 */
 	@Override
 	public String toString() {
-		return metricKey + ":" + unixTime + ":" + count;
+		return metricKey + ":" + timeWindow[0] + ":" + count;
 	}
 	
 	
 	/**
-	 * Returns the effective time of this key as a unix time
-	 * @return the unixTime
+	 * Returns the effective start time of this key as a unix time
+	 * @return the time window start time
 	 */
-	public long getUnixTime() {
-		return unixTime;
+	public long getStartTime() {
+		return timeWindow[0];
 	}
-
+	
+	/**
+	 * Returns the effective end time of this key as a unix time
+	 * @return the time window end time
+	 */
+	public long getEndTime() {
+		return timeWindow[1];
+	}
+	
+ 
 	/**
 	 * Returns the metric key
 	 * @return the metricKey
@@ -139,16 +172,31 @@ public class TimestampedMetricKey {
 		return secs - mod;
 	}
 	
+	public static long[] windowRangeFromSec(final long secs, final long windowSize) {
+		final long[] range = new long[2];
+		range[0] =  secs - secs%windowSize;
+		range[1] = range[0] + windowSize;
+		return range;
+	}
+	
+	public static long[] windowRangeFromMs(final long ms, final long windowSize) {
+		final long[] range = new long[2];
+		final long secs = TimeUnit.MILLISECONDS.toSeconds(ms);
+		range[0] =  secs - secs%windowSize;
+		range[1] = range[0] + windowSize;
+		return range;
+	}
+	
 	
 	/**
 	 * Indicates if the passed timestamp is in the same aggregation period
 	 * @param mstime The ms timestamp
 	 * @param count The number to increment by
-	 * @param windowSize The aggregation period in seconds
 	 * @return true if in the range, false otherwise
 	 */
-	public boolean isSameAggPeriodAs(final long mstime, final long count, final long windowSize) {
-		if(periodFromMs(mstime, windowSize)==periodFromSec(unixTime, windowSize)) {
+	public boolean isSameAggPeriodAs(final long mstime, final long count) {
+		final long utime = periodFromMs(mstime, windowWidth);		
+		if(periodFromMs(mstime, windowWidth)==timeWindow[0]) {
 			this.count += count;
 			return true;
 		}
@@ -158,13 +206,12 @@ public class TimestampedMetricKey {
 	/**
 	 * Indicates if this TimestampedMetricKey is expired but not idle
 	 * @param mstime The ms timestamp
-	 * @param windowSize The window period in seconds
 	 * @param idleTimeout The idle timeout in seconds
 	 * @return true if this TimestampedMetricKey is expired, false otherwise
 	 */
-	public boolean isExpired(final long mstime, final long windowSize, final long idleTimeout) {
-		final long sec = TimeUnit.MILLISECONDS.toSeconds(mstime);		
-		return sec >= unixTime && sec <= (unixTime + windowSize) && unixTime < (unixTime + idleTimeout);		
+	public boolean isExpired(final long mstime, final long idleTimeout) {
+		final long utime = periodFromMs(mstime, windowWidth);		
+		return utime > timeWindow[1] && utime < (timeWindow[0] + idleTimeout); 
 	}
 	
 	/**
@@ -174,79 +221,79 @@ public class TimestampedMetricKey {
 	 * @return true if idle, false otherwise
 	 */
 	public boolean isIdle(final long mstime, final long idleTimeout) {
-		final long sec = TimeUnit.MILLISECONDS.toSeconds(mstime);
-		return (sec - unixTime) > idleTimeout;
+		final long utime = periodFromMs(mstime, windowWidth);
+		return utime >= (timeWindow[0] + idleTimeout);
 	}
 	
 	
-	/**
-	 * <p>Title: TimestampedMetricKeySerializer</p>
-	 * <p>Description: Serializers for TimestampedMetric instances</p> 
-	 * <p>Company: Helios Development Group LLC</p>
-	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.streams.metrics.processors.TimestampedMetric.TimestampedMetricKeySerializer</code></p>
-	 */
-	public static class TimestampedMetricKeySerializer implements Serializer<TimestampedMetricKey> {
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Serializer#configure(java.util.Map, boolean)
-		 */
-		@Override
-		public void configure(final Map<String, ?> configs, final boolean isKey) {
-			/* Nop Op */			
-		}
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Serializer#close()
-		 */
-		@Override
-		public void close() {
-			/* No Op */
-		}
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Serializer#serialize(java.lang.String, java.lang.Object)
-		 */
-		@Override
-		public byte[] serialize(final String topic, final TimestampedMetricKey data) {
-			return data.toBytes();
-		}
-	}
+//	/**
+//	 * <p>Title: TimestampedMetricKeySerializer</p>
+//	 * <p>Description: Serializers for TimestampedMetric instances</p> 
+//	 * <p>Company: Helios Development Group LLC</p>
+//	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+//	 * <p><code>com.heliosapm.streams.metrics.processors.TimestampedMetric.TimestampedMetricKeySerializer</code></p>
+//	 */
+//	public static class TimestampedMetricKeySerializer implements Serializer<TimestampedMetricKey> {
+//		/**
+//		 * {@inheritDoc}
+//		 * @see org.apache.kafka.common.serialization.Serializer#configure(java.util.Map, boolean)
+//		 */
+//		@Override
+//		public void configure(final Map<String, ?> configs, final boolean isKey) {
+//			/* Nop Op */			
+//		}
+//		/**
+//		 * {@inheritDoc}
+//		 * @see org.apache.kafka.common.serialization.Serializer#close()
+//		 */
+//		@Override
+//		public void close() {
+//			/* No Op */
+//		}
+//		/**
+//		 * {@inheritDoc}
+//		 * @see org.apache.kafka.common.serialization.Serializer#serialize(java.lang.String, java.lang.Object)
+//		 */
+//		@Override
+//		public byte[] serialize(final String topic, final TimestampedMetricKey data) {
+//			return data.toBytes();
+//		}
+//	}
 	
-	/**
-	 * <p>Title: TimestampedMetricKeyDeserializer</p>
-	 * <p>Description: Deserializer for TimestampedMetric instances</p> 
-	 * <p>Company: Helios Development Group LLC</p>
-	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.streams.metrics.processors.TimestampedMetric.TimestampedMetricKeyDeserializer</code></p>
-	 */
-	public static class TimestampedMetricKeyDeserializer implements Deserializer<TimestampedMetricKey> {
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Deserializer#configure(java.util.Map, boolean)
-		 */
-		@Override
-		public void configure(final Map<String, ?> configs, final boolean isKey) {
-			/* Nop Op */			
-		}
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Deserializer#close()
-		 */
-		@Override
-		public void close() {
-			/* No Op */
-		}
-		/**
-		 * {@inheritDoc}
-		 * @see org.apache.kafka.common.serialization.Deserializer#deserialize(java.lang.String, byte[])
-		 */
-		@Override
-		public TimestampedMetricKey deserialize(final String topic, final byte[] data) {
-			if(data==null || data.length==0) return null;
-			return new TimestampedMetricKey(data);
-		}
-	}
+//	/**
+//	 * <p>Title: TimestampedMetricKeyDeserializer</p>
+//	 * <p>Description: Deserializer for TimestampedMetric instances</p> 
+//	 * <p>Company: Helios Development Group LLC</p>
+//	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+//	 * <p><code>com.heliosapm.streams.metrics.processors.TimestampedMetric.TimestampedMetricKeyDeserializer</code></p>
+//	 */
+//	public static class TimestampedMetricKeyDeserializer implements Deserializer<TimestampedMetricKey> {
+//		/**
+//		 * {@inheritDoc}
+//		 * @see org.apache.kafka.common.serialization.Deserializer#configure(java.util.Map, boolean)
+//		 */
+//		@Override
+//		public void configure(final Map<String, ?> configs, final boolean isKey) {
+//			/* Nop Op */			
+//		}
+//		/**
+//		 * {@inheritDoc}
+//		 * @see org.apache.kafka.common.serialization.Deserializer#close()
+//		 */
+//		@Override
+//		public void close() {
+//			/* No Op */
+//		}
+//		/**
+//		 * {@inheritDoc}
+//		 * @see org.apache.kafka.common.serialization.Deserializer#deserialize(java.lang.String, byte[])
+//		 */
+//		@Override
+//		public TimestampedMetricKey deserialize(final String topic, final byte[] data) {
+//			if(data==null || data.length==0) return null;
+//			return new TimestampedMetricKey(data);
+//		}
+//	}
 	
 	
     private static void serialize(final long time, final long count, final byte[] into) {
@@ -298,7 +345,7 @@ public class TimestampedMetricKey {
 		final int prime = 31;
 		int result = 1;
 		result = prime * result + ((metricKey == null) ? 0 : metricKey.hashCode());
-		result = prime * result + (int) (unixTime ^ (unixTime >>> 32));
+		result = prime * result + (int) (windowWidth ^ (windowWidth >>> 32));
 		return result;
 	}
 
@@ -312,7 +359,7 @@ public class TimestampedMetricKey {
 			return true;
 		if (obj == null)
 			return false;
-		if (!(obj instanceof TimestampedMetricKey))
+		if (getClass() != obj.getClass())
 			return false;
 		TimestampedMetricKey other = (TimestampedMetricKey) obj;
 		if (metricKey == null) {
@@ -320,10 +367,10 @@ public class TimestampedMetricKey {
 				return false;
 		} else if (!metricKey.equals(other.metricKey))
 			return false;
-		if (unixTime != other.unixTime)
+		if (windowWidth != other.windowWidth)
 			return false;
 		return true;
 	}
-    
+
 
 }
