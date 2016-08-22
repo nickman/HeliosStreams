@@ -1,8 +1,5 @@
 package com.heliosapm.streams.metrics.processors.impl;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.heliosapm.streams.metrics.ValueType;
 import com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessor;
@@ -20,9 +17,11 @@ class BeatsJSONToMetricTransformer extends  AbstractStreamedMetricProcessor<Stri
 	 * Creates a new BeatsJSONToMetricTransformer
 	 * @param period The period of the context commit if the max number of forwards has not been met.
 	 * @param maxForwards The maximum number of metrics to forward without a commit
+	 * @param topicSink The topic sink for this processor
+	 * @param sources The topic sources for this processor
 	 */
-	protected BeatsJSONToMetricTransformer(final long period, final int maxForwards) {
-		super(ValueType.STRAIGHTTHROUGH, period, maxForwards);
+	protected BeatsJSONToMetricTransformer(final long period, final int maxForwards, final String topicSink, final String[] sources) {
+		super(ValueType.STRAIGHTTHROUGH, period, maxForwards, topicSink, sources);
 	}
 
 	/**

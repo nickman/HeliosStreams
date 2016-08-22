@@ -34,11 +34,11 @@ public class StraightThroughMetricProcessorSupplier extends AbstractStreamedMetr
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorSupplier#getProcessor()
+	 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorSupplier#getProcessor(java.lang.String, java.lang.String[])
 	 */
 	@Override
-	public StraightThroughMetricProcessor getProcessor() {		
-		return new StraightThroughMetricProcessor(period, maxForwards);
+	public StraightThroughMetricProcessor getProcessor(final String topicSink, final String[] sources) {		
+		return new StraightThroughMetricProcessor(period, maxForwards, topicSink, sources);
 	}
 	
 	/**

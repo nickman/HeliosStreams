@@ -11,16 +11,6 @@
         
     <context:property-placeholder/>
 
-    <bean id="metricTimestampStoreDefinition" class="com.heliosapm.streams.metrics.store.StateStoreDefinition">
-		<property name="keySerde">
-			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-		</property>
-		<property name="valueSerde">
-			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.TIMESTAMPED_METRIC_SERDE"/>
-		</property>
-		<property name="inMemory" value="${streamhub.statestore.metrictimestamp.inmemory:false}"/>		
-    </bean>
-    
     
     
     <bean id="meterSupplier" class="com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier">

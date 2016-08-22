@@ -59,9 +59,7 @@ import kafka.admin.RackAwareMode;
 import kafka.common.TopicExistsException;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
-import kafka.utils.MockTime;
-import kafka.utils.TestUtils;
-import kafka.utils.Time;
+//import kafka.utils.TestUtils;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import scala.Option;
@@ -321,8 +319,8 @@ public class KafkaTestServer {
 				Option<String> pref = Option.apply("KafkaThread");
 //				KafkaServerStartable startable = KafkaServerStartable.fromProps(configProperties);
 //				startable.startup();
-				Time mock = new MockTime();
-				kafkaServer = TestUtils.createServer(kafkaConfig, mock);
+//				Time mock = new MockTime();
+//				kafkaServer = TestUtils.createServer(kafkaConfig, mock);
 				
 //				kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, pref);				
 				kafkaServer.startup();				
@@ -336,8 +334,8 @@ public class KafkaTestServer {
 				offsetTopicProps.setProperty("cleanup.policy", "compact");
 				offsetTopicProps.setProperty("segment.bytes", "1048576");
 				createTopic("__consumer_offsets", 1, 1, offsetTopicProps);
-				TestUtils.waitUntilLeaderIsKnown(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
-				TestUtils.waitUntilMetadataIsPropagated(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
+//				TestUtils.waitUntilLeaderIsKnown(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
+//				TestUtils.waitUntilMetadataIsPropagated(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
 				log.info("<<<<< Embedded Kafka started. State ");
 			} catch (Exception ex) {
 				running.set(false);

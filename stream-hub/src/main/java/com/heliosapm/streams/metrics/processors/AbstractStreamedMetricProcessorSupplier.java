@@ -31,12 +31,11 @@ import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.beans.factory.annotation.Required;
+import org.springframework.beans.factory.config.SingletonBeanRegistry;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.jmx.export.annotation.ManagedAttribute;
 
-import com.heliosapm.streams.metrics.StreamedMetric;
-import com.heliosapm.streams.metrics.store.StateStoreDefinition;import com.heliosapm.utils.jmx.ManagedForkJoinPoolMXBean;
+import com.heliosapm.streams.metrics.store.StateStoreDefinition;
 
 /**
  * <p>Title: AbstractStreamedMetricProcessorSupplier</p>
@@ -88,9 +87,6 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	/** The spring bean name */
 	protected String beanName = null;
 	
-	/** The processor instance */
-	protected volatile AbstractStreamedMetricProcessor<K,V> processor = null;
-	
 	/**
 	 * Creates a new AbstractStreamedMetricProcessorSupplier
 	 */
@@ -118,22 +114,24 @@ public abstract class AbstractStreamedMetricProcessorSupplier<K, V, SK, SV> impl
 	 */
 	@Override
 	public Processor<K, V> get() {
-		if(processor==null) {
-			synchronized(this) {
-				if(processor==null) {
-					processor = getProcessor();
-					startedProcessors.add(processor);
-				}
-			}
-		}
+		final AbstractStreamedMetricProcessor<K,V> processor = getProcessor(topicSink, sources);
+		
+		startedProcessors.add(processor);
+		final String processorBeanName = processor.getClass().getSimpleName() + "#" + processor.getInstanceId(); 
+		processor.setBeanName(processorBeanName);
+		
+		((SingletonBeanRegistry)appCtx.getAutowireCapableBeanFactory()).registerSingleton(processorBeanName, processor);
+		appCtx.getAutowireCapableBeanFactory().autowireBean(processor);
 		return processor;
 	}
 	
 	/**
 	 * Creates and returns the processor
+	 * @param topicSink The topic sink
+	 * @param sources the topic sources
 	 * @return the processor
 	 */
-	protected abstract AbstractStreamedMetricProcessor<K,V> getProcessor();
+	protected abstract AbstractStreamedMetricProcessor<K,V> getProcessor(final String topicSink, final String[] sources);
 	
 	/**
 	 * {@inheritDoc}

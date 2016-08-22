@@ -6,7 +6,6 @@ import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
-import org.springframework.jmx.export.annotation.ManagedAttribute;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.ValueType;
@@ -26,10 +25,12 @@ public class StreamedMetricAccumulator extends AbstractStreamedMetricProcessor<S
 	 * Creates a new StreamedMetricAccumulator
 	 * @param period The frequency of aggregation flushes in seconds
 	 * @param maxForwards The maximum number of uncommited forwards
+	 * @param topicSink The topic sink for this processor
+	 * @param sources The topic sources for this processor
 	 * @param accumulatorStoreName The name of the accumulator state store
 	 */
-	protected StreamedMetricAccumulator(final long period, final int maxForwards, final String accumulatorStoreName) {
-		super(ValueType.METER, TimeUnit.SECONDS.toMillis(period), maxForwards, new String[]{accumulatorStoreName});
+	protected StreamedMetricAccumulator(final long period, final int maxForwards, final String accumulatorStoreName, final String topicSink, final String[] sources) {
+		super(ValueType.METER, TimeUnit.SECONDS.toMillis(period), maxForwards, topicSink, sources, new String[]{accumulatorStoreName});
 		log.info("Created Instance [" + System.identityHashCode(this) + "]");
 	}
 	

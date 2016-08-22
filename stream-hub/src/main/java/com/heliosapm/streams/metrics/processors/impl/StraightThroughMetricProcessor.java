@@ -17,9 +17,11 @@ class StraightThroughMetricProcessor extends  AbstractStreamedMetricProcessor<St
 	 * Creates a new StraightThroughMetricProcessor
 	 * @param period The period of the context commit if the max number of forwards has not been met. 
 	 * @param maxForwards The maximum number of metrics to forward without a commit
+	 * @param topicSink The topic sink for this processor
+	 * @param sources The topic sources for this processor
 	 */
-	protected StraightThroughMetricProcessor(final long period, final int maxForwards) {
-		super(ValueType.STRAIGHTTHROUGH, period, maxForwards);
+	protected StraightThroughMetricProcessor(final long period, final int maxForwards, final String topicSink, final String[] sources) {
+		super(ValueType.STRAIGHTTHROUGH, period, maxForwards, topicSink, sources);
 		
 	}
 

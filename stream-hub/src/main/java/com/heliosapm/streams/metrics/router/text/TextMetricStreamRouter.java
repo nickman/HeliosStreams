@@ -103,6 +103,7 @@ public class TextMetricStreamRouter implements InitializingBean, DisposableBean,
 		if(config == null || config.isEmpty()) throw new IllegalArgumentException("The passed config properties was null or empty");		
 		this.config = config;
 		log.info("Configuring TextMetricStreamRouter...");
+		config.put("interceptor.classes", com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterceptor.class.getName());
 		streamsConfig = new StreamsConfig(this.config);
 		builder = new TopologyBuilder();
 	}

@@ -33,11 +33,11 @@ public class BeatsJSONToMetricTransformerSupplier extends AbstractStreamedMetric
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorSupplier#getProcessor()
+	 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorSupplier#getProcessor(java.lang.String, java.lang.String[])
 	 */
 	@Override
-	public BeatsJSONToMetricTransformer getProcessor() {		
-		return new BeatsJSONToMetricTransformer(period, maxForwards);
+	public BeatsJSONToMetricTransformer getProcessor(final String topicSink, final String[] sources) {		
+		return new BeatsJSONToMetricTransformer(period, maxForwards, topicSink, sources);
 	}
 	
 	/**

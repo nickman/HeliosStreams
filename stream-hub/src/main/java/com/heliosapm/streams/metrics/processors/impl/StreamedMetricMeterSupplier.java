@@ -46,8 +46,8 @@ public class StreamedMetricMeterSupplier extends AbstractStreamedMetricProcessor
 	 * @see com.heliosapm.streams.metrics.processors.AbstractStreamedMetricProcessorSupplier#getProcessor()
 	 */
 	@Override
-	protected StreamedMetricMeter getProcessor() {
-		return new StreamedMetricMeter(aggregationPeriod, period, maxForwardsWithoutCommit, getStateStoreNames()[0], idleTimeout);
+	protected StreamedMetricMeter getProcessor(final String topicSink, final String[] sources) {		
+		return new StreamedMetricMeter(aggregationPeriod, period, maxForwardsWithoutCommit, topicSink, sources, idleTimeout);
 	}
 	
 	/**

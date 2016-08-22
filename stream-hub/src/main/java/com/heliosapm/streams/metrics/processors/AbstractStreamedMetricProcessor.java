@@ -60,19 +60,25 @@ import com.heliosapm.utils.jmx.JMXHelper;
 @ManagedResource
 public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<K, V>, BeanNameAware, SelfNaming {
 	/** Instance logger */
-	protected final Logger log = LogManager.getLogger(getClass());
+	protected final Logger log = LogManager.getLogger(getClass().getName() + "-" + System.identityHashCode(this));
 	/** The application id of the context */
 	protected String applicationId = null;
 	/** The value type processed by this processor */
 	protected final ValueType valueType;
 	/** The names of state stores used by this processor */
 	protected final String[] stateStoreNames;
+	/** The topic sink for this processor */
+	protected final String topicSink;
+	/** The topic sources for this processor */
+	protected final String[] sources;
 	/** The injected processor context */
 	private ProcessorContext context = null;
 	/** The punctuation period */
 	protected final long period;
 	/** The state stores allocated for this processor */
 	protected Map<String, StateStore> stateStores = new HashMap<String, StateStore>();
+	/** The instance id sequence */
+	protected static final AtomicInteger instance = new AtomicInteger(0);
 	/** The processing timer */
 	//protected final Timer timer = SharedMetricsRegistry.getInstance().timer("StreamedMetricProcessor." + getClass().getSimpleName() + ".processed");
 	protected final Timer timer = SharedMetricsRegistry.getInstance().timer(getClass().getSimpleName() + ".processed");
@@ -109,6 +115,8 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	protected String beanName = null;
 	/** The processor's JMX ObjectName name */
 	protected ObjectName objectName = null;
+	/** The processor's instance id */
+	protected final int instanceId;
 	
 
 	/**
@@ -116,13 +124,27 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @param valueType The value type this processor supplies stream processing for
 	 * @param period The punctuation period (ignored if less than 1)
 	 * @param maxForwards The max forwards without a commit
+	 * @param topicSink The topic sink for this processor
+	 * @param sources The topic sources for this processor
 	 * @param stateStoreNames The names of the state stores used by this processor
 	 */
-	protected AbstractStreamedMetricProcessor(final ValueType valueType, final long period, final int maxForwards, final String...stateStoreNames) {
+	protected AbstractStreamedMetricProcessor(final ValueType valueType, final long period, final int maxForwards, final String topicSink, final String[] sources, final String...stateStoreNames) {
 		this.valueType = valueType;
 		this.period = period;
 		this.stateStoreNames = stateStoreNames;
 		this.maxForwardsWithoutCommit = maxForwards; 
+		this.sources = sources;
+		this.topicSink = topicSink;
+		instanceId = instance.incrementAndGet();
+	}
+
+	/**
+	 * Returns the instance id
+	 * @return the instance id
+	 */
+	@ManagedAttribute(description="The instance id")
+	public int getInstanceId() {
+		return instanceId;
 	}
 
 	/**
@@ -240,7 +262,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	@Override
 	@ManagedAttribute(description="This processor's JMX ObjectName")
 	public ObjectName getObjectName() throws MalformedObjectNameException {
-		objectName = JMXHelper.objectName("com.heliosapm.streams.metrics.processors:service=Processor,type=" + getClass().getSimpleName() + ",name=" + beanName);
+		objectName = JMXHelper.objectName("com.heliosapm.streams.metrics.processors:service=Processor,type=" + getClass().getSimpleName() + ",instance=" + instanceId);
 		return objectName;
 	}
 	
@@ -250,8 +272,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 */
 	@Override
 	public void setBeanName(final String name) {
-		this.beanName = name;
-		
+		this.beanName = name;		
 	}
 
 	/**
@@ -277,7 +298,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	 * @return the punctuation period in ms.
 	 */
 	@ManagedAttribute(description="The punctuation period in ms.")
-	public long getPuntuationPeriod() {
+	public long getPunctuationPeriod() {
 		return period;
 	}
 
@@ -542,7 +563,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
      * @param value value     * 
 	 * @see org.apache.kafka.streams.processor.ProcessorContext#forward(java.lang.Object, java.lang.Object)
 	 */
-	protected final void forward(final K key, final V value) {
+	protected final synchronized void forward(final K key, final V value) {
 		if(key==null || value==null) {
 			log.warn("KorV null [{}}:[{}]", key, value);
 			return;
@@ -561,6 +582,15 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 			log.warn("Context is null !!");
 		}
 	}
+	
+	/**
+	 * Returns the system identity hash code for this processor
+	 * @return the system identity hash code for this processor
+	 */
+	@ManagedAttribute(description="The system identity hash code for this processor")
+	public int getSysId() {
+		return System.identityHashCode(this);
+	}
 
 	/**
      * Forwards a key/value pair to one of the downstream processors designated by childIndex
@@ -569,7 +599,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
      * @param childIndex index in list of children of this node
 	 * @see org.apache.kafka.streams.processor.ProcessorContext#forward(java.lang.Object, java.lang.Object, int)
 	 */
-	protected final void forward(final K key, final V value, final int childIndex) {
+	protected final synchronized void forward(final K key, final V value, final int childIndex) {
 		context.forward(key, value, childIndex);
 		if(uncomittedForwards.incrementAndGet() > maxForwardsWithoutCommit) {
 			commit();
@@ -583,7 +613,7 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
      * @param childName name of downstream processor
 	 * @see org.apache.kafka.streams.processor.ProcessorContext#forward(java.lang.Object, java.lang.Object, java.lang.String)
 	 */
-	protected final void forward(final K key, final V value, final String childName) {
+	protected final synchronized void forward(final K key, final V value, final String childName) {
 		context.forward(key, value, childName);
 		if(uncomittedForwards.incrementAndGet() > maxForwardsWithoutCommit) {
 			commit();
@@ -591,37 +621,23 @@ public abstract class AbstractStreamedMetricProcessor<K,V> implements Processor<
 	}
 
 	/**
-     * Returns the topic name of the current input record; could be null if it is not
-     * available (for example, if this method is invoked from the punctuate call)
-     * @return the topic name
-	 * @see org.apache.kafka.streams.processor.ProcessorContext#topic()
+	 * Returns the topic sink for this processor
+	 * @return the topic sink for this processor
 	 */
-	@ManagedAttribute(description="The topic name of the current input record")
-	public String getTopic() {
-		return context.topic();
+	@ManagedAttribute(description="The topic sink for this processor")
+	public String getTopicSink() {
+		return topicSink;
 	}
 
 	/**
-     * Returns the partition id of the current input record; could be -1 if it is not
-     * available (for example, if this method is invoked from the punctuate call)
-     * @return the partition id
-	 * @see org.apache.kafka.streams.processor.ProcessorContext#partition()
+	 * Returns the topic sources for this processor
+	 * @return the topic sources for this processor
 	 */
-	@ManagedAttribute(description="The partition id of the current input record")
-	public int getPartition() {
-		return context.partition();
+	@ManagedAttribute(description="The topic sources for this processor")
+	public String[] getSources() {
+		return sources;
 	}
 
-	/**
-     * Returns the offset of the current input record; could be -1 if it is not
-     * available (for example, if this method is invoked from the punctuate call)
-     * @return the offset
-	 * @see org.apache.kafka.streams.processor.ProcessorContext#offset()
-	 */
-	@ManagedAttribute(description="The partition id of the current input record")
-	public long getOffset() {
-		return context.offset();
-	}
 
 
 }

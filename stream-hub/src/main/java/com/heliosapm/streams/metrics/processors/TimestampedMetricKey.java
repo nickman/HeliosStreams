@@ -102,7 +102,7 @@ public class TimestampedMetricKey {
 	 * Resets the count to zero and sets the time window according to the passed ms timestamp
 	 * @param newStartMs The new window start time in ms
 	 * @param newCount The new count to start at
-	 * @return An NVP of the the prior window end time and the effective count per second
+	 * @return An NVP of the the prior window end unix time and the effective count per second
 	 */
 	public NVP<Long, Double> reset(final long newStartMs, final long newCount) {
 		final long[] priorWindow = TIME_WINDOW_UPDATER.getAndSet(this, windowRangeFromMs(newStartMs, windowWidth));
@@ -201,6 +201,18 @@ public class TimestampedMetricKey {
 			return true;
 		}
 		return false;
+	}
+	
+	public NVP<Long, Double> punctuate(final long timestamp) {
+		if(count==0) return null;		
+		NVP<Long, Double> nvp = new NVP<Long, Double>(timeWindow[1], calcRate(count, windowWidth));
+		count = 0;
+		TIME_WINDOW_UPDATER.set(this, windowRangeFromMs(timestamp, windowWidth));
+		return nvp;
+	}
+	
+	public void increment(final long count) {
+		this.count += count;
 	}
 	
 	/**
