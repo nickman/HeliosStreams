@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.serialization;
 
+import java.util.Map;
+
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
@@ -72,6 +74,50 @@ public class HeliosSerdes extends Serdes {
 		}		
 	};
 	
+	/**
+	 * <p>Title: SMThroughStrSerde</p>
+	 * <p>Description: </p> 
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.serialization.SMThroughStrSerde</code></p>
+	 */
+	public static class SMThroughStrSerde implements Serde<StreamedMetric> {
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Serde#serializer()
+		 */
+		@Override
+		public Serializer<StreamedMetric> serializer() {
+			return STREAMED_METRIC_SER_TO_STRING;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Serde#deserializer()
+		 */
+		@Override
+		public Deserializer<StreamedMetric> deserializer() {
+			return STREAMED_METRIC_DESER_FROM_STRING;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Serde#configure(java.util.Map, boolean)
+		 */
+		@Override
+		public void configure(final Map<java.lang.String, ?> configs, final boolean isKey) {
+			/* No Op */
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see org.apache.kafka.common.serialization.Serde#close()
+		 */
+		@Override
+		public void close() {
+			/* No Op */
+		}
+	}
+	
 	
 	
 	/** The {@link StreamedMetric} Serde */
@@ -81,7 +127,7 @@ public class HeliosSerdes extends Serdes {
 //	/** The {@link TimestampedMetricKey} Serde */
 //	public static final Serde<TimestampedMetricKey> TIMESTAMPED_METRIC_SERDE = new StatelessSerde<TimestampedMetricKey>(TIMESTAMPED_METRIC_SER, TIMESTAMPED_METRIC_DESER);
 	/** The {@link StreamedMetric} Serde with a String as an intermediary */
-	public static final Serde<StreamedMetric> STREAMED_METRIC_SERDE_THROUGH_STRING = new StatelessSerde<StreamedMetric>(STREAMED_METRIC_SER_TO_STRING, STREAMED_METRIC_DESER_FROM_STRING);
+	public static final Serde<StreamedMetric> STREAMED_METRIC_SERDE_THROUGH_STRING = new SMThroughStrSerde();
 	
 	
 	/** The {@link String} Serde */
@@ -92,6 +138,8 @@ public class HeliosSerdes extends Serdes {
 	public static final Serde<Integer> INTEGER_SERDE = Integer();
 	/** The {@link Double} Serde */
 	public static final Serde<Double> DOUBLE_SERDE = Double();
+
+	
 	
 	
 	

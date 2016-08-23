@@ -6,7 +6,7 @@ import com.heliosapm.streams.metrics.*;
 import java.lang.management.*;
 
 //TO_TOPIC = "tsdb.metrics.accumulator"
-TO_TOPIC = "tsdb.metrics.meter"
+TO_TOPIC = "tsdb.metrics.text.meter"
 
 Properties props = new Properties();
 //props.put("bootstrap.servers", "localhost:9093,localhost:9094");
@@ -49,19 +49,20 @@ traceNewTime = { template ->
     if(TOPIC_KEYS.add(topicKey)) {
         println "New Topic Key: [$topicKey]";
     }
-    def pr = new ProducerRecord<String, String>(TO_TOPIC, topicKey, String.format(template, unixTime()));
+    def pr = new ProducerRecord<String, String>(TO_TOPIC, String.format(template, unixTime()));
     def f = producer.send(pr);
     //println f.get().dump();
 }
 
 try {
     producer = new KafkaProducer<String, String>(props);
+/*
     METRIC_TEMPLATES.each() { temp ->
         traceNewTime(temp);
     }
     println "Sent!";
     System.exit(0);
-
+*/
 
     modLoop = 0;
     total = 0;
@@ -81,7 +82,7 @@ try {
             println "\tSent Metrics: $total";
             total = 0;
         }
-        Thread.sleep(10);
+        Thread.sleep(100);
     }
 } finally {
     if(producer!=null) {

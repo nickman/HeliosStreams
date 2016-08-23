@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 
+import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.StreamsConfig;
@@ -38,8 +39,8 @@ import org.apache.kafka.streams.processor.DefaultPartitionGrouper;
 import org.apache.kafka.streams.processor.PartitionGrouper;
 import org.apache.kafka.streams.processor.TimestampExtractor;
 
+import com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterceptor;
 import com.heliosapm.streams.metrics.TextLineTimestampExtractor;
-import com.heliosapm.streams.metrics.Utils;
 
 /**
  * <p>Title: StreamsConfigBuilder</p>
@@ -104,6 +105,8 @@ public class StreamsConfigBuilder {
 	protected int metricSampleCount = 2;
 	/** The window of time a metrics sample is computed over : <b><code>metrics.sample.window.ms</code></b> */
 	protected long metricSampleWindow = 30000;
+	/** A monitoring interceptor that will install as both a producer and consumer interceptor in a streams client */
+	protected boolean enableMonitoringInterceptor = false;
 	
 	
 	/**
@@ -137,6 +140,7 @@ public class StreamsConfigBuilder {
 		timeExtractor = TextLineTimestampExtractor.class.getName();
 		metricSampleCount = 2;
 		metricSampleWindow = 30000;
+		enableMonitoringInterceptor = false; 
 		return this;
 	}
 	
@@ -166,6 +170,9 @@ public class StreamsConfigBuilder {
 		p.put(StreamsConfig.METRICS_SAMPLE_WINDOW_MS_CONFIG, metricSampleWindow);
 		p.put(StreamsConfig.APPLICATION_ID_CONFIG, applicationId);
 		p.put(StreamsConfig.METRIC_REPORTER_CLASSES_CONFIG, metricReportingClasses.toString().replace("[", "").replace("]", "").replace(" ", ""));
+		if(enableMonitoringInterceptor) {
+			p.put(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG, SwitchableMonitoringInterceptor.class.getName());
+		}
 		return p;
 	}
 	
@@ -204,6 +211,16 @@ public class StreamsConfigBuilder {
 			b.append(s.trim());
 		}
 		return setBootstrapServerStr(b.toString());
+	}
+	
+	/**
+	 * Sets the enabled state of the {@link SwitchableMonitoringInterceptor} in the streams client
+	 * @param enable true to enable, false otherwise
+	 * @return this builder
+	 */
+	public StreamsConfigBuilder setMonitoringInterceptorEnabled(final boolean enable) {
+		enableMonitoringInterceptor = enable;
+		return this;
 	}
 	
 

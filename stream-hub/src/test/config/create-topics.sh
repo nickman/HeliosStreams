@@ -8,6 +8,9 @@ cd $KAFKA_HOME
 ./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.binary --partitions 3 --replication-factor $REPL
 # Accumulator topic. Metrics are counted infinitely and then written to tsdb.metrics.binary
 ./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.accumulator --partitions 3 --replication-factor $REPL
+# Meter text topic. Metrics are assigned a key then written to tsdb.metrics.meter
+./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.text.meter --partitions 3 --replication-factor $REPL
+
 # Meter topic. Metrics are counted within a defined window to get a rate and then written to tsdb.metrics.binary
 ./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.meter --partitions 3 --replication-factor $REPL
 # Delta topic. Metrics are computed as a delta between the current value and the prior and then written to tsdb.metrics.binary
