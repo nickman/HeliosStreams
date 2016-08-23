@@ -33,6 +33,13 @@
 		</dependency>
 
 
+	<dependency>
+	    <groupId>org.rocksdb</groupId>
+	    <artifactId>rocksdbjni</artifactId>
+	    <version>4.9.0</version>
+	</dependency>
+
+
 		<!-- ==========================================================
 		    Spring Boot Dependencies
 		    ========================================================== -->

@@ -219,6 +219,19 @@ public class StreamedMetricValue extends StreamedMetric {
 		return this;
 	}
 	
+	
+	/**
+	 * Updates the timestamp for this metric
+	 * @param timestamp The new timestamp in ms
+	 * @return this metric
+	 */
+	public StreamedMetricValue updateTimestamp(final long timestamp) {
+		this.timestamp = timestamp;
+		return this;		 
+	 }
+	
+	
+	
 	/**
 	 * Updates this StreamedMetricValue using the next serialized version in the passed ByteBuf. 
 	 * @param buf The buffer to update from

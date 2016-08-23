@@ -176,6 +176,17 @@ public class StreamedMetric implements BytesMarshallable {
 		
 	}
 	
+	/**
+	 * Updates the timestamp for this metric
+	 * @param timestamp The new timestamp in ms
+	 * @return this metric
+	 */
+	public StreamedMetric updateTimestamp(final long timestamp) {
+		this.timestamp = timestamp;
+		return this;		 
+	 }
+	
+	
 	
 	/**
 	 * Creates a new StreamedMetricValue from this StreamedMetric, the passed value and the passed timestamp
