@@ -16,7 +16,7 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package com.heliosapm.streams.metrics.router;
+package com.heliosapm.streams.metrics.router.nodes;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -24,8 +24,12 @@ import java.util.concurrent.atomic.AtomicLong;
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedMetric;
+import org.springframework.jmx.export.annotation.ManagedOperation;
 import org.springframework.jmx.export.naming.SelfNaming;
 import org.springframework.jmx.support.MetricType;
 
@@ -38,10 +42,12 @@ import jsr166e.LongAdder;
  * <p>Title: AbstractMetricStreamNode</p>
  * <p>Description: An abstract MetricStreamNode for extension. Supplies some spring boilder plate</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.router.AbstractMetricStreamNode</code></p>
+ * <p><code>com.heliosapm.streams.metrics.router.nodes.AbstractMetricStreamNode</code></p>
  */
 @ManagedResource
 public abstract  class AbstractMetricStreamNode implements MetricStreamNode, BeanNameAware, SelfNaming {
+	/** Instance logger */
+	protected final Logger log = LogManager.getLogger(getClass());	
 	/** The node name */
 	protected String nodeName = null;
 	/** The router's JMX ObjectName */
@@ -52,6 +58,10 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	protected final LongAdder outboundCount = new LongAdder();
 	/** The timestamp of the last metric reset */
 	protected final AtomicLong lastMetricReset = new AtomicLong(-1);
+	/** The source topics */
+	protected String[] sourceTopics = null;
+	/** The sink topic */
+	protected String sinkTopic = null;
 
 
 	/**
@@ -63,10 +73,38 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 		/* No Op */
 	}
 
+	/**
+	 * Resets this node's metrics
+	 */
+	@ManagedOperation(description="Resets this node's metrics")
+	public void resetMetrics() {
+		inboundCount.reset();
+		outboundCount.reset();
+		lastMetricReset.set(System.currentTimeMillis());
+	}
+	
+	/**
+	 * Acquires the current metric set for this node, then resets them.
+	 * @return A long array where indexes are: <ul>
+	 * 	<li><b>0</b>: The total number of inbound messages ingested by this node since the lasy reset</li>
+	 * 	<li><b>1</b>: The total number of outbound messages emitted by this node since the lasy reset</li>
+	 * </ul>
+	 */
+	@ManagedOperation(description="Acquires the current metric set for this node, then resets them")
+	public long[] resetMetricsAndGet() {
+		try {
+			return new long[] {
+				inboundCount.sumThenReset(),
+				outboundCount.sumThenReset()
+			};
+		} finally {
+			lastMetricReset.set(System.currentTimeMillis());
+		}
+	}
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.MetricStreamNode#getName()
+	 * @see com.heliosapm.streams.metrics.router.nodes.MetricStreamNode#getName()
 	 */
 	@Override
 	public String getName() {		
@@ -112,6 +150,48 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	@ManagedMetric(description="The total number of outbound messages", metricType=MetricType.COUNTER, category="MetricStreamNode", displayName="OutboundMessages")
 	public long getOutboundCount() {
 		return outboundCount.longValue();
+	}
+
+	/**
+	 * Returns the source topics names this node will consume from
+	 * @return the source topic names
+	 */
+	@ManagedAttribute(description="The source topics names this node will consume from")
+	public String[] getSourceTopics() {
+		return sourceTopics;
+	}
+
+	/**
+	 * Sets the source topic names this node will consume from
+	 * @param sourceTopics the source topic names to set
+	 */
+	public void setSourceTopics(final String[] sourceTopics) {
+		if(sourceTopics==null || sourceTopics.length==0) throw new IllegalArgumentException("The passed source topic name array was null or zero length");
+		for(int i = 0; i < sourceTopics.length; i++) {
+			if(sourceTopics[i]==null) throw new IllegalArgumentException("The source topic name at index [" + i + "] was null");
+			sourceTopics[i] = sourceTopics[i].trim();
+			if(sourceTopics[i].isEmpty()) throw new IllegalArgumentException("The source topic name at index [" + i + "] was empty");
+			
+		}
+		this.sourceTopics = sourceTopics; 
+	}
+
+	/**
+	 * Returns the sink topic name or null if one was not assigned
+	 * @return the sink topic name or null
+	 */
+	@ManagedAttribute(description="The sink topic name this node will sink tos")
+	public String getSinkTopic() {
+		return sinkTopic;
+	}
+
+	/**
+	 * Sets the sink topic name
+	 * @param sinkTopic the sink topic name
+	 */
+	public void setSinkTopic(final String sinkTopic) {
+		if(sinkTopic==null || sinkTopic.trim().isEmpty()) throw new IllegalArgumentException("The passed sink topic name was empty or null");
+		this.sinkTopic = sinkTopic.trim();
 	}
 	
 

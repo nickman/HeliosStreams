@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
@@ -38,11 +39,16 @@ import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Required;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.event.ApplicationContextEvent;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.ContextStoppedEvent;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.jmx.export.naming.SelfNaming;
 
 import com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder;
+import com.heliosapm.streams.metrics.router.nodes.MetricStreamNode;
 import com.heliosapm.utils.jmx.JMXHelper;
 
 
@@ -53,7 +59,7 @@ import com.heliosapm.utils.jmx.JMXHelper;
  * <p><code>com.heliosapm.streams.metrics.router.MetricRouterBuilder</code></p>
  */
 @ManagedResource
-public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware, InitializingBean, DisposableBean, UncaughtExceptionHandler {
+public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware, UncaughtExceptionHandler, ApplicationListener<ApplicationContextEvent> {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The streams config builder instance */
@@ -65,7 +71,8 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 	protected KafkaStreams kafkaStreams = null;
 	/** The kafka streams engine config */
 	protected StreamsConfig streamsConfig = null;
-	
+	/** The started flag */
+	protected final AtomicBoolean started = new AtomicBoolean(false);
 	/** The activated stream nodes */
 	protected Map<String, MetricStreamNode> nodes = new ConcurrentHashMap<String, MetricStreamNode>();
 	/** The application context */
@@ -73,47 +80,85 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 	/** The router's JMX ObjectName */
 	protected ObjectName objectName = JMXHelper.objectName("com.heliosapm.streams.metrics.router:service=MetricRouter");
 	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
+	 */
+	@Override
+	public void onApplicationEvent(final ApplicationContextEvent event) {
+		if(event.getApplicationContext()==appCtx) {
+			if(event instanceof ContextRefreshedEvent) {
+				start();
+			} else if(event instanceof ContextStoppedEvent) {
+				stop();
+			}
+		}		
+	}
 	
 	
 	/**
 	 * <p>Starts the MetricRouter</p>
-	 * {@inheritDoc}
-	 * @see org.springframework.beans.factory.InitializingBean#afterPropertiesSet()
 	 */
-	@Override
-	public void afterPropertiesSet() throws Exception {
-		log.info(">>>>> Starting MetricRouter.....");
-		final Map<String, MetricStreamNode> locatedNodes = appCtx.getBeansOfType(MetricStreamNode.class);
-		if(locatedNodes.isEmpty()) {
-			log.warn("No MetricStreamNodes found. MetricRouter is dead");
-			return;
+	public void start() {
+		if(started.compareAndSet(false, true)) {
+			try {
+				log.info(">>>>> Starting MetricRouter.....");
+				final Map<String, MetricStreamNode> locatedNodes = appCtx.getBeansOfType(MetricStreamNode.class);
+				if(locatedNodes.isEmpty()) {
+					log.warn("No MetricStreamNodes found. MetricRouter is dead");
+					return;
+				}
+				kstreamBuilder = new KStreamBuilder();
+				for(MetricStreamNode node: locatedNodes.values()) {
+					node.configure(kstreamBuilder);
+					nodes.put(node.getName(), node);
+					log.info("Configured Node: [{}]", node.getName());
+				}
+				log.info("Configured [{}] MetricStreamNodes", nodes.size());
+				streamsConfig = configBuilder.build();
+				kafkaStreams = new KafkaStreams(kstreamBuilder, streamsConfig);
+				kafkaStreams.setUncaughtExceptionHandler(this);
+				kafkaStreams.start();
+				log.info("<<<<< MetricRouter started.");
+			} catch (Exception ex) {
+				cleanup(false);
+				log.error("Metric router failed to start. We cleaned up as best we could",ex);
+				started.set(false);
+			}
+		} else {
+			log.warn("MetricRouter already started", new Throwable());
 		}
-		kstreamBuilder = new KStreamBuilder();
-		for(MetricStreamNode node: locatedNodes.values()) {
-			node.configure(kstreamBuilder);
-			nodes.put(node.getName(), node);
-			log.info("Configured Node: [{}]", node.getName());
+	}
+	
+	/**
+	 * Cleans up after an aborted start or a shutdown
+	 * @param logErrors true to log errors, false to keep quiet
+	 */
+	private void cleanup(final boolean logErrors) {
+		for(MetricStreamNode node: nodes.values()) {
+			final String name = node.getName();
+			try { node.close(); } catch (Exception ex) {
+				if(logErrors) log.error("Failed to close MetricStreamNode [{}]", name, ex); 
+			}
 		}
-		log.info("Configured [{}] MetricStreamNodes", nodes.size());
-		streamsConfig = configBuilder.build();
-		kafkaStreams = new KafkaStreams(kstreamBuilder, streamsConfig);
-		kafkaStreams.setUncaughtExceptionHandler(this);
-		kafkaStreams.start();
-		log.info("<<<<< MetricRouter started.");		
+		nodes.clear();
+		if(kafkaStreams!=null) {
+			try { kafkaStreams.close(); } catch (Exception ex) {
+				if(logErrors) log.error("Failed to close stream engine", ex);
+			}
+			try { kafkaStreams.cleanUp(); } catch (Exception ex) {
+				if(logErrors) log.error("Failed to cleanup stream engine", ex);
+			}
+			kafkaStreams = null;
+		}		
 	}
 	
 	/**
 	 * <p>Stops the MetricRouter</p>
-	 * {@inheritDoc}
-	 * @see org.springframework.beans.factory.DisposableBean#destroy()
 	 */
-	@Override
-	public void destroy() throws Exception {
+	public void stop() {
 		log.info(">>>>> Stopping MetricRouter.....");
-		if(kafkaStreams!=null) {
-			kafkaStreams.close();
-			kafkaStreams.cleanUp();
-		}		
+		cleanup(true);
 		log.info("<<<<< MetricRouter stopped.");				
 	}
 	
@@ -162,11 +207,24 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 		this.configBuilder = configBuilder;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Thread.UncaughtExceptionHandler#uncaughtException(java.lang.Thread, java.lang.Throwable)
+	 */
 	@Override
-	public void uncaughtException(Thread t, Throwable e) {
-		// TODO Auto-generated method stub
-		
+	public void uncaughtException(final Thread t, final Throwable e) {
+		log.error("StreamEngine Uncaught Exception on thread [{}]", t, e);
 	}
+
+
+	/**
+	 * Returns the
+	 * @return the started
+	 */
+	public AtomicBoolean getStarted() {
+		return started;
+	}
+
 	
 	
 	

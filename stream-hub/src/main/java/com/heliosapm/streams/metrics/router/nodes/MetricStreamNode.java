@@ -16,7 +16,7 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package com.heliosapm.streams.metrics.router;
+package com.heliosapm.streams.metrics.router.nodes;
 
 import java.io.Closeable;
 
@@ -26,7 +26,7 @@ import org.apache.kafka.streams.kstream.KStreamBuilder;
  * <p>Title: MetricStreamNode</p>
  * <p>Description: Represents a node that participates in the metric router</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.router.MetricStreamNode</code></p>
+ * <p><code>com.heliosapm.streams.metrics.router.nodes.MetricStreamNode</code></p>
  */
 
 public interface MetricStreamNode extends Closeable {
@@ -34,7 +34,7 @@ public interface MetricStreamNode extends Closeable {
 	/**
 	 * Callback from the router builder to a participating node.
 	 * The node should use the stream builder to configure it's node routing rules.
-	 * @param streamBuilder
+	 * @param streamBuilder The kafka streams engine builder
 	 */
 	public void configure(final KStreamBuilder streamBuilder);
 	
