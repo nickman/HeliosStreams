@@ -112,14 +112,20 @@ public class TextMeteredMetricsRouter implements UncaughtExceptionHandler {
 		.map(new KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>>() {
 			@Override
 			public KeyValue<String, StreamedMetric> apply(final Windowed<String> key, final StreamedMetric sm) {
-				//return new KeyValue<String, StreamedMetric>(sm.metricKey(), sm.forValue(1L).update(key.window().end()));
 				return new KeyValue<String, StreamedMetric>(sm.metricKey(), new StreamedMetricValue(key.window().end(),
 						calcRate(5D, sm.forValue(1L).getLongValue()), sm.getMetricName(), sm.getTags()));
-//						sm.forValue(1L).getLongValue(), sm.getMetricName(), sm.getTags()));
 			}
-		}).to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, "tsdb.metrics.binary");
+		})
+		.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, "tsdb.metrics.binary");
 		
-//		builder.addStateStore(new StateStoreSupplier(){
+		
+			
+
+		
+		
+		
+		
+		//		builder.addStateStore(new StateStoreSupplier(){
 //			@Override
 //			public StateStore get() {				
 //				return Stores.create("MeteringWindowAccumulator")
@@ -138,62 +144,7 @@ public class TextMeteredMetricsRouter implements UncaughtExceptionHandler {
 //		builder.connectProcessorAndStateStores("KSTREAM-MAP-0000000001", "MeteringWindowAccumulator");
 		
 		
-		//KSTREAM-MAP-0000000001
 		
-//		
-//		final KStream<String, Long> smstream = builder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, "tsdb.metrics.meter")
-//			.map(new KeyValueMapper<String, StreamedMetric, KeyValue<String, Long>>(){
-//				@Override
-//				public KeyValue<String, Long> apply(final String key, final StreamedMetric sm) {					
-//					return new KeyValue<String, Long>(sm.metricKey(), sm.forValue(1L).getLongValue());
-//				}
-//			});
-//		
-//		final Initializer<Long> accumInit = new Initializer<Long>() {
-//			public Long apply() { return 0L; }
-//		};
-//		
-//		
-//		KTable<Windowed<String>, Long> timeWindowSum = smstream
-//				.aggregateByKey(accumInit, new Aggregator<String, Long, Long>(){
-//					/**
-//					 * {@inheritDoc}
-//					 * @see org.apache.kafka.streams.kstream.Aggregator#apply(java.lang.Object, java.lang.Object, java.lang.Object)
-//					 */
-//					@Override
-//					public Long apply(final String aggKey, final Long value, final Long aggregate) {
-//						return aggregate + value;
-//					}
-//				}, TimeWindows.of("MeteringWindowAccumulator", 5000), HeliosSerdes.STRING_SERDE, HeliosSerdes.LONG_SERDE);
-		
-		
-				
-			
-			//			.toStream(new KeyValueMapper<Windowed<String>, Long, KeyValue<String, Long>>() {
-//				/**
-//				 * {@inheritDoc}
-//				 * @see org.apache.kafka.streams.kstream.KeyValueMapper#apply(java.lang.Object, java.lang.Object)
-//				 */
-//				@Override
-//				public KeyValue<String, Long> apply(Windowed<String> key, Long value) {
-//					// TODO Auto-generated method stub
-//					return null;
-//				}
-//			})
-			
-			
-			
-//			.reduceByKey(new Reducer<KeyValue<String, Long>>(){
-//				/**
-//				 * {@inheritDoc}
-//				 * @see org.apache.kafka.streams.kstream.Reducer#apply(java.lang.Object, java.lang.Object)
-//				 */
-//				@Override
-//				public KeyValue<String, Long> apply(KeyValue<String, Long> value1, KeyValue<String, Long> value2) {
-//					// TODO Auto-generated method stub
-//					return null;
-//				}
-//			}, TimeWindows.of("MeterAccumlator", 5000))
 
 		
 		streams = new KafkaStreams(builder, sc);
