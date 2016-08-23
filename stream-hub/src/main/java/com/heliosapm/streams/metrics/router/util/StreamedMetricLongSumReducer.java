@@ -18,9 +18,12 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.util;
 
+import java.util.concurrent.atomic.AtomicLong;
+
 import org.apache.kafka.streams.kstream.Reducer;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricValue;
 
 /**
  * <p>Title: StreamedMetricReducer</p>
@@ -31,11 +34,17 @@ import com.heliosapm.streams.metrics.StreamedMetric;
  */
 
 public class StreamedMetricLongSumReducer implements Reducer<StreamedMetric> {
+	final AtomicLong seq = new AtomicLong(0L);
 
-
-	@Override
+	@Override 		// newAgg, exist
 	public StreamedMetric apply(final StreamedMetric sm1, final StreamedMetric sm2) {
-		return sm1.forValue(1L).update(sm2.forValue(1L).getLongValue());
+		final long value = sm1.forValue(1L).getLongValue() + sm2.forValue(1L).getLongValue();
+		final StreamedMetric sm = new StreamedMetricValue(value, sm1.getMetricName(), sm1.getTags()); 
+//		if(seq.incrementAndGet()%100==0) {
+//			
+//			System.err.println("\t--->Reduced: [" + sm + "] from\n\t[" + sm1 + "]\n\t[" + sm2 + "]");
+//		}
+		return sm;
 	}
 
 }

@@ -5,6 +5,7 @@ import org.apache.kafka.clients.consumer.*;
 import com.heliosapm.streams.metrics.*;
 import java.lang.management.*;
 import org.fusesource.jansi.*;
+import java.text.*;
 
 AnsiConsole.systemInstall();
 println "ANSI Installed";
@@ -25,6 +26,7 @@ props.put("value.deserializer", "com.heliosapm.streams.metrics.StreamedMetricDes
 def TOPICS = ["tsdb.metrics.binary"] as String[];
 KafkaConsumer<String, String> consumer = null;
 def counts = new TreeMap();
+def times = new TreeMap();
 clear = {
 	AnsiConsole.out.println(ansi.eraseScreen());
 	ansi.restorCursorPosition();
@@ -37,6 +39,8 @@ resetc = {
 	System.out.print(String.format("%c[%d;%df",escCode,0,0));
 	
 }
+DecimalFormat df = new DecimalFormat("#");
+df.setMaximumFractionDigits(8);
 
 try {
 	consumer = new KafkaConsumer<>(props);
@@ -50,7 +54,6 @@ try {
 
 	unique = new HashSet();
 	while (true) {
-
  		ConsumerRecords<String, StreamedMetric> records = consumer.poll(1000);
  		int x = records.count();
  		if(x>0) {
@@ -60,9 +63,12 @@ try {
 	 		} 		
 	 		records.each() { rec ->
 	 			counts.put(rec.value().metricKey(), rec.value().getValueNumber());	 			
+	 			times.put(rec.value().metricKey(), new Date(rec.value().getTimestamp()));
 	 		}	    	
 	 		counts.each() { k, v ->
-	 			AnsiConsole.out.println("[$k] : [$v]");
+	 			d = df.format(v/1000);
+	 			dt = times.get(k);
+	 			AnsiConsole.out.println("[$k] : [$v]  ----> [$dt]");
 	 		}
 	 		
 	    	Thread.sleep(1000);

@@ -28,13 +28,11 @@ import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Windowed;
-import org.apache.kafka.streams.processor.StateStore;
-import org.apache.kafka.streams.processor.StateStoreSupplier;
-import org.apache.kafka.streams.state.Stores;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder;
 import com.heliosapm.streams.metrics.router.util.StreamedMetricLongSumReducer;
 import com.heliosapm.streams.serialization.HeliosSerdes;
@@ -72,7 +70,7 @@ public class TextMeteredMetricsRouter implements UncaughtExceptionHandler {
 		StreamsConfigBuilder config = new StreamsConfigBuilder();
 		config.setApplicationId("TextMeteredMetricsRouter");
 		config.setBootstrapServers("localhost:9092");
-		config.setMonitoringInterceptorEnabled(true);
+//		config.setMonitoringInterceptorEnabled(true);
 		config.setValueSerde(HeliosSerdes.STREAMED_METRIC_SERDE_THROUGH_STRING);
 		config.setKeySerde(HeliosSerdes.STRING_SERDE);
 		config.setTimeExtractor("com.heliosapm.streams.metrics.StreamedMetricTimestampExtractor");
@@ -114,27 +112,30 @@ public class TextMeteredMetricsRouter implements UncaughtExceptionHandler {
 		.map(new KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>>() {
 			@Override
 			public KeyValue<String, StreamedMetric> apply(final Windowed<String> key, final StreamedMetric sm) {
-				return new KeyValue<String, StreamedMetric>(sm.metricKey(), sm.forValue(1L).update(key.window().end()));
+				//return new KeyValue<String, StreamedMetric>(sm.metricKey(), sm.forValue(1L).update(key.window().end()));
+				return new KeyValue<String, StreamedMetric>(sm.metricKey(), new StreamedMetricValue(key.window().end(),
+						calcRate(5D, sm.forValue(1L).getLongValue()), sm.getMetricName(), sm.getTags()));
+//						sm.forValue(1L).getLongValue(), sm.getMetricName(), sm.getTags()));
 			}
 		}).to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, "tsdb.metrics.binary");
 		
-		builder.addStateStore(new StateStoreSupplier(){
-			@Override
-			public StateStore get() {				
-				return Stores.create("MeteringWindowAccumulator")
-					.withKeys(HeliosSerdes.STRING_SERDE)
-					.withValues(HeliosSerdes.STREAMED_METRIC_SERDE)
-					.inMemory()
-					.build().get();
-			}
-
-			@Override
-			public String name() {
-				return "MeteringWindowAccumulatorSupplier";
-			}
-		});
-		
-		builder.connectProcessorAndStateStores("KSTREAM-MAP-0000000001", "MeteringWindowAccumulator");
+//		builder.addStateStore(new StateStoreSupplier(){
+//			@Override
+//			public StateStore get() {				
+//				return Stores.create("MeteringWindowAccumulator")
+//					.withKeys(HeliosSerdes.STRING_SERDE)
+//					.withValues(HeliosSerdes.STREAMED_METRIC_SERDE)
+//					.inMemory()
+//					.build().get();
+//			}
+//
+//			@Override
+//			public String name() {
+//				return "MeteringWindowAccumulatorSupplier";
+//			}
+//		});
+//		
+//		builder.connectProcessorAndStateStores("KSTREAM-MAP-0000000001", "MeteringWindowAccumulator");
 		
 		
 		//KSTREAM-MAP-0000000001

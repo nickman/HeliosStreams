@@ -76,6 +76,7 @@ try {
                     traceNewTime(temp);
                     total++;
                 }
+                producer.flush();
             }
         }
         if(modLoop%100==0) {
@@ -84,6 +85,7 @@ try {
         }
         Thread.sleep(100);
     }
+
 } finally {
     if(producer!=null) {
         producer.close();

@@ -54,6 +54,9 @@ public class StreamedMetricSerializer implements Serializer<StreamedMetric> {
 	 */
 	@Override
 	public byte[] serialize(final String topic, final StreamedMetric data) {
+		if(data.isValued()) {
+			return ((StreamedMetricValue)data).toByteArray();
+		}
 		return data.toByteArray();
 	}
 
