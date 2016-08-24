@@ -51,7 +51,7 @@ public enum TimeWindowSummary implements ITimeWindowSummary {
 			if(window==null) throw new IllegalArgumentException("The passed window was null");
 			final double diff = window.end() - window.start();
 			if(diff==0D) return window.end();
-			return (long)diff/2;
+			return window.start() + (long)diff/2;
 		}
 	};
 }

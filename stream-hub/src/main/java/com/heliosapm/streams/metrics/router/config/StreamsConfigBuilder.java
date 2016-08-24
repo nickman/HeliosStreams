@@ -40,7 +40,6 @@ import org.apache.kafka.streams.processor.PartitionGrouper;
 import org.apache.kafka.streams.processor.TimestampExtractor;
 
 import com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterceptor;
-import com.heliosapm.streams.metrics.TextLineTimestampExtractor;
 
 /**
  * <p>Title: StreamsConfigBuilder</p>
@@ -99,7 +98,7 @@ public class StreamsConfigBuilder {
 	/** Directory location for state stores	/tmp/kafka-streams : <b><code>state.dir</code></b> */
 	protected File stateStoreDir = DEFAULT_STATE_STORE;	
 	/** Timestamp extractor class that implements the TimestampExtractor interface : <b><code>timestamp.extractor</code></b> */
-	protected String timeExtractor = TextLineTimestampExtractor.class.getName();
+	protected String timeExtractor = com.heliosapm.streams.metrics.StreamedMetricTimestampExtractor.class.getName();
 	
 	/** The number of samples maintained to compute metrics : <b><code>metrics.num.samples</code></b> */
 	protected int metricSampleCount = 2;
@@ -137,7 +136,7 @@ public class StreamsConfigBuilder {
 		replicationFactor = 1;
 		stateCleanupDelayMs = 60000;
 		stateStoreDir = DEFAULT_STATE_STORE;	
-		timeExtractor = TextLineTimestampExtractor.class.getName();
+		timeExtractor = com.heliosapm.streams.metrics.StreamedMetricTimestampExtractor.class.getName();
 		metricSampleCount = 2;
 		metricSampleWindow = 30000;
 		enableMonitoringInterceptor = false; 

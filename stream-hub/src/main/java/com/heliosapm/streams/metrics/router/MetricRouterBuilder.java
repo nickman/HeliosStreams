@@ -117,6 +117,7 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 				streamsConfig = configBuilder.build();
 				kafkaStreams = new KafkaStreams(kstreamBuilder, streamsConfig);
 				kafkaStreams.setUncaughtExceptionHandler(this);
+				kafkaStreams.cleanUp();
 				kafkaStreams.start();
 				log.info("<<<<< MetricRouter started.");
 			} catch (Exception ex) {

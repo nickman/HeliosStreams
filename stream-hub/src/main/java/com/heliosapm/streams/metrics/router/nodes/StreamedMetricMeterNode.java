@@ -22,10 +22,10 @@ import java.io.File;
 import java.util.Arrays;
 
 import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.kstream.Aggregator;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
-import org.apache.kafka.streams.kstream.Reducer;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Windowed;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
@@ -65,31 +65,38 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 	/** The time window summary to report the final summary using the window start, end (default) or middle time */
 	protected TimeWindowSummary windowTimeSummary = TimeWindowSummary.END;
 	/** The reducer to add up the incident counts for each incoming metric */
-	protected Reducer<StreamedMetric> sumReducer = null;
+	protected Aggregator<String, StreamedMetric, long[]> windowAggregator = null;
 	/** The divisor to report tps (windowSize/1000) */
 	protected double tpsDivisor = 5D;
 	
+	private static final KeyValue<String, StreamedMetric> OUT = new KeyValue<String, StreamedMetric>("DROPME", null);
+	
 	/** The metering window ktable */
-	protected KTable<Windowed<String>, StreamedMetric> meteredWindow = null;
+	protected  KTable<Windowed<String>,long[]> meteredWindow = null;
 	
 	/** The key value mapper that generates the final rolled up StreamedMetric */
-	protected KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>> rollupMapper = 
-		new KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>>() {
-		@Override
-		public KeyValue<String, StreamedMetric> apply(final Windowed<String> key, final StreamedMetric sm) {
-			
-			final KeyValue<String, StreamedMetric> kv = new KeyValue<String, StreamedMetric>(sm.metricKey(), 
-					new StreamedMetricValue(
-						key.window().end(),
-						reportInSeconds ? calcRate(sm.forValue(1L).getLongValue()) : sm.forValue(1L).getLongValue(),  
-						sm.getMetricName(), 
-						sm.getTags()
-					)
-			);
-			outboundCount.increment();
-			return kv;
-		}
+	protected KeyValueMapper<Windowed<String>, long[], KeyValue<String,StreamedMetric>> rollupMapper = 
+			new KeyValueMapper<Windowed<String>, long[], KeyValue<String,StreamedMetric>>() {
+				@Override
+				public KeyValue<String, StreamedMetric> apply(final Windowed<String> key, final long[] timeValuePair) {
+					if(timeValuePair[0] < key.window().start() || timeValuePair[0] > key.window().end()) {
+						return OUT;
+					}
+					final double aggregatedValue = reportInSeconds ? calcRate(timeValuePair[1]) : (double)timeValuePair[1];
+					final KeyValue<String, StreamedMetric> kv = new KeyValue<String, StreamedMetric>(key.key(), 
+						StreamedMetric.fromKey(
+								windowTimeSummary.time(key.window()),
+								key.key(),
+								aggregatedValue)
+					);
+					outboundCount.increment();
+					//log.info("{}", kv.value);
+					return kv;
+				}
 	};
+	
+	
+	
 
 	/**
 	 * {@inheritDoc}
@@ -98,29 +105,51 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 	@Override
 	public void configure(final KStreamBuilder streamBuilder) {
 		log.info("Source Topics: {}", Arrays.toString(sourceTopics));
-		log.info("Sink Topic: [{}]", sinkTopic);
-		tpsDivisor = windowSize/1000D;
+		log.info("Sink Topic: [{}]", sinkTopic);	
 		
-		sumReducer = new Reducer<StreamedMetric>() {
-			@Override 		// newAgg, exist
-			public StreamedMetric apply(final StreamedMetric sm1, final StreamedMetric sm2) {
+		windowAggregator = new Aggregator<String, StreamedMetric, long[]>() {
+			@Override
+			public long[] apply(final String aggKey, final StreamedMetric sm, final long[] aggregate) {
 				inboundCount.increment();
-				final boolean valued = sm1.isValued();				
-				final StreamedMetricValue smv = !valued ? sm1.forValue(1L) : sm1.forValue();
-				if(ignoreDoubles && smv.isDoubleValue()) return sm2;				
-				final long value = ignoreValues ? 1L : valued ? ((StreamedMetricValue)sm1).getValueNumber().longValue() : 1L; 
-				final StreamedMetric sm = new StreamedMetricValue(value, sm1.getMetricName(), sm1.getTags()); 
-				return sm;
+				final boolean valued = sm.isValued();
+				final long increment;
+				if(ignoreValues || !valued) {
+					increment = 1L;
+				} else {
+					final StreamedMetricValue smv = !valued ? sm.forValue(1L) : sm.forValue();
+					if(smv.isDoubleValue()) {
+						increment = ignoreDoubles ? 1L : (long)smv.getDoubleValue();
+					} else {
+						increment = smv.getLongValue();
+					}
+				}
+				return new long[]{sm.getTimestamp(), aggregate[1] + increment};
+//				return aggregate + increment;
 			}
 		};
+		
+//		sumReducer = new Reducer<StreamedMetric>() {
+//			@Override 		// newAgg, exist
+//			public StreamedMetric apply(final StreamedMetric sm1, final StreamedMetric sm2) {
+//				inboundCount.increment();
+//				final boolean valued = sm1.isValued();				
+//				final StreamedMetricValue smv = !valued ? sm1.forValue(1L) : sm1.forValue();
+//				if(ignoreDoubles && smv.isDoubleValue()) return sm2;				
+//				final long value = ignoreValues ? 1L : valued ? ((StreamedMetricValue)sm1).getValueNumber().longValue() : 1L; 
+//				final StreamedMetric sm = new StreamedMetricValue(value, sm1.getMetricName(), sm1.getTags()); 
+//				return sm;
+//			}
+//		};
 		
 		
 		
 		meteredWindow = streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics)
-			.reduceByKey(sumReducer, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
+			.aggregateByKey(() -> new long[2], windowAggregator, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.TIMEVALUE_PAIR_SERDE);
+			//.reduceByKey(sumReducer, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
 		
 		meteredWindow.toStream()
 			.map(rollupMapper)
+			.filter((mkey, metric) -> metric!=null)
 			.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic);
 //			.foreach((a,b) -> outboundCount.increment());
 	}
@@ -137,7 +166,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 		final File f = new File(dir, "MeteringWindowAccumulator-" + nodeName + "-state.txt");
 		f.delete();
 		log.info("Writing file to [{}]...", f);
-		meteredWindow.writeAsText(f.getAbsolutePath(), HeliosSerdes.WINDOWED_STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
+		meteredWindow.writeAsText(f.getAbsolutePath(), HeliosSerdes.WINDOWED_STRING_SERDE, HeliosSerdes.TIMEVALUE_PAIR_SERDE);
 		log.info("Write file to [{}]", f);
 	}
 	
@@ -148,7 +177,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 	 */
 	public double calcRate(final double count) {
 		if(count==0D) return 0D;
-		return count/windowSize;
+		return count/tpsDivisor;
 	}
 	
 
@@ -168,6 +197,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 	public void setWindowSize(final long windowSize) {
 		if(windowSize < 1000) throw new IllegalArgumentException("Invalid window size: [" + windowSize + "]");
 		this.windowSize = windowSize;
+		tpsDivisor = this.windowSize/1000D;
 	}
 
 	/**

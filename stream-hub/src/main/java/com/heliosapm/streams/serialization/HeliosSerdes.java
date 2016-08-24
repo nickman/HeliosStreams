@@ -59,6 +59,8 @@ public class HeliosSerdes extends Serdes {
 	/** A serde for {@link Windowed} strings */
 	public static final Serde<Windowed<String>> WINDOWED_STRING_SERDE = new WindowedStringSerde();
 	
+	public static final Serde<long[]> TIMEVALUE_PAIR_SERDE = new TimeLongPairSerde();
+	
 
 	/** The {@link StreamedMetric} deserializer from a String value */
 	public static final Deserializer<StreamedMetric> STREAMED_METRIC_DESER_FROM_STRING = new StatelessDeserializer<StreamedMetric>() {

@@ -39,7 +39,11 @@ public class StreamedMetricTimestampExtractor implements TimestampExtractor {
 			return ((StreamedMetric)v).getTimestamp();
 		} else if(v instanceof CharSequence) {
 			return StreamedMetric.fromString(((CharSequence)v).toString().trim()).getTimestamp();
+		} else if(v instanceof long[]) {
+			return ((long[])v)[0];
 		}
+		System.err.println("Unexpected Type: [" + 
+			v.getClass().getName() + "]");
 		return System.currentTimeMillis();
 	}
 
