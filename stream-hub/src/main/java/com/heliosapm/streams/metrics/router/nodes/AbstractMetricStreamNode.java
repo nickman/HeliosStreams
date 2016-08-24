@@ -18,12 +18,13 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
-import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
+import org.apache.kafka.streams.KafkaClientSupplier;
+import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
@@ -34,8 +35,8 @@ import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.jmx.export.naming.SelfNaming;
 import org.springframework.jmx.support.MetricType;
 
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.utils.jmx.JMXHelper;
-
 
 import jsr166e.LongAdder;
 
@@ -65,17 +66,28 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	protected String sinkTopic = null;
 	/** Indicates if the key of forwarded messages should be the full metric key, or just the metric name */
 	protected boolean fullKey = false;
-	
+	/** The client supplier */
+	protected KafkaClientSupplier clientSupplier = null;
+	/** The processor context for child classes that implement processor */
+	protected ProcessorContext processorCtx = null;
 
 
 	/**
 	 * {@inheritDoc}
-	 * @see java.io.Closeable#close()
+	 * @see com.heliosapm.streams.metrics.router.nodes.MetricStreamNode#close()
 	 */
-	@Override
-	public void close() throws IOException {
+	public void close()  {
 		/* No Op */
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.router.nodes.MetricStreamNode#setClientSupplier(org.apache.kafka.streams.KafkaClientSupplier)
+	 */
+	@Override
+	public void setClientSupplier(final KafkaClientSupplier clientSupplier) {
+		this.clientSupplier = clientSupplier;		
+	}	
 
 	/**
 	 * Resets this node's metrics
@@ -216,5 +228,11 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 		this.fullKey = fullKey;
 	}
 	
+	public void init(final ProcessorContext context) {
+		this.processorCtx = context;
+	}
+
+	
+
 
 }

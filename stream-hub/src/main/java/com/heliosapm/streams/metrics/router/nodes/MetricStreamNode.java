@@ -18,8 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
-import java.io.Closeable;
-
+import org.apache.kafka.streams.KafkaClientSupplier;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
 
 /**
@@ -29,7 +28,7 @@ import org.apache.kafka.streams.kstream.KStreamBuilder;
  * <p><code>com.heliosapm.streams.metrics.router.nodes.MetricStreamNode</code></p>
  */
 
-public interface MetricStreamNode extends Closeable {
+public interface MetricStreamNode {
 	
 	/**
 	 * Callback from the router builder to a participating node.
@@ -39,11 +38,22 @@ public interface MetricStreamNode extends Closeable {
 	public void configure(final KStreamBuilder streamBuilder);
 	
 	/**
+	 * Callback from the router builder to a participating node to provide the client supplier
+	 * @param clientSupplier The client supplier in case the node needs to do something out of the usual
+	 */
+	public void setClientSupplier(final KafkaClientSupplier clientSupplier);
+	
+	/**
 	 * Returns the logical name for this node.
 	 * Should be unique within the hosting router.
 	 * @return the node name
 	 */
 	public String getName();
+	
+	/**
+	 * Callback from the metic router directing this node to stop and cleanup
+	 */
+	public void close();
 	
 	
 }
