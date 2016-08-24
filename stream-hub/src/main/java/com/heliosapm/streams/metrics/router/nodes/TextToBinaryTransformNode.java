@@ -26,25 +26,16 @@ import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.serialization.HeliosSerdes;
 
 /**
- * <p>Title: TextToBinaryTransform</p>
+ * <p>Title: TextToBinaryTransformNode</p>
  * <p>Description: Listens on the {@link #sourceTopics} topics for string based {@link StreamedMetric} messages,
  * transforms them to binary format and forwards them to the {@link #sinkTopic} topic. The key of the incoming
  * messages is ignored as this node is primarilly intended to supply routing and meaningful keys
  * for metric publishers that do not supply a key that is load balancing friendly.</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.router.nodes.TextToBinaryTransform</code></p>
+ * <p><code>com.heliosapm.streams.metrics.router.nodes.TextToBinaryTransformNode</code></p>
  */
 
-public class TextToBinaryTransform extends AbstractMetricStreamNode {
-	
-	XXXXXX
-		Need  option to specify key:
-			metric name
-			host
-			app
-			combination
-	CXXXXX
-	
+public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 	
 	/** The mapper to transform the text message to a binary StreamedMetric */
 	protected final KeyValueMapper<String, String, KeyValue<String, StreamedMetric>> mapper
@@ -53,7 +44,7 @@ public class TextToBinaryTransform extends AbstractMetricStreamNode {
 		public KeyValue<String, StreamedMetric> apply(final String key, final String value) {
 			final StreamedMetric sm = StreamedMetric.fromString(value);
 			inboundCount.increment();
-			return new KeyValue<String, StreamedMetric>(sm.metricKey(), sm);
+			return new KeyValue<String, StreamedMetric>(fullKey ? sm.metricKey() : sm.getMetricName(), sm);
 		}
 	};
 	
@@ -68,5 +59,6 @@ public class TextToBinaryTransform extends AbstractMetricStreamNode {
 		.through(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic)
 		.foreach((a,b) -> outboundCount.increment());
 	}
+
 
 }

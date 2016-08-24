@@ -62,6 +62,9 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	protected String[] sourceTopics = null;
 	/** The sink topic */
 	protected String sinkTopic = null;
+	/** Indicates if the key of forwarded messages should be the full metric key, or just the metric name */
+	protected boolean fullKey = false;
+	
 
 
 	/**
@@ -192,6 +195,24 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	public void setSinkTopic(final String sinkTopic) {
 		if(sinkTopic==null || sinkTopic.trim().isEmpty()) throw new IllegalArgumentException("The passed sink topic name was empty or null");
 		this.sinkTopic = sinkTopic.trim();
+	}
+
+	/**
+	 * Indicates if this node is forwarding messages using the full metric key as the message key
+	 * or only the metric name 
+	 * @return the fullKey true for full metric key, false otherwise
+	 */
+	@ManagedAttribute(description="Indicates if forwarded messages use the full metric key or just the metric name")
+	public boolean isFullKey() {
+		return fullKey;
+	}
+
+	/**
+	 * Set to true to use the full metric key as the forwarded message key, false for just the metric name 
+	 * @param fullKey the fullKey to set
+	 */
+	public void setFullKey(final boolean fullKey) {
+		this.fullKey = fullKey;
 	}
 	
 
