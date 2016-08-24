@@ -51,6 +51,7 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
@@ -130,6 +131,10 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	protected final Logger log = LogManager.getLogger(AdminFinder.class);
 	/** The zookeep connect string */
 	protected String zookeepConnect = null;
+	
+	
+
+
 	/** The zookeep session timeout in ms. */
 	protected int zookeepTimeout = -1;
 	/** The curator zookeep client */
@@ -182,7 +187,7 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	 * @param args the command line args
 	 */
 	public AdminFinder(final String[] args) {
-		zookeepConnect = findArg(ZOOKEEP_CONNECT_ARG, DEFAULT_ZOOKEEP_CONNECT, args);
+		zookeepConnect = findArg(ZOOKEEP_CONNECT_ARG, ConfigurationHelper.getSystemThenEnvProperty("zookeep.connect", DEFAULT_ZOOKEEP_CONNECT), args);
 		zookeepTimeout = findArg(ZOOKEEP_TIMEOUT_ARG, DEFAULT_ZOOKEEP_TIMEOUT, args);
 		connectTimeout = findArg(CONNECT_TIMEOUT_ARG, DEFAULT_CONNECT_TIMEOUT, args);
 		retryPauseTime = findArg(RETRY_ARG, DEFAULT_RETRY, args);
@@ -618,5 +623,12 @@ public class AdminFinder implements Watcher, RetryPolicy, ConnectionStateListene
 	}
 
 	
+	/**
+	 * Returns the configured zookeeper connect string
+	 * @return the configured zookeeper connect string
+	 */
+	public String getZookeepConnect() {
+		return zookeepConnect;
+	}
 
 }

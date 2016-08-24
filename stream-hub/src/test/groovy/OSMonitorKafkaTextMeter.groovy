@@ -10,7 +10,9 @@ TO_TOPIC = "tsdb.metrics.text.meter"
 
 Properties props = new Properties();
 //props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-props.put("bootstrap.servers", "localhost:9092");
+//props.put("bootstrap.servers", "localhost:9092");
+props.put("bootstrap.servers", "10.22.114.37:9092");
+
 props.put("acks", "all");
 props.put("retries", 0);
 props.put("batch.size", 16384);
@@ -41,7 +43,7 @@ TOPIC_KEYS = new HashSet();
 unixTime = {
     return TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis())
 }
-
+long totalMessagesSent = 0;
 Producer<String, String> producer = null;
 
 traceNewTime = { template ->
@@ -79,8 +81,9 @@ try {
                 producer.flush();
             }
         }
+        totalMessagesSent += total;
         if(modLoop%100==0) {
-            println "\tSent Metrics: $total";
+            println "\tSent Metrics This Batch: $total, Total: $totalMessagesSent";
             total = 0;
         }
         Thread.sleep(100);

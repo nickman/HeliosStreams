@@ -102,9 +102,9 @@ public class StreamHubBoot {
 		System.setProperty("java.net.preferIPv4Stack" , "true");
 		System.setProperty("spring.output.ansi.enabled", "DETECT");
 		System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
-		ExtendedThreadManager.install();
-		log(">>>>> Discovering admin server url....");
+		ExtendedThreadManager.install();		
 		adminFinder = AdminFinder.getInstance(args);
+		log(">>>>> Discovering admin server url from Zookeep [%s].....", adminFinder.getZookeepConnect());
 		adminServerUrl = adminFinder.getAdminURL(true);
 		log("<<<<< Discovered admin server url: [%s]", adminServerUrl);
 				

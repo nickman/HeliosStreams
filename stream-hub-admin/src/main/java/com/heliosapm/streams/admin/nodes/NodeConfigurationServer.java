@@ -316,6 +316,9 @@ public class NodeConfigurationServer implements InitializingBean {
 		configDir = new File(configDirName).getAbsoluteFile();
 		appDir = new File(appDirName).getAbsoluteFile();
 		if(!configDir.isDirectory()) throw new IllegalArgumentException("The configuration directory [" + configDirName + "] is invalid");
+		if(!appDir.exists()) {
+			appDir.mkdirs();
+		}
 		if(!appDir.isDirectory()) throw new IllegalArgumentException("The app directory [" + appDirName + "] is invalid");
 		log.info("Configuration Directory: [{}]", configDir);
 		if(!cacheSpec.contains("recordStats")) cacheSpec = cacheSpec + ",recordStats";

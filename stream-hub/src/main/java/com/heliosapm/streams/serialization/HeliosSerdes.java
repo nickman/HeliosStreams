@@ -24,6 +24,7 @@ import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.streams.kstream.Windowed;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricDeserializer;
@@ -31,7 +32,6 @@ import com.heliosapm.streams.metrics.StreamedMetricSerializer;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.StreamedMetricValueDeserializer;
 import com.heliosapm.streams.metrics.StreamedMetricValueSerializer;
-import com.heliosapm.streams.metrics.processors.TimestampedMetricKey;
 
 /**
  * <p>Title: HeliosSerdes</p>
@@ -54,6 +54,10 @@ public class HeliosSerdes extends Serdes {
 //	public static final Serializer<TimestampedMetricKey> TIMESTAMPED_METRIC_SER = new TimestampedMetricKeySerializer(); 	
 //	/** The {@link TimestampedMetricKey} deserializer */
 //	public static final Deserializer<TimestampedMetricKey> TIMESTAMPED_METRIC_DESER = new TimestampedMetricKeyDeserializer(); 
+	
+	
+	/** A serde for {@link Windowed} strings */
+	public static final Serde<Windowed<String>> WINDOWED_STRING_SERDE = new WindowedStringSerde();
 	
 
 	/** The {@link StreamedMetric} deserializer from a String value */

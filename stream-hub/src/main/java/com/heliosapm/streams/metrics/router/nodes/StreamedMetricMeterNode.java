@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
+import java.io.File;
 import java.util.Arrays;
 
 import org.apache.kafka.streams.KeyValue;
@@ -28,6 +29,9 @@ import org.apache.kafka.streams.kstream.Reducer;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Windowed;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
+import org.springframework.jmx.export.annotation.ManagedOperation;
+import org.springframework.jmx.export.annotation.ManagedOperationParameter;
+import org.springframework.jmx.export.annotation.ManagedOperationParameters;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
@@ -110,12 +114,31 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 			}
 		};
 		
+		
+		
 		meteredWindow = streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics)
 			.reduceByKey(sumReducer, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
+		
 		meteredWindow.toStream()
 			.map(rollupMapper)
 			.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic);
 //			.foreach((a,b) -> outboundCount.increment());
+	}
+	
+	
+	/**
+	 * Writes the content of the time window to a file
+	 * @param dirName The directory name to write to
+	 */
+	@ManagedOperation(description="Writes the content of the time window to a file")
+	@ManagedOperationParameters({@ManagedOperationParameter(name="OutputDirectory", description="The optional directory to write to. Defaults to tmpdir")})
+	public void writeStateToFile(final String dirName) {
+		final File dir = new File((dirName==null || dirName.trim().isEmpty()) ? System.getProperty("java.io.tmpdir") : dirName.trim());
+		final File f = new File(dir, "MeteringWindowAccumulator-" + nodeName + "-state.txt");
+		f.delete();
+		log.info("Writing file to [{}]...", f);
+		meteredWindow.writeAsText(f.getAbsolutePath(), HeliosSerdes.WINDOWED_STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
+		log.info("Write file to [{}]", f);
 	}
 	
 	/**
