@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
+import java.util.Arrays;
+
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.kafka.streams.kstream.KTable;
@@ -25,10 +27,11 @@ import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.Reducer;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Windowed;
+import org.springframework.jmx.export.annotation.ManagedAttribute;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
-import com.heliosapm.streams.metrics.router.util.StreamedMetricLongSumReducer;
+import com.heliosapm.streams.metrics.router.util.TimeWindowSummary;
 import com.heliosapm.streams.serialization.HeliosSerdes;
 
 /**
@@ -55,9 +58,34 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 	protected boolean ignoreDoubles = false;
 	/** Indicates if the reported value published upstream should be adjusted to per/Second (i.e. the {@link #windowSize} divided by 1000). Defaults to true. */
 	protected boolean reportInSeconds = true;
-
+	/** The time window summary to report the final summary using the window start, end (default) or middle time */
+	protected TimeWindowSummary windowTimeSummary = TimeWindowSummary.END;
 	/** The reducer to add up the incident counts for each incoming metric */
 	protected Reducer<StreamedMetric> sumReducer = null;
+	/** The divisor to report tps (windowSize/1000) */
+	protected double tpsDivisor = 5D;
+	
+	/** The metering window ktable */
+	protected KTable<Windowed<String>, StreamedMetric> meteredWindow = null;
+	
+	/** The key value mapper that generates the final rolled up StreamedMetric */
+	protected KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>> rollupMapper = 
+		new KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>>() {
+		@Override
+		public KeyValue<String, StreamedMetric> apply(final Windowed<String> key, final StreamedMetric sm) {
+			
+			final KeyValue<String, StreamedMetric> kv = new KeyValue<String, StreamedMetric>(sm.metricKey(), 
+					new StreamedMetricValue(
+						key.window().end(),
+						reportInSeconds ? calcRate(sm.forValue(1L).getLongValue()) : sm.forValue(1L).getLongValue(),  
+						sm.getMetricName(), 
+						sm.getTags()
+					)
+			);
+			outboundCount.increment();
+			return kv;
+		}
+	};
 
 	/**
 	 * {@inheritDoc}
@@ -65,9 +93,14 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 	 */
 	@Override
 	public void configure(final KStreamBuilder streamBuilder) {
+		log.info("Source Topics: {}", Arrays.toString(sourceTopics));
+		log.info("Sink Topic: [{}]", sinkTopic);
+		tpsDivisor = windowSize/1000D;
+		
 		sumReducer = new Reducer<StreamedMetric>() {
 			@Override 		// newAgg, exist
 			public StreamedMetric apply(final StreamedMetric sm1, final StreamedMetric sm2) {
+				inboundCount.increment();
 				final boolean valued = sm1.isValued();				
 				final StreamedMetricValue smv = !valued ? sm1.forValue(1L) : sm1.forValue();
 				if(ignoreDoubles && smv.isDoubleValue()) return sm2;				
@@ -77,20 +110,12 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 			}
 		};
 		
-		KTable<Windowed<String>, StreamedMetric> meteredWindow = 
-				streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics)
-				.reduceByKey(sumReducer, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
-			
-			meteredWindow.toStream()
-			.map(new KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>>() {
-				@Override
-				public KeyValue<String, StreamedMetric> apply(final Windowed<String> key, final StreamedMetric sm) {
-					return new KeyValue<String, StreamedMetric>(sm.metricKey(), new StreamedMetricValue(key.window().end(),
-							calcRate(sm.forValue(1L).getLongValue()), sm.getMetricName(), sm.getTags()));
-				}
-			})
-			.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, "tsdb.metrics.binary");
-
+		meteredWindow = streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics)
+			.reduceByKey(sumReducer, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
+		meteredWindow.toStream()
+			.map(rollupMapper)
+			.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic);
+//			.foreach((a,b) -> outboundCount.increment());
 	}
 	
 	/**
@@ -99,72 +124,95 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode {
 	 * @return the number of events per second
 	 */
 	public double calcRate(final double count) {
+		if(count==0D) return 0D;
 		return count/windowSize;
 	}
 	
 
 	/**
-	 * Returns 
-	 * @return the windowSize
+	 * Returns the configured window size in ms. 
+	 * @return the window size
 	 */
+	@ManagedAttribute(description="The configured window size in ms.")
 	public long getWindowSize() {
 		return windowSize;
 	}
 
 	/**
-	 * Sets 
-	 * @param windowSize the windowSize to set
+	 * Sets the window size in ms. Should be a multiple of 1000
+	 * @param windowSize the window size to set
 	 */
-	public void setWindowSize(long windowSize) {
+	public void setWindowSize(final long windowSize) {
+		if(windowSize < 1000) throw new IllegalArgumentException("Invalid window size: [" + windowSize + "]");
 		this.windowSize = windowSize;
 	}
 
 	/**
-	 * Returns 
-	 * @return the ignoreValues
+	 * Indicates if metrics with values are counted as 1 event or the number of the value
+	 * @return true if values are ignored, false otherwise
 	 */
+	@ManagedAttribute(description="Indicates if metrics with values are counted as 1 event or the number of the value")
 	public boolean isIgnoreValues() {
 		return ignoreValues;
 	}
 
 	/**
-	 * Sets 
-	 * @param ignoreValues the ignoreValues to set
+	 * Sets if metrics with values are counted as 1 event
+	 * @param ignoreValues true to treat metrics with values as 1 event, false to use the value 
 	 */
-	public void setIgnoreValues(boolean ignoreValues) {
+	public void setIgnoreValues(final boolean ignoreValues) {
 		this.ignoreValues = ignoreValues;
 	}
 
 	/**
-	 * Returns 
-	 * @return the ignoreDoubles
+	 * Indicates if metrics with double values are counted as 1 event or the number of the value
+	 * @return true if values are ignored, false otherwise
 	 */
+	@ManagedAttribute(description="Indicates if metrics with double values are counted as 1 event or the number of the value")
 	public boolean isIgnoreDoubles() {
 		return ignoreDoubles;
 	}
 
 	/**
-	 * Sets 
-	 * @param ignoreDoubles the ignoreDoubles to set
+	 * Sets if metrics with double values are counted as 1 event
+	 * @param ignoreDoubles true to treat metrics with double values as 1 event, false to use the value 
 	 */
-	public void setIgnoreDoubles(boolean ignoreDoubles) {
+	public void setIgnoreDoubles(final boolean ignoreDoubles) {
 		this.ignoreDoubles = ignoreDoubles;
 	}
 
 	/**
-	 * Returns 
-	 * @return the reportInSeconds
+	 * Indicates if final rates are reported in events/sec or the natural rate of the configured window
+	 * @return true if final rates are reported in tps, false otherwise
 	 */
+	@ManagedAttribute(description="Indicates if final rates are reported in events/sec")
 	public boolean isReportInSeconds() {
 		return reportInSeconds;
 	}
 
 	/**
-	 * Sets 
-	 * @param reportInSeconds the reportInSeconds to set
+	 * Specifies if final rates are reported in events/sec or the natural rate of the configured window
+	 * @param reportInSeconds true to report in tps, false otherwise
 	 */
 	public void setReportInSeconds(boolean reportInSeconds) {
 		this.reportInSeconds = reportInSeconds;
+	}
+
+	/**
+	 * Returns the time window summarization strategy
+	 * @return the time window summarization strategy
+	 */
+	@ManagedAttribute(description="The time window summarization strategy")
+	public String getWindowTimeSummary() {
+		return windowTimeSummary.name();
+	}
+
+	/**
+	 * Sets the time window summarization strategy
+	 * @param windowSum The time window summarization strategy
+	 */
+	public void setWindowTimeSummary(final TimeWindowSummary windowSum) {
+		this.windowTimeSummary = windowSum;
 	}
 
 }

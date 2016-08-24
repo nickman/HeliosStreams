@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
+import java.util.Arrays;
+
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
@@ -44,6 +46,7 @@ public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 		public KeyValue<String, StreamedMetric> apply(final String key, final String value) {
 			final StreamedMetric sm = StreamedMetric.fromString(value);
 			inboundCount.increment();
+			outboundCount.increment();
 			return new KeyValue<String, StreamedMetric>(fullKey ? sm.metricKey() : sm.getMetricName(), sm);
 		}
 	};
@@ -54,10 +57,13 @@ public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 	 */
 	@Override
 	public void configure(final KStreamBuilder streamBuilder) {
+		log.info("Source Topics: {}", Arrays.toString(sourceTopics));
+		log.info("Sink Topic: [{}]", sinkTopic);
+
 		streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STRING_SERDE, sourceTopics)
 		.map(mapper)		
-		.through(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic)
-		.foreach((a,b) -> outboundCount.increment());
+		.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic);
+//		.foreach((a,b) -> outboundCount.increment());
 	}
 
 

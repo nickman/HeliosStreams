@@ -34,8 +34,6 @@ import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.DisposableBean;
-import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.annotation.Required;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -110,6 +108,7 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 				}
 				kstreamBuilder = new KStreamBuilder();
 				for(MetricStreamNode node: locatedNodes.values()) {
+					log.info("Configuring Node: [{}] ...", node.getName());
 					node.configure(kstreamBuilder);
 					nodes.put(node.getName(), node);
 					log.info("Configured Node: [{}]", node.getName());

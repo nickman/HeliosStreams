@@ -34,72 +34,30 @@
     -->
 
     
-    <bean id="accumulatorStoreDefinition" class="com.heliosapm.streams.metrics.store.StateStoreDefinition">
-		<property name="keySerde">
-			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-		</property>
-		<property name="valueSerde">
-			<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.LONG_SERDE"/>
-		</property>
-		<property name="inMemory" value="${streamhub.statestore.accumulator.inmemory:false}"/>		
+    
+    
+    
+    
+    <bean id="metricTextToBinNode" class="com.heliosapm.streams.metrics.router.nodes.TextToBinaryTransformNode">
+    	<property name="fullKey" value="${streamhub.meter.texttobin.fullkey:true}"/> 
+    	<property name="sinkTopic" value="${streamhub.meter.texttobin.sink:tsdb.metrics.meter}"/>
+    	<property name="sourceTopics" value="${streamhub.meter.texttobin.sources:tsdb.metrics.text.meter}"/>
+    </bean>
+    
+    <bean id="metricMeteringNode" class="com.heliosapm.streams.metrics.router.nodes.StreamedMetricMeterNode">
+		<property name="fullKey" value="${streamhub.meter.fullkey:true}"/> 
+		<property name="sinkTopic" value="${streamhub.meter.sink:tsdb.metrics.binary}"/>
+		<property name="sourceTopics" value="${streamhub.meter.sources:tsdb.metrics.meter}"/>
+		<property name="ignoreDoubles" value="${streamhub.meter.ignore.doubles:false}"/>
+		<property name="ignoreValues" value="${streamhub.meter.ignore.values:false}"/>
+		<property name="reportInSeconds" value="${streamhub.meter.tps:true}"/>
+		<property name="windowSize" value="${streamhub.meter.window.size:5000}"/>
+		<property name="windowTimeSummary" value="${streamhub.meter.window.summary:MIDDLE}"/>
     </bean>
     
     
-    <bean id="meterTextSupplier" class="com.heliosapm.streams.metrics.processors.impl.StreamedMetricMeterSupplier">
-    	<property name="aggregationPeriod" value="${streamhub.streamed.metric.supplier.meter.aggregationperiod:5}"/>
-    	<property name="idleTimeout" value="${streamhub.streamed.metric.supplier.meter.idletimeout:120}"/>
-    	<property name="period" value="${streamhub.streamed.metric.supplier.meter.period:10000}"/>
-    	<property name="sources" value="${streamhub.streamed.metric.supplier.meter.source:tsdb.metrics.meter}"/>
-    	<property name="topicSink" value="${streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary}"/>
-    	<property name="sourceKeySerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-    	</property>
-    	<property name="sourceValueSerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE_THROUGH_STRING"/>
-    	</property>    	
-    	<property name="sinkKeySerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-    	</property>
-    	<property name="sinkValueSerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE"/>
-    	</property>
-    </bean>
-    
-    
-    
-    <bean id="straightThroughText" class="com.heliosapm.streams.metrics.processors.impl.StraightThroughMetricProcessorSupplier">
-    	<property name="maxForwards" value="${streamhub.streamed.metric.supplier.straightthrough.maxforwards:100}"/>
-    	<property name="period" value="${streamhub.streamed.metric.supplier.straightthrough.period:10000}"/>
-    	<property name="sources" value="${streamhub.streamed.metric.supplier.straightthrough.source:tsdb.metrics.st}"/>
-    	<property name="topicSink" value="${streamhub.streamed.metric.tsdb.sink:tsdb.metrics.binary}"/>
-    	<property name="sourceKeySerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-    	</property>
-    	<property name="sourceValueSerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE_THROUGH_STRING"/>
-    	</property>    	
-    	<property name="sinkKeySerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STRING_SERDE"/>
-    	</property>
-    	<property name="sinkValueSerde">
-    		<util:constant static-field="com.heliosapm.streams.serialization.HeliosSerdes.STREAMED_METRIC_SERDE"/>
-    	</property>
-    </bean>
-    
-    <!-- 
-    <bean id="textMetricsMeter" factory-bean="meterTextSupplier" factory-method="get" />
-    <bean id="textMetrics" factory-bean="straightThroughText" factory-method="get" />
-    -->
-    
-    
-    <bean id="textRouter" class="com.heliosapm.streams.metrics.router.text.TextMetricStreamRouter">
-		<constructor-arg ref="streamsConfigProps"/> 	
-    	<property name="processorSuppliers">
-    		<util:list>
-    			<ref bean="meterTextSupplier"/>
-    			<ref bean="straightThroughText"/>
-    		</util:list>
-    	</property>
+    <bean id="metricRouter" class="com.heliosapm.streams.metrics.router.MetricRouterBuilder">
+		<property name="configBuilder" ref="streamsConfig"/>
     </bean>
     
     <bean id="streamsConfigProps" class="java.util.Properties" factory-bean="streamsConfig" factory-method="buildProperties"/>

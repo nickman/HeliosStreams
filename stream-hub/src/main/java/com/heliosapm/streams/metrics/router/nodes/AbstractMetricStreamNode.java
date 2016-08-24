@@ -30,11 +30,12 @@ import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedMetric;
 import org.springframework.jmx.export.annotation.ManagedOperation;
+import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.jmx.export.naming.SelfNaming;
 import org.springframework.jmx.support.MetricType;
 
 import com.heliosapm.utils.jmx.JMXHelper;
-import com.heliosapm.utils.jmx.annotations.ManagedResource;
+
 
 import jsr166e.LongAdder;
 
