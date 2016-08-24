@@ -22,6 +22,7 @@ import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.kstream.Aggregator;
@@ -76,7 +77,11 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	protected Aggregator<String, StreamedMetric, long[]> windowAggregator = null;
 	/** The divisor to report tps (windowSize/1000) */
 	protected double tpsDivisor = 5D;
-	
+	/** The number of outbounds sent in the last punctuation */
+	protected long lastOutbound = 0L;
+	/** The number of processor instances created */
+	protected final AtomicInteger processorInstances = new AtomicInteger(0);
+	/** A No Op KeyValue that should be ignored */
 	private static final KeyValue<String, StreamedMetric> OUT = new KeyValue<String, StreamedMetric>("DROPME", null);
 	
 	/** The metering window ktable */
@@ -108,15 +113,20 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	
 	
 	@Override
-	public Processor<String, StreamedMetric> get() {		
+	public Processor<String, StreamedMetric> get() {
+//		final int instanceId = 
+		processorInstances.incrementAndGet();
+//		final String processorName = "MeteringMetricAccumulator-" + nodeName + "#" + instanceId;
 		return new Processor<String, StreamedMetric>() {
+			
 			ProcessorContext context = null;
-			KeyValueStore<String, Long> periodEventCounts = null;
+			KeyValueStore<String, Long> periodEventCounts = null;				//Stores.create("MeteringWindowAccumulator-" + nodeName).withStringKeys().
+
+			@SuppressWarnings("unchecked")
 			@Override
 			public void init(final ProcessorContext context) {
 				this.context = context;
 				context.schedule(windowSize);
-				//Stores.create("MeteringWindowAccumulator-" + nodeName).withStringKeys().
 				periodEventCounts = (KeyValueStore<String, Long>) context.getStateStore("MeteringMetricAccumulator-" + nodeName);
 			}
 
@@ -148,7 +158,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 
 			@Override
 			public void punctuate(final long timestamp) {
-				
+				long sent = 0;
 				final KeyValueIterator<String, Long> iter = periodEventCounts.all();
 				try {
 					final long streamTime = context.timestamp();
@@ -160,9 +170,11 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 							final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
 							context.forward(kv.key, sm);
 							outboundCount.increment();
+							sent++;
 						}						
 						delKeys.add(kv.key);
 					}
+					lastOutbound = sent;
 					for(String key: delKeys) {
 						periodEventCounts.delete(key);
 					}
@@ -260,7 +272,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 		final File f = new File(dir, "MeteringWindowAccumulator-" + nodeName + "-state.txt");
 		f.delete();
 		log.info("Writing file to [{}]...", f);
-		meteredWindow.writeAsText(f.getAbsolutePath(), HeliosSerdes.WINDOWED_STRING_SERDE, HeliosSerdes.TIMEVALUE_PAIR_SERDE);
+//		meteredWindow.writeAsText(f.getAbsolutePath(), HeliosSerdes.WINDOWED_STRING_SERDE, HeliosSerdes.TIMEVALUE_PAIR_SERDE);
 		log.info("Write file to [{}]", f);
 	}
 	
@@ -360,6 +372,24 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	 */
 	public void setWindowTimeSummary(final TimeWindowSummary windowSum) {
 		this.windowTimeSummary = windowSum;
+	}
+
+	/**
+	 * Returns the number of sunk events in the last punctuation
+	 * @return the number of sunk events in the last punctuation
+	 */
+	@ManagedAttribute(description="The number of sunk events in the last punctuation")
+	public long getLastOutbound() {
+		return lastOutbound;
+	}
+
+	/**
+	 * Returns the number of created processor instances
+	 * @return the number of created processor instances
+	 */
+	@ManagedAttribute(description="The number of created processor instances")
+	public int getProcessorInstances() {
+		return processorInstances.get();
 	}
 
 

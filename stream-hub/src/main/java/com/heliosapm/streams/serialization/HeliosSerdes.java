@@ -56,10 +56,10 @@ public class HeliosSerdes extends Serdes {
 //	public static final Deserializer<TimestampedMetricKey> TIMESTAMPED_METRIC_DESER = new TimestampedMetricKeyDeserializer(); 
 	
 	
-	/** A serde for {@link Windowed} strings */
-	public static final Serde<Windowed<String>> WINDOWED_STRING_SERDE = new WindowedStringSerde();
-	
-	public static final Serde<long[]> TIMEVALUE_PAIR_SERDE = new TimeLongPairSerde();
+//	/** A serde for {@link Windowed} strings */
+//	public static final Serde<Windowed<String>> WINDOWED_STRING_SERDE = new WindowedStringSerde();
+//	
+//	public static final Serde<long[]> TIMEVALUE_PAIR_SERDE = new TimeLongPairSerde();
 	
 
 	/** The {@link StreamedMetric} deserializer from a String value */
