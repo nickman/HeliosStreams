@@ -175,14 +175,13 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 								val = 0D;
 							} else {
 								val = reportInSeconds ? calcRate(kv.value[2]) : kv.value[2];
-								final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
-								context.forward(kv.key, sm);
-//								store.delete(kv.key);
-								outboundCount.increment();
-								sent++;
-								
 							}
 							//final StreamedMetric sm = StreamedMetric.fromKey(windowTimeSummary.time(kv.value), kv.key, val);
+							final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
+							context.forward(kv.key, sm);
+//							store.delete(kv.key);
+							outboundCount.increment();
+							sent++;
 						}						
 					}
 					incrementFlushes(sent);
