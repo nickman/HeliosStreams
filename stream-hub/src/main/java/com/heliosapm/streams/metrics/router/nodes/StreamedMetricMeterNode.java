@@ -21,7 +21,7 @@ package com.heliosapm.streams.metrics.router.nodes;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Set;
+import java.util.concurrent.ConcurrentSkipListSet;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
@@ -37,6 +37,7 @@ import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.Stores;
 import org.apache.kafka.streams.state.Stores.KeyValueFactory;
+import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedOperation;
 import org.springframework.jmx.export.annotation.ManagedOperationParameter;
@@ -130,6 +131,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	@Override
 	public Processor<String, StreamedMetric> get() {
 		processorInstances.incrementAndGet();
+		final ConcurrentSkipListSet<String> processorKeys = new ConcurrentSkipListSet<String>();
 		return new Processor<String, StreamedMetric>() {
 			ProcessorContext context = null;
 
@@ -170,6 +172,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 					aggr[1] = sm.getTimestamp();
 					aggr[2] += increment; 
 				}
+				processorKeys.add(sm.metricKey());
 				periodEventCounts.put(sm.metricKey(), aggr);
 				periodEventCounts.flush();				
 			}
@@ -177,37 +180,39 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 			@Override
 			public void punctuate(final long timestamp) {
 				long sent = 0;
-				final KeyValueIterator<String, long[]> iter = periodEventCounts.all();
-				try {
-					final long streamTime = context.timestamp();  // the smallest timestamp
-					final HashSet<KeyValue<String, long[]>> saveValues = new HashSet<KeyValue<String, long[]>>(); 
-					while(iter.hasNext()) {
-						final KeyValue<String, long[]> kv = iter.next();
-						if(kv.value!=null) {
-							final double val;
-							if(kv.value[1] < streamTime) {
-								if(kv.value[2]> 0L) {
-									kv.value[2] = 0L;		
-									saveValues.add(kv);
+				if(!processorKeys.isEmpty()) {
+					final KeyValueIterator<String, long[]> iter = periodEventCounts.range(processorKeys.first(), processorKeys.last());
+					try {
+						final long streamTime = context.timestamp();  // the smallest timestamp
+						final HashSet<KeyValue<String, long[]>> saveValues = new HashSet<KeyValue<String, long[]>>(); 
+						while(iter.hasNext()) {
+							final KeyValue<String, long[]> kv = iter.next();
+							if(kv.value!=null) {
+								final double val;
+								if(kv.value[1] < streamTime) {
+									if(kv.value[2]> 0L) {
+										kv.value[2] = 0L;		
+										saveValues.add(kv);
+									}
+									val = 0D;
+								} else {
+									val = reportInSeconds ? calcRate(kv.value[2]) : kv.value[2];
 								}
-								val = 0D;
-							} else {
-								val = reportInSeconds ? calcRate(kv.value[2]) : kv.value[2];
-							}
-							final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
-							context.forward(kv.key, sm);
-							outboundCount.increment();
-							sent++;
-						}						
+								final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
+								context.forward(kv.key, sm);
+								outboundCount.increment();
+								sent++;
+							}						
+						}
+						incrementFlushes(sent);
+						for(KeyValue<String, long[]> toSave: saveValues) {
+							periodEventCounts.put(toSave.key, toSave.value);
+						}
+						periodEventCounts.flush();					
+					} finally {
+						iter.close();
+						context.commit();
 					}
-					incrementFlushes(sent);
-					for(KeyValue<String, long[]> toSave: saveValues) {
-						periodEventCounts.put(toSave.key, toSave.value);
-					}
-					periodEventCounts.flush();					
-				} finally {
-					iter.close();
-					context.commit();
 				}
 			}
 
