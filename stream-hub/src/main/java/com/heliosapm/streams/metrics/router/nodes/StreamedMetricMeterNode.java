@@ -23,11 +23,10 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.kafka.streams.KeyValue;
-import org.apache.kafka.streams.kstream.Aggregator;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
-import org.apache.kafka.streams.kstream.KTable;
 import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.Windowed;
 import org.apache.kafka.streams.processor.Processor;
@@ -37,6 +36,7 @@ import org.apache.kafka.streams.processor.StateStoreSupplier;
 import org.apache.kafka.streams.state.KeyValueIterator;
 import org.apache.kafka.streams.state.KeyValueStore;
 import org.apache.kafka.streams.state.Stores;
+import org.apache.kafka.streams.state.Stores.KeyValueFactory;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedOperation;
 import org.springframework.jmx.export.annotation.ManagedOperationParameter;
@@ -62,7 +62,7 @@ import com.heliosapm.streams.serialization.HeliosSerdes;
  * <p><code>com.heliosapm.streams.metrics.router.nodes.StreamedMetricMeterNode</code></p>
  */
 
-public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements ProcessorSupplier<String, StreamedMetric> {
+public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements ProcessorSupplier<String, StreamedMetric>, Runnable {
 	/** The accumulation window size in ms. Defaults to 5000 */
 	protected long windowSize = 5000;
 	/** Indicates if the actual value of a metric should be ignored and to focus only on the count of the metric id. Defaults to false. */
@@ -73,22 +73,22 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	protected boolean reportInSeconds = true;
 	/** The time window summary to report the final summary using the window start, end (default) or middle time */
 	protected TimeWindowSummary windowTimeSummary = TimeWindowSummary.END;
-	/** The reducer to add up the incident counts for each incoming metric */
-	protected Aggregator<String, StreamedMetric, long[]> windowAggregator = null;
+		
 	/** The divisor to report tps (windowSize/1000) */
 	protected double tpsDivisor = 5D;
 	/** The number of outbounds sent in the last punctuation */
-	protected long lastOutbound = 0L;
+	protected final LongAdder lastOutbound = new LongAdder();
+	/** Circular counter incremented each time a processor instance's punctuate is invoked, resetting once all known instances have reprocessed */
+	protected final AtomicInteger processorInvokes = new AtomicInteger(0);
 	/** The number of processor instances created */
 	protected final AtomicInteger processorInstances = new AtomicInteger(0);
 	/** A No Op KeyValue that should be ignored */
 	private static final KeyValue<String, StreamedMetric> OUT = new KeyValue<String, StreamedMetric>("DROPME", null);
 	
-	/** The metering window ktable */
-	protected  KTable<Windowed<String>,long[]> meteredWindow = null;
 	/** The processor's key value store */
-	protected KeyValueStore<String, Long> periodEventCounts = null;
-	
+	protected volatile KeyValueStore<String, long[]> periodEventCounts = null;
+
+	protected String storeName = null;
 	
 	/** The key value mapper that generates the final rolled up StreamedMetric */
 	protected KeyValueMapper<Windowed<String>, long[], KeyValue<String,StreamedMetric>> rollupMapper = 
@@ -112,28 +112,42 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	};
 	
 	
+	/**
+	 * Increments the punctuation period event counter, resetting on the first update of the period
+	 * @param itemsFlushed The number of events processed by one processor
+	 */
+	protected void incrementFlushes(final long itemsFlushed) {
+		if(processorInvokes.compareAndSet(processorInstances.get(), 0)) {
+			lastOutbound.reset();
+		} else {
+			processorInvokes.incrementAndGet();
+			lastOutbound.add(itemsFlushed);
+		}
+		
+	}
+	
+	
 	@Override
 	public Processor<String, StreamedMetric> get() {
-//		final int instanceId = 
 		processorInstances.incrementAndGet();
-//		final String processorName = "MeteringMetricAccumulator-" + nodeName + "#" + instanceId;
 		return new Processor<String, StreamedMetric>() {
-			
 			ProcessorContext context = null;
-			KeyValueStore<String, Long> periodEventCounts = null;				//Stores.create("MeteringWindowAccumulator-" + nodeName).withStringKeys().
 
 			@SuppressWarnings("unchecked")
 			@Override
 			public void init(final ProcessorContext context) {
 				this.context = context;
 				context.schedule(windowSize);
-				periodEventCounts = (KeyValueStore<String, Long>) context.getStateStore("MeteringMetricAccumulator-" + nodeName);
+				if(periodEventCounts==null) {
+					periodEventCounts = (KeyValueStore<String, long[]>) context.getStateStore(storeName);
+				}
 			}
 
 			@Override
 			public void process(final String key, final StreamedMetric sm) {
 				inboundCount.increment();
 				final boolean valued = sm.isValued();
+				final long timestamp = sm.getTimestamp();
 				final long increment;
 				if(ignoreValues || !valued) {
 					increment = 1L;
@@ -145,47 +159,56 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 						increment = smv.getLongValue();
 					}
 				}
-				Long aggr = periodEventCounts.get(sm.metricKey());
+				long[] aggr = periodEventCounts.get(sm.metricKey());
 				if(aggr==null) {
-					aggr = increment;
+					aggr = new long[]{timestamp, timestamp, increment};
 				} else {
-					aggr += increment;
+					if(timestamp < aggr[0]) {
+						// FIXME: DROP & Increment Count
+						return;
+					}
+					aggr[1] = sm.getTimestamp();
+					aggr[2] += increment; 
 				}
 				periodEventCounts.put(sm.metricKey(), aggr);
-				periodEventCounts.flush();
-				
+				periodEventCounts.flush();				
 			}
 
 			@Override
 			public void punctuate(final long timestamp) {
 				long sent = 0;
-				final KeyValueIterator<String, Long> iter = periodEventCounts.all();
+				final KeyValueIterator<String, long[]> iter = periodEventCounts.all();
 				try {
-					final long streamTime = context.timestamp();
-					final Set<String> delKeys = new HashSet<String>();
+					final long streamTime = context.timestamp();  // the smallest timestamp
+					final HashSet<KeyValue<String, long[]>> saveValues = new HashSet<KeyValue<String, long[]>>(); 
 					while(iter.hasNext()) {
-						final KeyValue<String, Long> kv = iter.next();
+						final KeyValue<String, long[]> kv = iter.next();
 						if(kv.value!=null) {
-							final double val = reportInSeconds ? calcRate(kv.value) : kv.value;
+							final double val;
+							if(kv.value[1] < streamTime) {
+								if(kv.value[2]> 0L) {
+									kv.value[2] = 0L;		
+									saveValues.add(kv);
+								}
+								val = 0D;
+							} else {
+								val = reportInSeconds ? calcRate(kv.value[2]) : kv.value[2];
+							}
 							final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
 							context.forward(kv.key, sm);
 							outboundCount.increment();
 							sent++;
 						}						
-						delKeys.add(kv.key);
 					}
-					lastOutbound = sent;
-					for(String key: delKeys) {
-						periodEventCounts.delete(key);
+					incrementFlushes(sent);
+					for(KeyValue<String, long[]> toSave: saveValues) {
+						periodEventCounts.put(toSave.key, toSave.value);
 					}
 					periodEventCounts.flush();					
 				} finally {
 					iter.close();
 					context.commit();
 				}
-				
-				
-				
 			}
 
 			@Override
@@ -194,6 +217,15 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 			}
 			
 		};
+	}
+	
+	/**
+	 * <p>Task periodically executed to continue sending zeros for idle metrics until the idle timeout kicks in.</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Runnable#run()
+	 */
+	public void run() {
+		
 	}
 
 	/**
@@ -204,62 +236,19 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	public void configure(final KStreamBuilder streamBuilder) {
 		log.info("Source Topics: {}", Arrays.toString(sourceTopics));
 		log.info("Sink Topic: [{}]", sinkTopic);
-		final StateStoreSupplier ss = Stores.create("MeteringMetricAccumulator-" + nodeName).withStringKeys().withLongValues().inMemory().build();
+		storeName = "MeteringMetricAccumulator-" + nodeName;
+		// ========================= PROCESSOR STYLE =========================
+		// persistentStores
+		final KeyValueFactory<String, long[]> factory = Stores.create(storeName).withStringKeys().withValues(HeliosSerdes.TIMEWINDOW_VALUE_SERDE);
+		final StateStoreSupplier ss = persistentStores ? factory.persistent().build() : factory.inMemory().build();
+		
 		streamBuilder
 			.addSource("MeterMetricProcessorSource", HeliosSerdes.STRING_SERDE.deserializer(), HeliosSerdes.STREAMED_METRIC_SERDE.deserializer(), sourceTopics)			
 			.addProcessor("MeterMetricProcessor", this, "MeterMetricProcessorSource")
 			.addStateStore(ss, "MeterMetricProcessor")
 			.addSink("MeterMetricProcessorSink", sinkTopic, HeliosSerdes.STRING_SERDE.serializer(), HeliosSerdes.STREAMED_METRIC_SERDE.serializer(), "MeterMetricProcessor");
-			
-		
-		
-//		windowAggregator = new Aggregator<String, StreamedMetric, long[]>() {
-//			@Override
-//			public long[] apply(final String aggKey, final StreamedMetric sm, final long[] aggregate) {
-//				inboundCount.increment();
-//				final boolean valued = sm.isValued();
-//				final long increment;
-//				if(ignoreValues || !valued) {
-//					increment = 1L;
-//				} else {
-//					final StreamedMetricValue smv = !valued ? sm.forValue(1L) : sm.forValue();
-//					if(smv.isDoubleValue()) {
-//						increment = ignoreDoubles ? 1L : (long)smv.getDoubleValue();
-//					} else {
-//						increment = smv.getLongValue();
-//					}
-//				}
-//				return new long[]{sm.getTimestamp(), aggregate[1] + increment};
-////				return aggregate + increment;
-//			}
-//		};
-//		
-////		sumReducer = new Reducer<StreamedMetric>() {
-////			@Override 		// newAgg, exist
-////			public StreamedMetric apply(final StreamedMetric sm1, final StreamedMetric sm2) {
-////				inboundCount.increment();
-////				final boolean valued = sm1.isValued();				
-////				final StreamedMetricValue smv = !valued ? sm1.forValue(1L) : sm1.forValue();
-////				if(ignoreDoubles && smv.isDoubleValue()) return sm2;				
-////				final long value = ignoreValues ? 1L : valued ? ((StreamedMetricValue)sm1).getValueNumber().longValue() : 1L; 
-////				final StreamedMetric sm = new StreamedMetricValue(value, sm1.getMetricName(), sm1.getTags()); 
-////				return sm;
-////			}
-////		};
-//		
-//		
-//		
-//		meteredWindow = streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics)
-//			.aggregateByKey(() -> new long[2], windowAggregator, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.TIMEVALUE_PAIR_SERDE);
-//			//.reduceByKey(sumReducer, TimeWindows.of("MeteringWindowAccumulator-" + nodeName, windowSize), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
-//		
-//		meteredWindow.toStream()
-//			.map(rollupMapper)
-//			.filter((mkey, metric) -> metric!=null)
-//			.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic);
-////			.foreach((a,b) -> outboundCount.increment());
+		// ===================================================================
 	}
-	
 	
 	/**
 	 * Writes the content of the time window to a file
@@ -380,7 +369,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	 */
 	@ManagedAttribute(description="The number of sunk events in the last punctuation")
 	public long getLastOutbound() {
-		return lastOutbound;
+		return lastOutbound.longValue();
 	}
 
 	/**

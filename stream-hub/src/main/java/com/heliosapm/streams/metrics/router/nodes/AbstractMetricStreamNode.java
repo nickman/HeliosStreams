@@ -66,12 +66,16 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	protected String sinkTopic = null;
 	/** Indicates if the key of forwarded messages should be the full metric key, or just the metric name */
 	protected boolean fullKey = false;
+	/** Indicates if stream stores created by this node should be persistent (true) or in-memory (false) */
+	protected boolean persistentStores = false;
+	
 	/** The client supplier */
 	protected KafkaClientSupplier clientSupplier = null;
 	/** The processor context for child classes that implement processor */
 	protected ProcessorContext processorCtx = null;
 
-
+	/** Indicates if this JVM is running in Windows */
+	protected static final boolean IS_WINDOWS = System.getProperty("os.name").toLowerCase().contains("windows");
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.metrics.router.nodes.MetricStreamNode#close()
@@ -230,6 +234,25 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	
 	public void init(final ProcessorContext context) {
 		this.processorCtx = context;
+	}
+
+	/**
+	 * Indicates if created state stores should be persistent or in-memory
+	 * @return true if created state stores should be persistent, false if in-memory
+	 */
+	@ManagedAttribute(description="Indicates if created state stores should be persistent or in-memory")
+	public boolean isPersistentStores() {
+		return persistentStores;
+	}
+
+	/**
+	 * Specifies if created state stores should be persistent or in-memory.
+	 * Note that windows does not support persistent stores yet, so if operating in windows, 
+	 * this will be forced to false. 
+	 * @param persistentStores true true if created state stores should be persistent, false if in-memory
+	 */
+	public void setPersistentStores(final boolean persistentStores) {
+		this.persistentStores = IS_WINDOWS ? false : persistentStores;
 	}
 
 	
