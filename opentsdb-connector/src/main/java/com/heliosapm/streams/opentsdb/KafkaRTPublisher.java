@@ -20,7 +20,6 @@ package com.heliosapm.streams.opentsdb;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
-import com.sun.management.ThreadMXBean;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Properties;
@@ -43,6 +42,7 @@ import com.heliosapm.streams.metrics.ValueType;
 import com.heliosapm.streams.opentsdb.ringbuffer.RingBufferService;
 import com.heliosapm.utils.collections.Props;
 import com.stumbleupon.async.Deferred;
+import com.sun.management.ThreadMXBean;
 
 import io.netty.buffer.ByteBuf;
 import net.openhft.chronicle.bytes.Bytes;

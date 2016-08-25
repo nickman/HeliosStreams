@@ -12,7 +12,8 @@ TO_TOPIC = "tsdb.metrics.meter"
 
 Properties props = new Properties();
 //props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-props.put("bootstrap.servers", "localhost:9093");
+//props.put("bootstrap.servers", "localhost:9093");
+props.put("bootstrap.servers", "10.22.114.37:9092");
 props.put("acks", "all");
 props.put("retries", 0);
 props.put("batch.size", 16384);

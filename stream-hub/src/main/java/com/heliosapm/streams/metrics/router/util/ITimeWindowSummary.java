@@ -37,4 +37,13 @@ public interface ITimeWindowSummary {
 	 * @return the flattended time is ms.
 	 */
 	public long time(final Window window);
+	
+	/**
+	 * Returns the summary timestamp for the passed triplet where <b></code>triplet[0]</code></b> is <b>T1</b>
+	 * and <b></code>triplet[1]</code></b> is <b>T2</b> 
+	 * @param window The window representing a start time of <b>T1</b> and an end time of <b>T2</b>.
+	 * @return the flattended time is ms.
+	 */
+	public long time(final long[] triplet);
+	
 }

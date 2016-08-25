@@ -21,14 +21,15 @@ package com.heliosapm.streams.metrics.router.nodes;
 import java.io.File;
 import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Set;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentSkipListSet;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
-import org.apache.kafka.streams.kstream.KeyValueMapper;
-import org.apache.kafka.streams.kstream.Windowed;
 import org.apache.kafka.streams.processor.Processor;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.ProcessorSupplier;
@@ -46,6 +47,7 @@ import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.router.util.TimeWindowSummary;
 import com.heliosapm.streams.serialization.HeliosSerdes;
+import com.heliosapm.utils.tuples.NVP;
 
 /**
  * <p>Title: StreamedMetricMeterNode</p>
@@ -85,31 +87,10 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	/** A No Op KeyValue that should be ignored */
 	private static final KeyValue<String, StreamedMetric> OUT = new KeyValue<String, StreamedMetric>("DROPME", null);
 	
-	/** The processor's key value store */
-	protected volatile KeyValueStore<String, long[]> periodEventCounts = null;
+	/** The processor's key value stores indexed by the processor instance id */
+	protected final Map<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>> periodEventCounts = new ConcurrentHashMap<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>>();
 
 	protected String storeName = null;
-	
-	/** The key value mapper that generates the final rolled up StreamedMetric */
-	protected KeyValueMapper<Windowed<String>, long[], KeyValue<String,StreamedMetric>> rollupMapper = 
-			new KeyValueMapper<Windowed<String>, long[], KeyValue<String,StreamedMetric>>() {
-				@Override
-				public KeyValue<String, StreamedMetric> apply(final Windowed<String> key, final long[] timeValuePair) {
-					if(timeValuePair[0] < key.window().start() || timeValuePair[0] > key.window().end()) {
-						return OUT;
-					}
-					final double aggregatedValue = reportInSeconds ? calcRate(timeValuePair[1]) : (double)timeValuePair[1];
-					final KeyValue<String, StreamedMetric> kv = new KeyValue<String, StreamedMetric>(key.key(), 
-						StreamedMetric.fromKey(
-								windowTimeSummary.time(key.window()),
-								key.key(),
-								aggregatedValue)
-					);
-					outboundCount.increment();
-					//log.info("{}", kv.value);
-					return kv;
-				}
-	};
 	
 	
 	/**
@@ -129,18 +110,20 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	
 	@Override
 	public Processor<String, StreamedMetric> get() {
-		processorInstances.incrementAndGet();
+		final int instanceId = processorInstances.incrementAndGet();
+		final AtomicBoolean spinLock = new AtomicBoolean(false);
+		final ConcurrentSkipListSet<String> processorKeys = new ConcurrentSkipListSet<String>(); 
 		return new Processor<String, StreamedMetric>() {
 			ProcessorContext context = null;
-
+			KeyValueStore<String, long[]> store = null;
 			@SuppressWarnings("unchecked")
 			@Override
 			public void init(final ProcessorContext context) {
 				this.context = context;
 				context.schedule(windowSize);
-				if(periodEventCounts==null) {
-					periodEventCounts = (KeyValueStore<String, long[]>) context.getStateStore(storeName);
-				}
+				store = (KeyValueStore<String, long[]>) context.getStateStore(storeName);
+				periodEventCounts.put(instanceId, new NVP<AtomicBoolean, KeyValueStore<String, long[]>>(spinLock, store));
+				log.info("Processor KeyValueStore: [{}]:[{}]", store.name(), System.identityHashCode(store));
 			}
 
 			@Override
@@ -159,7 +142,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 						increment = smv.getLongValue();
 					}
 				}
-				long[] aggr = periodEventCounts.get(sm.metricKey());
+				long[] aggr = store.get(sm.metricKey());
 				if(aggr==null) {
 					aggr = new long[]{timestamp, timestamp, increment};
 				} else {
@@ -170,17 +153,17 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 					aggr[1] = sm.getTimestamp();
 					aggr[2] += increment; 
 				}
-				periodEventCounts.put(sm.metricKey(), aggr);
-				periodEventCounts.flush();				
+				store.put(sm.metricKey(), aggr);
+				store.flush();
+				processorKeys.add(sm.metricKey());
 			}
 
 			@Override
 			public void punctuate(final long timestamp) {
 				long sent = 0;
-				final KeyValueIterator<String, long[]> iter = periodEventCounts.all();
+				KeyValueIterator<String, long[]> iter = store.all(); //range(processorKeys.first(), processorKeys.last());
 				try {
 					final long streamTime = context.timestamp();  // the smallest timestamp
-					final HashSet<KeyValue<String, long[]>> saveValues = new HashSet<KeyValue<String, long[]>>(); 
 					while(iter.hasNext()) {
 						final KeyValue<String, long[]> kv = iter.next();
 						if(kv.value!=null) {
@@ -188,32 +171,40 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 							if(kv.value[1] < streamTime) {
 								if(kv.value[2]> 0L) {
 									kv.value[2] = 0L;		
-									saveValues.add(kv);
 								}
 								val = 0D;
 							} else {
 								val = reportInSeconds ? calcRate(kv.value[2]) : kv.value[2];
+								final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
+								context.forward(kv.key, sm);
+//								store.delete(kv.key);
+								outboundCount.increment();
+								sent++;
+								
 							}
-							final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
-							context.forward(kv.key, sm);
-							outboundCount.increment();
-							sent++;
+							//final StreamedMetric sm = StreamedMetric.fromKey(windowTimeSummary.time(kv.value), kv.key, val);
 						}						
 					}
 					incrementFlushes(sent);
-					for(KeyValue<String, long[]> toSave: saveValues) {
-						periodEventCounts.put(toSave.key, toSave.value);
-					}
-					periodEventCounts.flush();					
-				} finally {
 					iter.close();
+					iter = null;
+					store.flush();
+					
+				} finally {
+//					processorKeys.clear();
+					if(iter!=null) try { iter.close(); } catch (Exception x) {/* No Op */}
 					context.commit();
 				}
+//				for(String key: processorKeys) {
+//					store.delete(key);
+//				}
+				processorKeys.clear();
+				context.commit();
 			}
 
 			@Override
 			public void close() {
-				periodEventCounts.close();
+				store.close();
 			}
 			
 		};

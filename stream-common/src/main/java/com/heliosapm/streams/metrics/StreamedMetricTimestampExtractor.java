@@ -40,7 +40,8 @@ public class StreamedMetricTimestampExtractor implements TimestampExtractor {
 		} else if(v instanceof CharSequence) {
 			return StreamedMetric.fromString(((CharSequence)v).toString().trim()).getTimestamp();
 		} else if(v instanceof long[]) {
-			return ((long[])v)[0];
+			final long[] arr = (long[])v;			
+			return arr.length==2 ? arr[0] : arr[1];
 		}
 		System.err.println("Unexpected Type: [" + 
 			v.getClass().getName() + "]");

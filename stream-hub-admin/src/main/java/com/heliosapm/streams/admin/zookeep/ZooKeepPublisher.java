@@ -30,8 +30,13 @@ import javax.management.MBeanNotificationInfo;
 import javax.management.Notification;
 import javax.management.NotificationBroadcasterSupport;
 
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.apache.zookeeper.ClientCnxn;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
@@ -52,6 +57,24 @@ import com.heliosapm.utils.net.LocalHost;
  * <p>Description: Publishes the Admin Server HTTP URL to Zookeeper</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.admin.zookeep.ZooKeepPublisher</code></p>
+ * FIXME: Freaks out when zookeeper nodes disappear. Should go back into poll mode.
+[INFO ] 2016-08-25 12:21:13.057 [main-SendThread(10.22.114.37:2181)] ClientCnxn - Unable to read additional data from server sessionid 0x156bdd6b2c0001e, likely server has closed socket, closing socket connection and attempting reconnect
+[INFO ] 2016-08-25 12:21:13.158 [main-EventThread] ZooKeepPublisher - ZooKeep Session Disconnected
+[INFO ] 2016-08-25 12:21:14.794 [main-SendThread(10.22.114.37:2181)] ClientCnxn - Opening socket connection to server 10.22.114.37/10.22.114.37:2181. Will not attempt to authenticate using SASL (unknown error)
+[WARN ] 2016-08-25 12:21:15.796 [main-SendThread(10.22.114.37:2181)] ClientCnxn - Session 0x156bdd6b2c0001e for server null, unexpected error, closing socket connection and attempting reconnect
+java.net.ConnectException: Connection refused
+	at sun.nio.ch.SocketChannelImpl.checkConnect(Native Method) ~[?:1.8.0_102]
+	at sun.nio.ch.SocketChannelImpl.finishConnect(SocketChannelImpl.java:717) ~[?:1.8.0_102]
+	at org.apache.zookeeper.ClientCnxnSocketNIO.doTransport(ClientCnxnSocketNIO.java:361) ~[zookeeper-3.4.8.jar:3.4.8--1]
+	at org.apache.zookeeper.ClientCnxn$SendThread.run(ClientCnxn.java:1141) [zookeeper-3.4.8.jar:3.4.8--1]
+[INFO ] 2016-08-25 12:21:17.200 [main-SendThread(10.22.114.37:2181)] ClientCnxn - Opening socket connection to server 10.22.114.37/10.22.114.37:2181. Will not attempt to authenticate using SASL (unknown error)
+[WARN ] 2016-08-25 12:21:18.202 [main-SendThread(10.22.114.37:2181)] ClientCnxn - Session 0x156bdd6b2c0001e for server null, unexpected error, closing socket connection and attempting reconnect
+java.net.ConnectException: Connection refused
+	at sun.nio.ch.SocketChannelImpl.checkConnect(Native Method) ~[?:1.8.0_102]
+	at sun.nio.ch.SocketChannelImpl.finishConnect(SocketChannelImpl.java:717) ~[?:1.8.0_102]
+	at org.apache.zookeeper.ClientCnxnSocketNIO.doTransport(ClientCnxnSocketNIO.java:361) ~[zookeeper-3.4.8.jar:3.4.8--1]
+	at org.apache.zookeeper.ClientCnxn$SendThread.run(ClientCnxn.java:1141) [zookeeper-3.4.8.jar:3.4.8--1]
+
  */
 
 public class ZooKeepPublisher extends NotificationBroadcasterSupport implements Watcher, ZooKeepPublisherMBean {
@@ -139,6 +162,7 @@ public class ZooKeepPublisher extends NotificationBroadcasterSupport implements 
 	public void start() throws IOException {
 		log.info(">>>>> Starting ZooKeepPublisher...");
 		zk = new ZooKeeper(connect, timeout, this);
+		lon();
 		try {
 			final List<ACL> rootAcls = Arrays.asList(
 					new ACL(ZooDefs.Perms.ALL, ZooDefs.Ids.ANYONE_ID_UNSAFE)
@@ -200,6 +224,26 @@ public class ZooKeepPublisher extends NotificationBroadcasterSupport implements 
 			System.exit(-1);
 		}
 	}
+	
+	protected volatile Level cxnLevel = Level.INFO;
+	
+	protected void loff() {
+		LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+		Configuration config = ctx.getConfiguration();
+		LoggerConfig loggerConfig = config.getLoggerConfig(ClientCnxn.class.getName());
+		cxnLevel = loggerConfig.getLevel();
+		loggerConfig.setLevel(Level.ERROR);
+		ctx.updateLoggers();		
+	}
+	
+	protected void lon() {
+		LoggerContext ctx = (LoggerContext) LogManager.getContext(false);
+		Configuration config = ctx.getConfiguration();
+		LoggerConfig loggerConfig = config.getLoggerConfig(ClientCnxn.class.getName()); 
+		loggerConfig.setLevel(cxnLevel);
+		ctx.updateLoggers();		
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -209,8 +253,10 @@ public class ZooKeepPublisher extends NotificationBroadcasterSupport implements 
 	public void process(final WatchedEvent event) {			
 		switch(event.getState()) {
 			case Disconnected:
+				// FIXME:  when this happens (and we're not shutting down), start the connection poll
+				loff();
 				connected.set(false);
-				log.info("ZooKeep Session Disconnected");	
+				log.warn("ZooKeep Session Disconnected. Waiting for reconnect....");	
 				sessionId = null;
 				sendNotification(new Notification(NOTIF_DISCONNECTED, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "ZooKeeperPublisher disconnected from ZooKeeper [" + connect + "]"));
 				break;
@@ -221,6 +267,7 @@ public class ZooKeepPublisher extends NotificationBroadcasterSupport implements 
 				sendNotification(new Notification(NOTIF_EXPIRED, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "ZooKeeperPublisher connection expored from ZooKeeper [" + connect + "]"));
 				break;
 			case SyncConnected:
+				lon();
 				connected.set(true);
 				sessionId = zk.getSessionId();
 				log.info("ZooKeep Connected. SessionID: [{}]", sessionId);

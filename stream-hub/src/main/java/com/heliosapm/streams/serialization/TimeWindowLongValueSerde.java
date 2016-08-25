@@ -42,6 +42,8 @@ public class TimeWindowLongValueSerde implements Serde<long[]>, Serializer<long[
 	 */
 	@Override
 	public long[] deserialize(final String topic, final byte[] data) {
+		if(data==null) throw new IllegalArgumentException("The passed data was null");
+		if(data.length!=24) throw new IllegalArgumentException("The passed data length was expected to be 24 but was [" + data.length + "]");
 		final long[] triplet = new long[3];
 		byte[] b = new byte[8];
 		System.arraycopy(data, 0, b, 0, 8);
@@ -59,6 +61,9 @@ public class TimeWindowLongValueSerde implements Serde<long[]>, Serializer<long[
 	 */
 	@Override
 	public byte[] serialize(final String topic, final long[] data) {
+		if(data==null) throw new IllegalArgumentException("SER: The passed data was null");
+		if(data.length!=3) throw new IllegalArgumentException("SER: The passed data length was expected to be 3 but was [" + data.length + "]");
+		
 		return Bytes.concat(
 				Longs.toByteArray(data[0]),
 				Longs.toByteArray(data[1]),

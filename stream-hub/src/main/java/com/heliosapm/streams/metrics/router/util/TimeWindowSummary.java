@@ -35,6 +35,10 @@ public enum TimeWindowSummary implements ITimeWindowSummary {
 			if(window==null) throw new IllegalArgumentException("The passed window was null");
 			return window.start();
 		}
+		@Override
+		public long time(final long[] triplet) {
+			return triplet[0];
+		}
 	},
 	/** The end of the window */
 	END{
@@ -43,6 +47,10 @@ public enum TimeWindowSummary implements ITimeWindowSummary {
 			if(window==null) throw new IllegalArgumentException("The passed window was null");
 			return window.end();
 		}
+		@Override
+		public long time(final long[] triplet) {
+			return triplet[1];
+		}		
 	},
 	/** The middle of the window */
 	MIDDLE{
@@ -53,5 +61,11 @@ public enum TimeWindowSummary implements ITimeWindowSummary {
 			if(diff==0D) return window.end();
 			return window.start() + (long)diff/2;
 		}
+		@Override
+		public long time(final long[] triplet) {
+			final double diff = triplet[1] - triplet[0];
+			if(diff==0D) return triplet[1];
+			return triplet[0] + (long)diff/2;
+		}		
 	};
 }
