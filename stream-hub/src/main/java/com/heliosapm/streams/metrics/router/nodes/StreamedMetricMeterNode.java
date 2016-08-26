@@ -20,7 +20,6 @@ package com.heliosapm.streams.metrics.router.nodes;
 
 import java.io.File;
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListSet;
@@ -66,38 +65,38 @@ import com.heliosapm.utils.tuples.NVP;
 
 public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements ProcessorSupplier<String, StreamedMetric>, Runnable {
 	/** The accumulation window size in ms. Defaults to 5000 */
-	protected long windowSize = 5000;
+	private long windowSize = 5000;
 	/** Indicates if the actual value of a metric should be ignored and to focus only on the count of the metric id. Defaults to false. */
-	protected boolean ignoreValues = false;
+	private boolean ignoreValues = false;
 	/** Indicates if metrics that have a value type of {@link Double} should be ignored. Defaults to false. */
-	protected boolean ignoreDoubles = false;
+	private boolean ignoreDoubles = false;
 	/** Indicates if the reported value published upstream should be adjusted to per/Second (i.e. the {@link #windowSize} divided by 1000). Defaults to true. */
-	protected boolean reportInSeconds = true;
+	private boolean reportInSeconds = true;
 	/** The time window summary to report the final summary using the window start, end (default) or middle time */
-	protected TimeWindowSummary windowTimeSummary = TimeWindowSummary.END;
+	private TimeWindowSummary windowTimeSummary = TimeWindowSummary.END;
 		
 	/** The divisor to report tps (windowSize/1000) */
-	protected double tpsDivisor = 5D;
+	private double tpsDivisor = 5D;
 	/** The number of outbounds sent in the last punctuation */
-	protected final LongAdder lastOutbound = new LongAdder();
+	private final LongAdder lastOutbound = new LongAdder();
 	/** Circular counter incremented each time a processor instance's punctuate is invoked, resetting once all known instances have reprocessed */
-	protected final AtomicInteger processorInvokes = new AtomicInteger(0);
+	private final AtomicInteger processorInvokes = new AtomicInteger(0);
 	/** The number of processor instances created */
-	protected final AtomicInteger processorInstances = new AtomicInteger(0);
+	private final AtomicInteger processorInstances = new AtomicInteger(0);
 	/** A No Op KeyValue that should be ignored */
 	private static final KeyValue<String, StreamedMetric> OUT = new KeyValue<String, StreamedMetric>("DROPME", null);
 	
 	/** The processor's key value stores indexed by the processor instance id */
-	protected final Map<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>> periodEventCounts = new ConcurrentHashMap<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>>();
+	private final Map<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>> periodEventCounts = new ConcurrentHashMap<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>>();
 
-	protected String storeName = null;
+	private String storeName = null;
 	
 	
 	/**
 	 * Increments the punctuation period event counter, resetting on the first update of the period
 	 * @param itemsFlushed The number of events processed by one processor
 	 */
-	protected void incrementFlushes(final long itemsFlushed) {
+	private void incrementFlushes(final long itemsFlushed) {
 		if(processorInvokes.compareAndSet(processorInstances.get(), 0)) {
 			lastOutbound.reset();
 		} else {
