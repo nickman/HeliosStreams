@@ -18,9 +18,12 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -29,6 +32,9 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 
 /**
  * <p>Title: WindowAggregation</p>
@@ -39,7 +45,10 @@ import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
  * @param <V> The aggregation type's value
  */
 
-public class WindowAggregation<K, V extends Aggregatable> implements Runnable {
+public class WindowAggregation<K, V extends Aggregatable<V>> implements Runnable {
+	
+	 
+	
 	/** The length of the window in seconds */
 	private final long windowDuration;	
 	/** The earliest timestamp accepted by this window, which is initialized to the first submission and 
@@ -52,32 +61,71 @@ public class WindowAggregation<K, V extends Aggregatable> implements Runnable {
 	private final DelayQueue<TimestampDelay> delayQueue = new DelayQueue<TimestampDelay>();
 	/** The keep running flag */
 	private final AtomicBoolean running = new AtomicBoolean(true);
+	/** The idle key retention time */
+	private final long idleRetention;
+	/** Indicates if idle key retention is enabled */
+	private final boolean idleRetentionEnabled;
+	/** The idle keys map */
+	private final Cache<K, Long> idleKeys;
+	/** The executor in which completed aggregations are returned */
+	private final Executor executor;
 	/** Instance logger */
 	private final Logger log;
 	
 	@SuppressWarnings("unchecked")
-	private final V placeholder = (V) new Aggregatable() {
+	private final V placeholder = (V) new Aggregatable<V>() {
 		@Override
 		public long timestamp(TimeUnit unit) {
 			return 0;
 		}
 
 		@Override
-		public void aggregateInto(final Aggregatable from) {
+		public void aggregateInto(final Aggregatable<V> from) {
+		}
+
+		@Override
+		public V newInstance(Aggregatable<V> from) {			
+			return null;
 		}
 	};
 	
 	/**
 	 * Creates a new WindowAggregation
 	 * @param windowDuration The length (time) of the aggregaton window in seconds
+	 * @param idleRetention An optional period of time in seconds for which idle keys are retained and made available.
+	 * If the retention is less than 1, no keys are retained.
 	 */
-	public WindowAggregation(final long windowDuration) {
+	public WindowAggregation(final long windowDuration, final Executor executor, final long idleRetention) {
+		if(executor==null) throw new IllegalArgumentException("The passed executor was null");
 		this.windowDuration = windowDuration;
+		this.idleRetention = idleRetention;
+		this.executor = executor;
+		idleRetentionEnabled = idleRetention<1L;
+		idleKeys = idleRetentionEnabled ? CacheBuilder.newBuilder()
+			.expireAfterWrite(idleRetention, TimeUnit.SECONDS)
+			.initialCapacity(1024)
+			.build() : null;
 		log = LogManager.getLogger(getClass().getName() + "-" + windowDuration);
 	}
 	
+	/**
+	 * Returns the idle keys
+	 * @return the idle keys
+	 */
+	public Set<K> getIdleKeys() {
+		if(!idleRetentionEnabled) throw new IllegalStateException("Idle Key Retention not enabled for this window");
+		return new HashSet<K>(idleKeys.asMap().keySet());
+	}
+	
+	/**
+	 * Aggregates the passed key/value pair 
+	 * @param key The key
+	 * @param value The value to aggregate
+	 * @return true if the pair was aggregated, false the timestamp of the passed value was too late to be aggregated
+	 */
 	public boolean aggregate(final K key, final V value) {
 		if(!running.get()) throw new IllegalStateException("This WindowAggregation was stopped");
+		if(idleRetentionEnabled) idleKeys.invalidate(key);
 		final long ts = windowStartTime(value.timestamp(TimeUnit.SECONDS));
 		if(!earliestTimestamp.compareAndSet(0L, ts)) {
 			if(ts < earliestTimestamp.get()) return false;
@@ -120,6 +168,12 @@ public class WindowAggregation<K, V extends Aggregatable> implements Runnable {
 		while(running.get()) {
 			try {
 				final TimestampDelay td = delayQueue.take();
+				final NonBlockingHashMap<K, V> period = delayIndex.remove(td.timestamp);
+				if(period!=null) {
+					
+				} else {
+					log.warn("Missing delay index for window [{}]",  td.timestamp);
+				}
 			} catch (InterruptedException iex) {
 				if(running.get()) {
 					if(Thread.interrupted()) Thread.interrupted();
@@ -133,11 +187,13 @@ public class WindowAggregation<K, V extends Aggregatable> implements Runnable {
 		log.info("Expiration thread ended");
 	}
 
-	static class TimestampDelay implements Delayed {
+	class TimestampDelay implements Delayed {
 		/** The timestamp representing the start of a time window in seconds */
 		private final long timestamp;
 		/** The timestamp in ms. */
 		private final long timestampMs;
+		/** The time this delay expired */
+		private final long expireTime;
 		
 		/**
 		 * Creates a new TimestampDelay
@@ -146,6 +202,7 @@ public class WindowAggregation<K, V extends Aggregatable> implements Runnable {
 		public TimestampDelay(final long timestamp) {
 			this.timestamp = timestamp;
 			this.timestampMs = TimeUnit.SECONDS.toMillis(timestamp);
+			this.expireTime = System.currentTimeMillis() + this.timestampMs;
 		}
 
 		/**

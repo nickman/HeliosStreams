@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  * <p><code>com.heliosapm.streams.metrics.router.nodes.Aggregatable</code></p>
  */
 
-public interface Aggregatable {
+public interface Aggregatable<T> {
 	/**
 	 * Supplies the effective timestamp for this object
 	 * @param unit The unit the timestamp should be expressed in
@@ -40,5 +40,12 @@ public interface Aggregatable {
 	 * Aggregates the {@code #from} instance into this instance
 	 * @param from The item to aggregate
 	 */
-	public void aggregateInto(final Aggregatable from);
+	public void aggregateInto(final Aggregatable<T> from);
+	
+	/**
+	 * Creates a deep copy of the Aggregatable
+	 * @param from the Aggregatable to copy
+	 * @return the deep copy
+	 */
+	public T newInstance(final Aggregatable<T> from);
 }
