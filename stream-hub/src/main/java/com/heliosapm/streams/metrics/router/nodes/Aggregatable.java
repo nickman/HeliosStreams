@@ -40,7 +40,7 @@ public interface Aggregatable<T> {
 	 * Aggregates the {@code #from} instance into this instance
 	 * @param from The item to aggregate
 	 */
-	public void aggregateInto(final Aggregatable<T> from);
+	public void aggregateInto(final T from);
 	
 	/**
 	 * Creates a deep copy of the Aggregatable
@@ -48,4 +48,10 @@ public interface Aggregatable<T> {
 	 * @return the deep copy
 	 */
 	public T newInstance(final Aggregatable<T> from);
+	
+	/**
+	 * Returns this aggregatable instance
+	 * @return this aggregatable instance
+	 */
+	public T get();
 }

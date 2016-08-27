@@ -18,15 +18,25 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
+import java.util.Set;
+import java.util.stream.Stream;
+
+import org.apache.kafka.streams.KeyValue;
+
 /**
- * <p>Title: WindowAggregationActions</p>
+ * <p>Title: WindowAggregationAction</p>
  * <p>Description: Defines the action executed in a WindowAggregation</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.router.nodes.WindowAggregationActions</code></p>
+ * <p><code>com.heliosapm.streams.metrics.router.nodes.WindowAggregationAction</code></p>
  * @param <K> The aggregation type's key
  * @param <V> The aggregation type's value
  */
 
-public interface WindowAggregationActions<K, V> {
-	public void process(final K key, final V stateValue, final V newValue);
+public interface WindowAggregationAction<K, V> {
+	/**
+	 * Callback from a WindowAggregation when a time window expires
+	 * @param aggregatedStream A stream of all the aggregated key/value pairs
+	 * @param expiredKeys A [possibly empty] set of expired keys which will [definitely] be empty if retention is not enabled.
+	 */
+	public void onExpire(final Stream<KeyValue<K,V>> aggregatedStream, final Set<K> expiredKeys);
 }
