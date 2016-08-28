@@ -175,6 +175,19 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	public long getOutboundCount() {
 		return outboundCount.longValue();
 	}
+	
+	/**
+	 * Returns the computed in count to out count ratio
+	 * @return the computed in count to out count ratio
+	 */
+	@ManagedMetric(description="The computed in count to out count ratio", metricType=MetricType.GAUGE, category="MetricStreamNode", displayName="Messages")
+	public double getInToOutRatio() {
+		final double in = inboundCount.longValue();
+		final double out = outboundCount.longValue();
+		if(in==0D || out==0D) return 0D;
+		return in/out;
+	}
+
 
 	/**
 	 * Returns the source topics names this node will consume from

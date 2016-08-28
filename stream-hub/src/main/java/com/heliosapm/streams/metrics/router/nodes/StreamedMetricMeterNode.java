@@ -334,6 +334,7 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	public long getWindowSize() {
 		return windowSize;
 	}
+	
 
 	/**
 	 * Sets the window size in ms. Should be a multiple of 1000
