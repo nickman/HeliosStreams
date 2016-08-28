@@ -57,12 +57,12 @@ import com.heliosapm.utils.reflect.PrivateAccessor;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicExistsException;
-import kafka.server.KafkaConfig;
+//import kafka.server.BrokerState;
 import kafka.server.KafkaServer;
+//import kafka.utils.TestUtils;
 //import kafka.utils.TestUtils;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
-import scala.Option;
 import scala.collection.JavaConversions;
 import scala.collection.JavaConverters;
 /**
@@ -135,10 +135,6 @@ public class KafkaTestServer {
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The embedded server config properties  */
 	protected final Properties configProperties = new Properties();
-	/** The kafka configuration */
-	protected KafkaConfig kafkaConfig = null;
-	/** The embedded kafka server instance */
-	protected KafkaServer kafkaServer = null;
 	/** The up and running flag */
 	protected final AtomicBoolean running = new AtomicBoolean(false);
 	
@@ -163,7 +159,9 @@ public class KafkaTestServer {
 	/** A zookeeper connection for admin ops */
 	protected ZkConnection zkConnection = null;
 	
-	List<KafkaServer> servers = new ArrayList<KafkaServer>();	
+	List<KafkaServer> servers = new ArrayList<KafkaServer>();
+	/** The kafka server instance */
+	protected KafkaServer kafkaServer = null;
 	
 	/** The assigned zooKeep port */
 	protected int zooKeepPort = 0;
@@ -264,7 +262,7 @@ public class KafkaTestServer {
 							@Override
 							public void run() {
 								try {
-									zkSoServer.runFromConfig(sc);
+									zkSoServer.runFromConfig(sc);									
 								} catch (IOException ex) {
 									log.error("Failed to start standalone ZooKeeper", ex);
 									t[0] = ex;
@@ -315,33 +313,25 @@ public class KafkaTestServer {
 				
 				log.info(">>>>> Starting Embedded Kafka...");
 				log.info("Embedded Kafka Broker Config: {}",  configProperties);
-				kafkaConfig = new KafkaConfig(configProperties);
-				Option<String> pref = Option.apply("KafkaThread");
-//				KafkaServerStartable startable = KafkaServerStartable.fromProps(configProperties);
-//				startable.startup();
-//				Time mock = new MockTime();
-//				kafkaServer = TestUtils.createServer(kafkaConfig, mock);
-				
-//				kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, pref);				
-				kafkaServer.startup();				
-				servers.add(kafkaServer);
-				
-								
+//				kafkaServer = new KafkaEmbedded(configProperties); 
+//				//kafkaServer.startup();				
+//				servers.add(kafkaServer.getKafka());
+//				
+//								
 //				BrokerState brokerState = kafkaServer.brokerState();
-				log.info("Base Kafka Server Up. Creating Offsets topic...");
-				final Properties offsetTopicProps = new Properties();
-				offsetTopicProps.setProperty("compression.type", "uncompressed");
-				offsetTopicProps.setProperty("cleanup.policy", "compact");
-				offsetTopicProps.setProperty("segment.bytes", "1048576");
-				createTopic("__consumer_offsets", 1, 1, offsetTopicProps);
+//				log.info("Base Kafka Server Up. Creating Offsets topic...");
+//				final Properties offsetTopicProps = new Properties();
+//				offsetTopicProps.setProperty("compression.type", "uncompressed");
+//				offsetTopicProps.setProperty("cleanup.policy", "compact");
+//				offsetTopicProps.setProperty("segment.bytes", "1048576");
+//				createTopic("__consumer_offsets", 1, 1, offsetTopicProps);
 //				TestUtils.waitUntilLeaderIsKnown(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
 //				TestUtils.waitUntilMetadataIsPropagated(scala.collection.JavaConversions.asScalaBuffer(servers), "__consumer_offsets", 0, 5000);
-				log.info("<<<<< Embedded Kafka started. State ");
+//				log.info("<<<<< Embedded Kafka started.");
 			} catch (Exception ex) {
 				running.set(false);
 				configProperties.clear();
-				kafkaConfig = null;
-				try { kafkaServer.shutdown(); } catch (Exception x) {/* No Op */}
+//				try { kafkaServer.stop(); } catch (Exception x) {/* No Op */}
 				kafkaServer = null;
 				log.error("Failed to start embedded kafka server", ex);
 				throw ex;
@@ -389,9 +379,8 @@ public class KafkaTestServer {
 	 */
 	public void stop() {
 		if(running.compareAndSet(true, false)) {
-			kafkaServer.shutdown();
+//			kafkaServer.stop();
 			kafkaServer = null;
-			kafkaConfig = null;
 			configProperties.clear();
 			if(zkUtils!=null) {
 				try { zkUtils.close(); } catch (Exception x) {}

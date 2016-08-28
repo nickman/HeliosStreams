@@ -499,6 +499,14 @@ public class StreamsConfigBuilder {
 		builder.append("]");
 		return builder.toString();
 	}
+
+	/**
+	 * Returns 
+	 * @return the clientId
+	 */
+	public String getClientId() {
+		return clientId;
+	}
 	
 	
 

@@ -24,6 +24,7 @@ import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
 import org.apache.kafka.streams.KafkaClientSupplier;
+import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -35,7 +36,7 @@ import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.jmx.export.naming.SelfNaming;
 import org.springframework.jmx.support.MetricType;
 
-import com.heliosapm.streams.metrics.StreamedMetric;
+import com.heliosapm.streams.metrics.router.StreamHubKafkaClientSupplier;
 import com.heliosapm.utils.jmx.JMXHelper;
 
 import jsr166e.LongAdder;
@@ -71,6 +72,8 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	
 	/** The client supplier */
 	protected KafkaClientSupplier clientSupplier = null;
+	/** The streams engine */
+	protected KafkaStreams kafkaStreams = null;
 	/** The processor context for child classes that implement processor */
 	protected ProcessorContext processorCtx = null;
 
@@ -86,11 +89,12 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.nodes.MetricStreamNode#setClientSupplier(org.apache.kafka.streams.KafkaClientSupplier)
+	 * @see com.heliosapm.streams.metrics.router.nodes.MetricStreamNode#onStart(com.heliosapm.streams.metrics.router.StreamHubKafkaClientSupplier, org.apache.kafka.streams.KafkaStreams)
 	 */
 	@Override
-	public void setClientSupplier(final KafkaClientSupplier clientSupplier) {
+	public void onStart(final StreamHubKafkaClientSupplier clientSupplier, final KafkaStreams kafkaStreams) {
 		this.clientSupplier = clientSupplier;		
+		this.kafkaStreams = kafkaStreams;
 	}	
 
 	/**

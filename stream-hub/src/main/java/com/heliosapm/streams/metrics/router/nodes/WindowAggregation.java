@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.Delayed;
@@ -31,9 +32,15 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import org.apache.kafka.clients.producer.Producer;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.KeyValue;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
@@ -46,6 +53,8 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadPool;
 import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.utils.unsafe.UnsafeAdapter;
+import com.heliosapm.utils.unsafe.UnsafeAdapter.SpinLock;
 
 /**
  * <p>Title: WindowAggregation</p>
@@ -57,11 +66,11 @@ import com.heliosapm.utils.time.SystemClock;
  * @param <T> The aggregation type's value
  */
 
-public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runnable {
+public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnable, Supplier<Set<KeyValue<K,T>>> {
 	
 	private static final int CORES = Runtime.getRuntime().availableProcessors();
 	/** Unique WindowAggregation instances keyed by idle retention within window duration */
-	private static final NonBlockingHashMapLong<NonBlockingHashMapLong<WindowAggregation>> instances = new NonBlockingHashMapLong<NonBlockingHashMapLong<WindowAggregation>>();
+	private static final NonBlockingHashMap<AggregatorWindowKey, WindowAggregation> instances = new NonBlockingHashMap<AggregatorWindowKey, WindowAggregation>();
 	/** The shared executor for invoking expiration callbacks */
 	private static final ThreadPoolExecutor executor = JMXManagedThreadPool.builder()
 			.corePoolSize(CORES)
@@ -92,7 +101,8 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 //	private final Stream<KeyValue<K,V>> outbound = Stream.generate(this);
 //	/** The internal stream of expired aggregations */
 //	private final AtomicReference<Stream<Iterator<Map.Entry<K,V>>>> internalOutbound = new AtomicReference<Stream<Iterator<Map.Entry<K,V>>>>(Stream.empty());
-
+	/** The aggregator */
+	private final Aggregator<T> aggregator;
 	/** The idle key retention time */
 	private final long idleRetention;
 	/** Indicates if idle key retention is enabled */
@@ -101,34 +111,44 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 	private final Cache<K, Long> idleKeys;
 	/** Instance logger */
 	private final Logger log;
+	/** The key for this window */
+	private final AggregatorWindowKey<V,T> key;
+	/** Flag indicating if this window resets on each period expiration */
+	private final boolean resetting;
+	/** The output stream */
+	Stream<Set<KeyValue<K,T>>> outStream = Stream.generate(this);
+	/** Flag indicating if the outStream has been requested */
+	private final AtomicBoolean outStreamRequested = new AtomicBoolean(false); 
+	/** A queue for outbound expirations */
+	private final ArrayBlockingQueue<Set<KeyValue<K,T>>> expirationQueue = new ArrayBlockingQueue<Set<KeyValue<K,T>>>(1024, false); 
 	
 	/** An empty set of idle keys for callbacks when retention is disabled */
 	private final Set<K> emptyIdleKeys = Collections.unmodifiableSet(Collections.emptySet());
 	/** The run thread for this window */
 	private final Thread runThread;
 	
-	
+	private final SpinLock lock = UnsafeAdapter.allocateSpinLock();
 	
 	
 	/**
 	 * Acquires a WindowAggregation for the specified duration and idle key retention
 	 * @param windowDuration The length (time) of the aggregaton window in seconds
 	 * @param idleRetention An optional period of time in seconds for which idle keys are retained and made available.
+	 * @param aggregator The aggregator instance 
 	 * @return the WindowAggregation
+	 * @param <K> The aggregation type's key
+	 * @param <V> The aggregation aggregator type
+	 * @param <T> The aggregation type's value
 	 */
-	@SuppressWarnings("rawtypes")
-	public static <K,V extends Aggregatable<T>, T> WindowAggregation<K,V,T> getInstance(final long windowDuration, final long idleRetention) {
+	@SuppressWarnings({ "rawtypes", "unchecked" })
+	public static <K,V extends Aggregator<T>, T> WindowAggregation<K,V,T> getInstance(final long windowDuration, final long idleRetention, final boolean resetting, final V aggregator) {
 		final long _idleRetention = idleRetention<1L ? 0L : idleRetention;
-		final NonBlockingHashMapLong<WindowAggregation> map = instances.get(_idleRetention, new Callable<NonBlockingHashMapLong<WindowAggregation>>() {
+		if(aggregator==null) throw new IllegalArgumentException("The passed aggregator was null");
+		final AggregatorWindowKey key = new AggregatorWindowKey<V,T>(windowDuration, _idleRetention, resetting, (Class<V>) aggregator.getClass());
+		return instances.get(key, new Callable<WindowAggregation>() {
 			@Override
-			public NonBlockingHashMapLong<WindowAggregation> call() throws Exception {				
-				return new NonBlockingHashMapLong<WindowAggregation>();
-			}
-		});
-		return map.get(windowDuration, new Callable<WindowAggregation>() {
-			@Override
-			public WindowAggregation call() throws Exception {
-				return new WindowAggregation(windowDuration, _idleRetention);
+			public WindowAggregation<K,V,T> call() throws Exception {				
+				return new WindowAggregation<K,V,T>(windowDuration, _idleRetention, resetting, aggregator, key);
 			}
 		});
 	}
@@ -138,17 +158,23 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 	 * @param windowDuration The length (time) of the aggregaton window in seconds
 	 * @param idleRetention An optional period of time in seconds for which idle keys are retained and made available.
 	 * If the retention is less than 1, no keys are retained.
+	 * @param resetting indicates if this window resets on each period expiration
+	 * @param aggregator The aggregator
+	 * @param key this window's key
 	 */
-	private WindowAggregation(final long windowDuration, final long idleRetention) {
+	private WindowAggregation(final long windowDuration, final long idleRetention, final boolean resetting, final Aggregator<T> aggregator, final AggregatorWindowKey<V,T> key) {
 		this.windowDuration = windowDuration;
 		this.idleRetention = idleRetention;
+		this.key = key;
+		this.resetting = resetting;
 		idleRetentionEnabled = idleRetention<1L;
 		idleKeys = idleRetentionEnabled ? CacheBuilder.newBuilder()
 			.expireAfterWrite(idleRetention, TimeUnit.SECONDS)
 			.initialCapacity(1024)
 			.build() : null;
-		log = LogManager.getLogger(getClass().getName() + "-" + windowDuration);
-		runThread = new Thread(this, "WindowAggregationThread[" + windowDuration + "," + idleRetention + "]");
+		log = LogManager.getLogger(getClass().getName() + "-" + windowDuration + aggregator.getClass().getSimpleName());
+		this.aggregator = aggregator;
+		runThread = new Thread(this, "WindowAggregationThread[" + aggregator.getClass().getSimpleName() + ", " + windowDuration + "," + idleRetention + "]");
 		runThread.setDaemon(true);
 		runThread.start();		
 	}
@@ -177,6 +203,18 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 		return this;
 	}		
 	
+	/**
+	 * {@inheritDoc}
+	 * @see java.util.function.Supplier#get()
+	 */
+	@Override
+	public Set<KeyValue<K, T>> get() {
+		try {
+			return expirationQueue.take();
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
+	}
 	
 	/**
 	 * Returns the idle keys
@@ -187,37 +225,76 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 		return new HashSet<K>(idleKeys.asMap().keySet());
 	}
 	
+//	final Collector<KeyValue<K,T>, ?, Collection<ProducerRecord<K,T>>> kvToPr(final String topic) {
+//		return 
+//		Collector.of(ArrayList::new, ArrayList::add, (kv) -> {
+//			return new ProducerRecord(topic, kv.key, kv.value);
+//		});
+//		
+//	}
+//	
+
+	public void aggregateAndPublish(final KStream<K,T> in, final Producer<K,T> kafkaProducer, final String topic) {
+		in.foreach((k,t) -> aggregate(k,t));		
+		addAction(new WindowAggregationAction<K, T>() {
+			@Override
+			public void onExpire(final Stream<KeyValue<K, T>> aggregatedStream, final Set<K> expiredKeys) {
+				aggregatedStream.map(kv -> new ProducerRecord<K,T>(topic, kv.key, kv.value))
+					.map(pr -> kafkaProducer.send(pr));
+						
+			}
+		});
+	}
+	
+	public Stream<KeyValue<K,T>> stream(final KStreamBuilder builder, final Serde<K> keySerde, final Serde<T> valueSerde, final String...fromTopics) {
+		builder.stream(keySerde, valueSerde, fromTopics)
+			.foreach((k,t) -> aggregate(k,t));
+		return outStream().flatMap(setOfKt -> setOfKt.stream());
+	}
+	
+	
+	public Stream<Set<KeyValue<K,T>>> outStream() {
+		outStreamRequested.set(true);
+		return outStream;
+	}
+	
+	
+	private final NonBlockingHashMap<K, T> PLACEHOLDER = new NonBlockingHashMap<K, T>(); 
+	
 	/**
 	 * Aggregates the passed key/value pair 
 	 * @param key The key
 	 * @param value The value to aggregate
 	 * @return true if the pair was aggregated, false the timestamp of the passed value was too late to be aggregated
 	 */
-	public boolean aggregate(final K key, final V value) {
+	public boolean aggregate(final K key, final T value) {
 		if(!running.get()) throw new IllegalStateException("This WindowAggregation was stopped");
 		if(idleRetentionEnabled) idleKeys.invalidate(key);
-		final long ts = windowStartTime(value.timestamp(TimeUnit.SECONDS));
+		final long ts = windowStartTime(aggregator.timestamp(TimeUnit.SECONDS, value));
 		if(!earliestTimestamp.compareAndSet(0L, ts)) {
 			if(ts < earliestTimestamp.get()) return false;
 		}
-		final NonBlockingHashMap<K, T> aggrMap = delayIndex.get(ts, new Callable<NonBlockingHashMap<K, T>>() {
-			@Override
-			public NonBlockingHashMap<K, T> call() throws Exception {
-				delayQueue.put(new TimestampDelay(ts));
-				return new NonBlockingHashMap<K, T>();
-			}
-		});
-		final StringBuilder b = new StringBuilder();
-		final T t = value.get();
-		b.append("in:").append(t).append(", prior:");
-		final T prior = aggrMap.put(key, t);
-		if(prior!=null) {
-			b.append(prior).append(", acc:");
-			value.aggregateInto(prior);
-			b.append(t);
+		NonBlockingHashMap<K, T> aggrMap = delayIndex.putIfAbsent(ts, PLACEHOLDER);
+		if(aggrMap==null || aggrMap==PLACEHOLDER) {
+			delayQueue.put(new TimestampDelay(ts));
+			aggrMap = new NonBlockingHashMap<K, T>();
+			delayIndex.replace(ts, aggrMap);
 		}
-		if("metric.0".equals(key)) {
-			log(b);
+//		try {
+//			lock.xlock(true);
+//			aggrMap = delayIndex.get(ts, new Callable<NonBlockingHashMap<K, T>>() {
+//				@Override
+//				public NonBlockingHashMap<K, T> call() throws Exception {
+//					delayQueue.put(new TimestampDelay(ts));
+//					return new NonBlockingHashMap<K, T>();
+//				}
+//			});
+//		} finally {
+//			lock.xunlock();
+//		}
+		final T prior = aggrMap.put(key, value);
+		if(prior!=null) {
+			aggregator.aggregateInto(value, prior);
 		}
 		return true;
 	}
@@ -251,7 +328,7 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 			}
 		};
 		final WindowAggregation<String, AggregatingMetricCounter, AggregatingMetricCounter> wa 
-			= WindowAggregation.getInstance(10L, 0L);
+			= WindowAggregation.getInstance(10L, 0L, true, AggregatingMetricCounter.AGGREGATOR);
 		wa.addAction(action);
 		while(run.get()) {
 			for(int x = 0; x < 12; x++) {
@@ -291,28 +368,54 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 		actions.clear();
 		running.set(false);
 		runThread.interrupt();		
-		instances.get(idleRetention).remove(windowDuration);
+		instances.remove(key);
 	}
 	
 	
+	/**
+	 * <p>Runs the expiration</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Runnable#run()
+	 */
+	@Override
 	public void run() {
 		log.info("Expiration thread started");
 		while(running.get()) {
 			try {
-				final TimestampDelay td = delayQueue.take();
-				final NonBlockingHashMap<K, T> period = delayIndex.remove(td.key);
-				if(actions.isEmpty()) {
-					log.warn("No actions registered !");
-					continue;
+				final TimestampDelay td;
+				final NonBlockingHashMap<K, T> period;
+				try {
+//					lock.xlock();
+					td = delayQueue.take();
+					// ========================================================================
+					// TODO: implement non-resetting
+					// tricky since we will need to block incoming 
+					// while we make defensive copies of Ts in NonBlockingHashMap<K, T> period 
+					// ========================================================================
+					period = delayIndex.remove(td.key);
+				} finally {
+//					lock.xunlock();
 				}
+//				if(actions.isEmpty()) {
+//					log.warn("No actions registered !");
+//					continue;
+//				}
 				if(period!=null) {
+					//log.info("Processing Aggregation Period: [{}]", new Date(td.timestampMs));
+					log.info("Processing Aggregation Period: [{}]", td.key);
 					executor.execute(new Runnable(){
+						@Override
 						public void run() {
 							final Set<KeyValue<K,T>> set = new HashSet<KeyValue<K,T>>(period.size());
 							for(Map.Entry<K, T> entry: period.entrySet()) {
 								set.add(new KeyValue<K,T>(entry.getKey(), entry.getValue()));
 							}
 							final Set<K> idle = idleRetentionEnabled ? getIdleKeys() : emptyIdleKeys;
+							if(outStreamRequested.get()) {
+								if(!expirationQueue.offer(new HashSet<KeyValue<K,T>>(set))) {
+									log.warn("ExpirationQueue Full !!!");
+								}
+							}
 							for(WindowAggregationAction<K, T> action: actions) {
 								action.onExpire(new HashSet<KeyValue<K,T>>(set).stream(), new HashSet<K>(idle));
 							}
@@ -342,6 +445,16 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 		private final long timestampMs;
 		/** The time this delay expired */
 		private final long expireTime;
+		
+		
+		
+		
+		private TimestampDelay() {
+			this.key = -1L;
+			this.timestampMs = -1L;
+			this.expireTime = -1L;
+			
+		}
 		
 		/**
 		 * Creates a new TimestampDelay
@@ -380,6 +493,45 @@ public class WindowAggregation<K, V extends Aggregatable<T>, T> implements Runna
 		public String toString() {
 			return "TimestampDeay[window:" + windowDuration + ", now:" + new Date() + ", expires:" + new Date(expireTime) + "]";
 		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#hashCode()
+		 */
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + getOuterType().hashCode();
+			result = prime * result + (int) (key ^ (key >>> 32));
+			return result;
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see java.lang.Object#equals(java.lang.Object)
+		 */
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			TimestampDelay other = (TimestampDelay) obj;
+			if (!getOuterType().equals(other.getOuterType()))
+				return false;
+			if (key != other.key)
+				return false;
+			return true;
+		}
+
+		private WindowAggregation getOuterType() {
+			return WindowAggregation.this;
+		}
+		
+		
 		
 	}
 

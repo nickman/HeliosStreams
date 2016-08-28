@@ -24,61 +24,57 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * <p>Title: AggregatingMetricCounter</p>
- * <p>Description: </p> 
+ * <p>Description: A minimal aggregator/aggregatable for testing</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.router.nodes.AggregatingMetricCounter</code></p>
  */
 
-public class AggregatingMetricCounter implements Aggregatable<AggregatingMetricCounter> {
+public class AggregatingMetricCounter implements Aggregator<AggregatingMetricCounter> {
 	final String key;
 	final AtomicLong count = new AtomicLong(0L);
 	final long timestamp;
 	
+	/** A shareable aggregator */
+	public static final AggregatingMetricCounter AGGREGATOR = new AggregatingMetricCounter();
+	
 	/**
 	 * Creates a new AggregatingMetricCounter
+	 * @param key The key
+	 * @param timestamp The timestamp in ms.
+	 * @param initialCount The initial count
 	 */
 	public AggregatingMetricCounter(final String key, final long timestamp, final long initialCount) {
 		this.key = key;
 		this.timestamp = timestamp;
 		count.addAndGet(initialCount);
 	}
+	
+	private AggregatingMetricCounter() {
+		this.key = null;
+		this.timestamp = -1L;
+	}
+	
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.nodes.Aggregatable#timestamp(java.util.concurrent.TimeUnit)
+	 * @see com.heliosapm.streams.metrics.router.nodes.Aggregator#timestamp(java.util.concurrent.TimeUnit, java.lang.Object)
 	 */
 	@Override
-	public long timestamp(final TimeUnit unit) {
+	public long timestamp(final TimeUnit unit, final AggregatingMetricCounter t) {
 		return unit.convert(timestamp, TimeUnit.MILLISECONDS);
 	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.nodes.Aggregatable#get()
-	 */
-	@Override
-	public AggregatingMetricCounter get() {		
-		return this;
-	}
+	
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.nodes.Aggregatable#aggregateInto(com.heliosapm.streams.metrics.router.nodes.Aggregatable)
+	 * @see com.heliosapm.streams.metrics.router.nodes.Aggregator#aggregateInto(java.lang.Object, java.lang.Object)
 	 */
 	@Override
-	public void aggregateInto(final AggregatingMetricCounter from) {
-		count.addAndGet(from.count.get());
+	public void aggregateInto(final AggregatingMetricCounter to, final AggregatingMetricCounter from) {
+		to.count.addAndGet(from.count.get());
+		
 	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrics.router.nodes.Aggregatable#newInstance(com.heliosapm.streams.metrics.router.nodes.Aggregatable)
-	 */
-	@Override
-	public AggregatingMetricCounter newInstance(Aggregatable<AggregatingMetricCounter> from) {
-		return new AggregatingMetricCounter(key, timestamp, count.get());
-	}
-
+	
 	/**
 	 * Returns the key
 	 * @return the key

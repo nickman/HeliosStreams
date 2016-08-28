@@ -18,8 +18,10 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
-import org.apache.kafka.streams.KafkaClientSupplier;
+import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
+
+import com.heliosapm.streams.metrics.router.StreamHubKafkaClientSupplier;
 
 /**
  * <p>Title: MetricStreamNode</p>
@@ -40,8 +42,9 @@ public interface MetricStreamNode {
 	/**
 	 * Callback from the router builder to a participating node to provide the client supplier
 	 * @param clientSupplier The client supplier in case the node needs to do something out of the usual
+	 * @param kafkaStreams The instance of the stream engine
 	 */
-	public void setClientSupplier(final KafkaClientSupplier clientSupplier);
+	public void onStart(final StreamHubKafkaClientSupplier clientSupplier, final KafkaStreams kafkaStreams);
 	
 	/**
 	 * Returns the logical name for this node.

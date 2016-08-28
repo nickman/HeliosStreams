@@ -136,16 +136,16 @@
       <scope>test</scope>
       <exclusions>
         <exclusion>
+          <artifactId>reflections</artifactId>
+          <groupId>org.reflections</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>tools</artifactId>
           <groupId>com.sun</groupId>
         </exclusion>
         <exclusion>
           <artifactId>javassist</artifactId>
           <groupId>org.javassist</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>guava</artifactId>
-          <groupId>com.google.guava</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -188,10 +188,6 @@
           <groupId>org.springframework</groupId>
         </exclusion>
         <exclusion>
-          <artifactId>zookeeper</artifactId>
-          <groupId>org.apache.zookeeper</groupId>
-        </exclusion>
-        <exclusion>
           <artifactId>curator-client</artifactId>
           <groupId>org.apache.curator</groupId>
         </exclusion>
@@ -205,10 +201,6 @@
         </exclusion>
         <exclusion>
           <artifactId>kafka-streams</artifactId>
-          <groupId>org.apache.kafka</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>kafka_2.11</artifactId>
           <groupId>org.apache.kafka</groupId>
         </exclusion>
         <exclusion>
@@ -252,6 +244,10 @@
           <groupId>org.slf4j</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>guava</artifactId>
+          <groupId>com.google.guava</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>jackson-annotations</artifactId>
           <groupId>com.fasterxml.jackson.core</groupId>
         </exclusion>
@@ -262,10 +258,6 @@
         <exclusion>
           <artifactId>jackson-databind</artifactId>
           <groupId>com.fasterxml.jackson.core</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>netty</artifactId>
-          <groupId>io.netty</groupId>
         </exclusion>
         <exclusion>
           <artifactId>async</artifactId>
@@ -294,14 +286,6 @@
         <exclusion>
           <artifactId>opentsdb_gwt_theme</artifactId>
           <groupId>net.opentsdb</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>guava</artifactId>
-          <groupId>com.google.guava</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>zookeeper</artifactId>
-          <groupId>org.apache.zookeeper</groupId>
         </exclusion>
       </exclusions>
     </dependency>

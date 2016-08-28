@@ -14,7 +14,7 @@ ansi.saveCursorPosition();
 String ANSI_CLS = "\u001b[2J";
 
 Properties props = new Properties();
-props.put("bootstrap.servers", "localhost:9092");
+props.put("bootstrap.servers", "localhost:9093,localhost:9094");
 props.put("group.id", "test");
 props.put("enable.auto.commit", "true");
 props.put("auto.commit.interval.ms", "1000");
@@ -62,7 +62,7 @@ try {
 	 			counts.put(it, 0);
 	 		} 		
 	 		records.each() { rec ->
-	 			counts.put(rec.value().metricKey(), rec.value().getValueNumber());	 			
+	 			counts.put(rec.value().metricKey(), rec.value().forValue(1L).getValueNumber());	 			
 	 			times.put(rec.value().metricKey(), new Date(rec.value().getTimestamp()));
 	 		}	    	
 	 		counts.each() { k, v ->

@@ -29,10 +29,8 @@ import javax.management.MalformedObjectNameException;
 import javax.management.ObjectName;
 
 import org.apache.kafka.streams.KafkaClientSupplier;
-import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
-import org.apache.kafka.streams.processor.internals.DefaultKafkaClientSupplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.BeansException;
@@ -47,6 +45,7 @@ import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.jmx.export.naming.SelfNaming;
 
+import com.heliosapm.streams.common.kafka.ext.KafkaStreamsExt;
 import com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder;
 import com.heliosapm.streams.metrics.router.nodes.MetricStreamNode;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -68,7 +67,7 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 	/** The kstream builder */
 	protected KStreamBuilder kstreamBuilder = null;
 	/** The kafka streams engine */
-	protected KafkaStreams kafkaStreams = null;
+	protected KafkaStreamsExt kafkaStreams = null;
 	/** The kafka streams engine config */
 	protected StreamsConfig streamsConfig = null;
 	/** The started flag */
@@ -81,7 +80,7 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 	protected ObjectName objectName = JMXHelper.objectName("com.heliosapm.streams.metrics.router:service=MetricRouter");
 	
 	/** The client supplier passed to all nodes  */
-	protected KafkaClientSupplier clientSupplier = null;
+	protected StreamHubKafkaClientSupplier clientSupplier = null;
 	
 
 
@@ -106,7 +105,7 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 	 */
 	public void start() {
 		if(started.compareAndSet(false, true)) {
-			if(clientSupplier == null) clientSupplier = new DefaultKafkaClientSupplier(); 
+			 
 			try {
 				log.info(">>>>> Starting MetricRouter.....");
 				final Map<String, MetricStreamNode> locatedNodes = appCtx.getBeansOfType(MetricStreamNode.class);
@@ -123,12 +122,13 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 				}
 				log.info("Configured [{}] MetricStreamNodes", nodes.size());
 				streamsConfig = configBuilder.build();
-				kafkaStreams = new KafkaStreams(kstreamBuilder, streamsConfig, clientSupplier);
+				if(clientSupplier == null) clientSupplier = new StreamHubKafkaClientSupplier(streamsConfig, configBuilder.getClientId());				
+				kafkaStreams = new KafkaStreamsExt(kstreamBuilder, streamsConfig, clientSupplier);
 				kafkaStreams.setUncaughtExceptionHandler(this);
 				kafkaStreams.cleanUp();
 				kafkaStreams.start();
 				for(MetricStreamNode node: locatedNodes.values()) {
-					node.setClientSupplier(clientSupplier);
+					node.onStart(clientSupplier, kafkaStreams);
 				}
 				log.info("<<<<< MetricRouter started.");
 			} catch (Exception ex) {
@@ -241,7 +241,7 @@ public class MetricRouterBuilder implements SelfNaming, ApplicationContextAware,
 	 * If not set, will use the default.
 	 * @param clientSupplier the client supplier to be used in the streams engine
 	 */
-	public void setClientSupplier(final KafkaClientSupplier clientSupplier) {
+	public void setClientSupplier(final StreamHubKafkaClientSupplier clientSupplier) {
 		if(clientSupplier==null) throw new IllegalArgumentException("The passed KafkaClientSupplier was null");
 		this.clientSupplier = clientSupplier;
 	}

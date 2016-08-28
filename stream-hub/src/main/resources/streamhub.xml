@@ -51,7 +51,7 @@
 		<property name="ignoreDoubles" value="${streamhub.meter.ignore.doubles:false}"/>
 		<property name="ignoreValues" value="${streamhub.meter.ignore.values:false}"/>
 		<property name="reportInSeconds" value="${streamhub.meter.tps:true}"/>
-		<property name="windowSize" value="${streamhub.meter.window.size:5000}"/>
+		<property name="windowSize" value="${streamhub.meter.window.size:5000}"/>  <!-- In MS ! -->
 		<property name="windowTimeSummary" value="${streamhub.meter.window.summary:MIDDLE}"/>
     </bean>
     
