@@ -44,6 +44,18 @@
     	<property name="sourceTopics" value="${streamhub.meter.texttobin.sources:tsdb.metrics.text.meter}"/>
     </bean>
     
+    
+    <!-- final long windowDuration, final long idleRetention, final boolean resetting, final V aggregator -->
+    
+    <bean id="MeteringAggregation" class="com.heliosapm.streams.metrics.router.nodes.WindowAggregation" factory-method="getInstance">
+    	<constructor-arg value="5"/>  		<!-- Window duration in seconds -->
+    	<constructor-arg value="0"/>  		<!-- Idle Key retention in seconds -->
+    	<constructor-arg value="true"/> 	<!-- Period Reset -->
+    	<constructor-arg> 					<!-- The aggregator -->
+    		<bean id="MeteringAggregationAggregator" class="com.heliosapm.streams.metrics.router.nodes.StreamedMetricMeterAggregator"/>
+    	</constructor-arg>
+    </bean>
+    
     <bean id="metricMeteringNode" class="com.heliosapm.streams.metrics.router.nodes.StreamedMetricMeterNode">
 		<property name="fullKey" value="${streamhub.meter.fullkey:true}"/> 
 		<property name="sinkTopic" value="${streamhub.meter.sink:tsdb.metrics.binary}"/>
@@ -51,7 +63,7 @@
 		<property name="ignoreDoubles" value="${streamhub.meter.ignore.doubles:false}"/>
 		<property name="ignoreValues" value="${streamhub.meter.ignore.values:false}"/>
 		<property name="reportInSeconds" value="${streamhub.meter.tps:true}"/>
-		<property name="windowSize" value="${streamhub.meter.window.size:5000}"/>  <!-- In MS ! -->
+		<property name="aggregationWindow" ref="MeteringAggregation" />  
 		<property name="windowTimeSummary" value="${streamhub.meter.window.summary:MIDDLE}"/>
     </bean>
     

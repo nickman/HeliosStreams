@@ -47,7 +47,7 @@ public class StreamedMetricMeterAggregator implements Aggregator<StreamedMetric>
 	@Override
 	public void aggregateInto(final StreamedMetric to, final StreamedMetric from) {
 		try {
-			to.forValue(1L).increment(from.forValue(1L).getValueNumber().longValue());
+			to.forceToLong().increment(from.forValue(1L).getValueNumber().longValue());			
 		} catch (Exception x) {
 			x.printStackTrace(System.err);
 		}

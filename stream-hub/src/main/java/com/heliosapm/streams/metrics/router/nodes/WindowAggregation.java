@@ -50,6 +50,7 @@ import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedResource;
 import org.springframework.jmx.export.naming.SelfNaming;
@@ -60,8 +61,6 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadPool;
 import com.heliosapm.utils.time.SystemClock;
-import com.heliosapm.utils.unsafe.UnsafeAdapter;
-import com.heliosapm.utils.unsafe.UnsafeAdapter.SpinLock;
 
 /**
  * <p>Title: WindowAggregation</p>
@@ -73,7 +72,7 @@ import com.heliosapm.utils.unsafe.UnsafeAdapter.SpinLock;
  * @param <T> The aggregation type's value
  */
 @ManagedResource
-public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnable, Supplier<Set<KeyValue<K,T>>>, SelfNaming {
+public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnable, Supplier<Set<KeyValue<K,T>>>, SelfNaming, DisposableBean {
 	
 	private static final int CORES = Runtime.getRuntime().availableProcessors();
 	/** Unique WindowAggregation instances keyed by idle retention within window duration */
@@ -141,8 +140,10 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 	private final LongAdder newPeriodCount = new LongAdder();
 	/** A count of low level aggregation executions */
 	private final LongAdder aggregationCount = new LongAdder();
+	/** A count of late arrival discards */
+	private final LongAdder discardCount = new LongAdder();
 	
-	private final SpinLock lock = UnsafeAdapter.allocateSpinLock();
+//	private final SpinLock lock = UnsafeAdapter.allocateSpinLock();
 	
 	
 	/**
@@ -193,6 +194,16 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 		runThread = new Thread(this, "WindowAggregationThread[" + aggregator.getClass().getSimpleName() + ", " + windowDuration + "," + idleRetention + "]");
 		runThread.setDaemon(true);
 		runThread.start();		
+	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.beans.factory.DisposableBean#destroy()
+	 */
+	@Override
+	public void destroy() throws Exception {
+		close();		
 	}
 	
 	/**
@@ -296,7 +307,10 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 		if(idleRetentionEnabled) idleKeys.invalidate(key);
 		final long ts = windowStartTime(aggregator.timestamp(TimeUnit.SECONDS, value));
 		if(!earliestTimestamp.compareAndSet(0L, ts)) {
-			if(ts < earliestTimestamp.get()) return false;
+			if(ts < earliestTimestamp.get()) {
+				discardCount.increment();
+				return false;
+			}
 		}
 		NonBlockingHashMap<K, T> aggrMap = delayIndex.putIfAbsent(ts, PLACEHOLDER);
 		if(aggrMap==null || aggrMap==PLACEHOLDER) {
@@ -615,6 +629,16 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 		return delayIndex.size();
 	}
 	
+	
+	/**
+	 * Returns the number of late arrival discards
+	 * @return the number of late arrival discards
+	 */
+	@ManagedAttribute(description="The number of late arrival discards")
+	public long getDiscardCount() {
+		return discardCount.longValue();
+	}
+	
 	/**
 	 * Returns the total number of keys being aggregated
 	 * @return the total number of keys being aggregated
@@ -670,19 +694,21 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 	}
 
 	/**
-	 * Returns the
-	 * @return the newPeriodCount
+	 * Returns the total number of created periods
+	 * @return the total number of created periods
 	 */
-	public LongAdder getNewPeriodCount() {
-		return newPeriodCount;
+	@ManagedAttribute(description="The total number of created periods")
+	public long getNewPeriodCount() {
+		return newPeriodCount.longValue();
 	}
 
 	/**
-	 * Returns the
-	 * @return the aggregationCount
+	 * Returns the total number of aggregation executions
+	 * @return the total number of aggregation executions
 	 */
-	public LongAdder getAggregationCount() {
-		return aggregationCount;
+	@ManagedAttribute(description="The total number of aggregation executions")
+	public long getAggregationCount() {
+		return aggregationCount.longValue();
 	}
 
 }

@@ -209,6 +209,13 @@ public class StreamedMetric implements BytesMarshallable {
 		return new StreamedMetricValue(this, value);
 	}
 	
+	public StreamedMetricValue forceToLong() {
+		if(isValued()) {
+			return ((StreamedMetricValue)this).forceToLong();
+		}
+		return forValue(1L);
+	}
+	
 	/**
 	 * Casts this object to a StreamedMetricValue. 
 	 * Calling this if this is actually not a StreamedMetricValue

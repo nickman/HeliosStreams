@@ -19,8 +19,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -52,7 +54,6 @@ import com.heliosapm.streams.common.kafka.interceptor.MonitoringConsumerIntercep
 import com.heliosapm.streams.metrics.Blacklist;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
-import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedScheduler;
@@ -213,7 +214,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		
 		final Properties p = new Properties();
 		p.putAll(tsdb.getConfig().getMap());
-		final Properties rpcConfig = Props.extractOrEnv(CONFIG_PREFIX, p, true); 
+		final Properties rpcConfig = extractOrEnv(CONFIG_PREFIX, p, true); 
 		topics = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_TOPICS, DEFAULT_TOPIC, rpcConfig);
 		pollTimeout = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_POLLTIMEOUT, DEFAULT_POLLTIMEOUT, rpcConfig);
 		syncAdd = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_SYNC_ADD, DEFAULT_SYNC_ADD, rpcConfig);
@@ -225,11 +226,12 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		messageQueue = MessageQueue.getInstance(getClass().getSimpleName(), this, rpcConfig);
 		
 		if(monitoringInterceptor) {
-			Props.appendToValue("interceptor.classes", MonitoringConsumerInterceptor.class.getName(), ",", rpcConfig);
+			rpcConfig.put("interceptor.classes", MonitoringConsumerInterceptor.class.getName());
+//			Props.appendToValue("interceptor.classes", MonitoringConsumerInterceptor.class.getName(), ",", rpcConfig);
 		}
 		InterceptorInstaller.filter(false, rpcConfig);
 //		
-		consumerConfig.putAll(Props.extractOrEnv(CONFIG_PREFIX, rpcConfig, true));
+		consumerConfig.putAll(extractOrEnv(CONFIG_PREFIX, rpcConfig, true));
 		metricManager.addExtraTag("mode", syncAdd ? "sync" : "async");		
 		printConfig();
 //		try {
@@ -262,6 +264,63 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 			}
 		}, 5, 15, TimeUnit.SECONDS);
 	}
+	
+	/**
+	 * Scans the passed source properties, system properties, then environment for any property keys starting with the passed prefix and copies any matching to the target which is returned.
+	 * @param prefix The prefix to match
+	 * @param source The source propereties to copy from
+	 * @param removePrefix If true, the prefix is removed from the key before adding to the target
+	 * @return the target properties
+	 */
+	public static Properties extractOrEnv(final String prefix, final Properties source, final boolean removePrefix) {
+		if(prefix==null || prefix.trim().isEmpty()) throw new IllegalArgumentException("The passed prefix was null or empty");
+		
+		final String _prefix = prefix.trim().endsWith(".") ? prefix.trim() : (prefix.trim() + ".");
+		final int len = _prefix.length();
+		final Properties p = scan(_prefix, source, System.getProperties(), env());
+		final Properties p2 = new Properties();
+		if(removePrefix && !p.isEmpty()) {
+			for(final String key: p.stringPropertyNames()) {
+				final String newKey = removePrefix ? key.substring(len) : key;
+				p2.put(newKey, p.getProperty(key));
+			}
+			return p2;
+		}
+		return p;
+	}
+	
+	/**
+	 * Returns the environment variables as lowercased properties with dashes replaced as dots
+	 * @return property equivalents for environment variables 
+	 */
+	public static Properties env() {
+		final Properties p = new Properties();
+		for(Map.Entry<String, String> entry: System.getenv().entrySet()) {
+			p.put(entry.getKey().toLowerCase().replace('-', '.'), entry.getValue());
+		}
+		return p;
+	}
+	
+	public static Properties scan(final String prefix, final Properties...props) {
+		if(prefix==null || prefix.trim().isEmpty()) throw new IllegalArgumentException("The passed prefix was null or empty");
+		if(props.length==0) return null;
+		final Map<String, String> capture = new HashMap<String, String>();
+		for(Properties p: props) {
+			if(p==null || p.isEmpty()) continue;
+			for(String key: p.stringPropertyNames()) {
+				if(key.indexOf(prefix)==0)  {
+					if(capture.containsKey(key)) continue;
+					capture.put(key, p.getProperty(key));
+				}
+			}
+		}
+		final Properties extracted = new Properties();
+		extracted.putAll(capture);
+		return extracted;
+	}
+	
+	
+	
 	
 	/**
 	 * Prints the critical configuration

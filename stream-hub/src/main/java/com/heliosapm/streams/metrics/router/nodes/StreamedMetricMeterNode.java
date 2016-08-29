@@ -18,46 +18,27 @@ under the License.
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
-import java.io.File;
 import java.util.Arrays;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentSkipListSet;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.stream.Stream;
 
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.streams.KafkaStreams;
-import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
-import org.apache.kafka.streams.processor.Processor;
-import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.processor.ProcessorSupplier;
-import org.apache.kafka.streams.state.KeyValueIterator;
-import org.apache.kafka.streams.state.KeyValueStore;
+import org.springframework.beans.factory.annotation.Required;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
-import org.springframework.jmx.export.annotation.ManagedOperation;
-import org.springframework.jmx.export.annotation.ManagedOperationParameter;
-import org.springframework.jmx.export.annotation.ManagedOperationParameters;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.router.StreamHubKafkaClientSupplier;
 import com.heliosapm.streams.metrics.router.util.TimeWindowSummary;
 import com.heliosapm.streams.serialization.HeliosSerdes;
-import com.heliosapm.utils.tuples.NVP;
 
 /**
  * <p>Title: StreamedMetricMeterNode</p>
  * <p>Description: Provides metering for incoming metrics where the total number of
  * {@link StreamedMetric}s ingested will be accumulated in fixed time windows then forwarded
  * as a new metric with the number of incidents as the value. There are some variables: <ol>
- * 	<li><b>{@link #windowSize}</b>: The size of the window period to accumulate within in ms.</li>
  *  <li><b>{@link #ignoreValues}</b>: </li>
  *  <li><b>{@link #ignoreDoubles}</b>: </li>
  *  <li><b>{@link #reportInSeconds}</b>: If true, the final count will be adjusted to report events per second.</li>
@@ -68,8 +49,6 @@ import com.heliosapm.utils.tuples.NVP;
  */
 
 public class StreamedMetricMeterNode extends AbstractMetricStreamNode  {
-	/** The accumulation window size in ms. Defaults to 5000 */
-	private long windowSize = 5000;
 	/** Indicates if the actual value of a metric should be ignored and to focus only on the count of the metric id. Defaults to false. */
 	private boolean ignoreValues = false;
 	/** Indicates if metrics that have a value type of {@link Double} should be ignored. Defaults to false. */
@@ -82,14 +61,10 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode  {
 	private double tpsDivisor = 5D;
 	/** The number of outbounds sent in the last punctuation */
 	private final LongAdder lastOutbound = new LongAdder();
-	
-	private WindowAggregation<String, StreamedMetricMeterAggregator, StreamedMetric> wa = null;
+	/** The provided aggregation window */
+	private WindowAggregation<String, StreamedMetricMeterAggregator, StreamedMetric> aggregationWindow = null;
+	/** The producer created to forward aggregated metrics */
 	private Producer<String, StreamedMetric> producer = null;
-	
-	
-	
-	
-	
 	
 
 	/**
@@ -111,14 +86,36 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode  {
 //			.addStateStore(ss, "MeterMetricProcessor")
 //			.addSink("MeterMetricProcessorSink", sinkTopic, HeliosSerdes.STRING_SERDE.serializer(), HeliosSerdes.STREAMED_METRIC_SERDE.serializer(), "MeterMetricProcessor");
 		// ===================================================================
-		wa = WindowAggregation.getInstance(TimeUnit.MILLISECONDS.toSeconds(windowSize), 0, true, StreamedMetricMeterAggregator.AGGREGATOR);
 		streamBuilder
 			.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics)
 			.foreach((k,v) -> {
-				wa.aggregate(k, v.forValue(1L));
+				aggregationWindow.aggregate(k, cleanIn(v));
 				inboundCount.increment();
-			});
-		
+			});		
+	}
+	
+	/**
+	 * Cleans the incoming metric, applying any filtering or modification rules and returning the metric to be aggregated
+	 * @param sm The metric to clean
+	 * @return The metric to aggregate
+	 */
+	protected StreamedMetric cleanIn(final StreamedMetric sm) {
+		if(ignoreValues) return sm.isValued() ? new StreamedMetric(sm.getTimestamp(), sm.getMetricName(), sm.getTags()) : sm.forValue(1L);
+		if(ignoreDoubles) return (sm.isValued() && ((StreamedMetricValue)sm).isDoubleValue()) ? new StreamedMetric(sm.getTimestamp(), sm.getMetricName(), sm.getTags()) : sm.forValue(1L);
+		return sm.forValue(1L);
+	}
+	
+	/**
+	 * Cleans the outgoing metric, applying any filtering or modification rules and returning the metric to be forwarded
+	 * @param sm The metric to clean
+	 * @return The metric to forward
+	 */
+	protected StreamedMetric cleanOut(final StreamedMetric sm) {
+		if(reportInSeconds) {
+			final StreamedMetricValue smv = (StreamedMetricValue)sm;
+			return new StreamedMetricValue(smv.getTimestamp(), calcRate(smv.getValueNumber().doubleValue()), sm.getMetricName(), sm.getTags());
+		}
+		return sm;		
 	}
 	
 	/**
@@ -129,12 +126,14 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode  {
 	public void onStart(final StreamHubKafkaClientSupplier clientSupplier, final KafkaStreams kafkaStreams) {		
 		super.onStart(clientSupplier, kafkaStreams);
 		producer = clientSupplier.getProducer(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
-		wa.addAction((stream, keys) -> stream.forEach(kv -> { 
+		aggregationWindow.addAction((stream, keys) -> stream.forEach(kv -> { 
 			outboundCount.increment();
-			producer.send(new ProducerRecord<String, StreamedMetric>(sinkTopic, kv.key, kv.value));
+			producer.send(new ProducerRecord<String, StreamedMetric>(sinkTopic, fullKey ? kv.key : kv.value.getMetricName(), cleanOut(kv.value)));
 			producer.flush();
 		}));
 	}
+	
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -142,13 +141,9 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode  {
 	 */
 	@Override
 	public void close() {		
-		if(wa!=null) {
-			try { wa.close(); } catch (Exception x) {/* No Op */}
-		}
 		if(producer!=null) {
 			try { producer.close(); } catch (Exception x) {/* No Op */}
 		}
-		
 		super.close();		
 	}
 	
@@ -162,25 +157,14 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode  {
 		return count/tpsDivisor;
 	}
 	
-
 	/**
-	 * Returns the configured window size in ms. 
-	 * @return the window size
+	 * Sets the aggregation window that will aggregated metered metrics
+	 * @param aggregationWindow ther aggregation window instance
 	 */
-	@ManagedAttribute(description="The configured window size in ms.")
-	public long getWindowSize() {
-		return windowSize;
-	}
-	
-
-	/**
-	 * Sets the window size in ms. Should be a multiple of 1000
-	 * @param windowSize the window size to set
-	 */
-	public void setWindowSize(final long windowSize) {
-		if(windowSize < 1000) throw new IllegalArgumentException("Invalid window size: [" + windowSize + "]");
-		this.windowSize = windowSize;
-		tpsDivisor = this.windowSize/1000D;
+	@Required
+	public void setAggregationWindow(final WindowAggregation<String, StreamedMetricMeterAggregator, StreamedMetric> aggregationWindow) {
+		this.aggregationWindow = aggregationWindow;
+		tpsDivisor = aggregationWindow.getWindowDuration();		
 	}
 
 	/**

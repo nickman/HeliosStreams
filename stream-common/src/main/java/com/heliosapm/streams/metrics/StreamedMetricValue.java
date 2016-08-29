@@ -181,6 +181,21 @@ public class StreamedMetricValue extends StreamedMetric {
 		return isDoubleValue ? doubleValue : longValue;
 	}
 	
+	public StreamedMetricValue forceToLong() {
+		if(isDoubleValue) {
+			longValue = (long)doubleValue;
+			isDoubleValue = false;
+		}
+		return this;
+	}
+	
+	public StreamedMetricValue forceToLong(final long newValue) {
+		longValue = newValue;
+		isDoubleValue = false;
+		return this;
+	}
+	
+	
 	/**
 	 * Indicates if this StreamedMetric has a value
 	 * @return true since this type has a value
