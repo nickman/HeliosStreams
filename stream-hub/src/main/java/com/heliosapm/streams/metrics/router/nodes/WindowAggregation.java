@@ -32,8 +32,12 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
+
+import javax.management.MalformedObjectNameException;
+import javax.management.ObjectName;
 
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -46,6 +50,9 @@ import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
+import org.springframework.jmx.export.annotation.ManagedAttribute;
+import org.springframework.jmx.export.annotation.ManagedResource;
+import org.springframework.jmx.export.naming.SelfNaming;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -65,8 +72,8 @@ import com.heliosapm.utils.unsafe.UnsafeAdapter.SpinLock;
  * @param <V> The aggregation aggregator type
  * @param <T> The aggregation type's value
  */
-
-public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnable, Supplier<Set<KeyValue<K,T>>> {
+@ManagedResource
+public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnable, Supplier<Set<KeyValue<K,T>>>, SelfNaming {
 	
 	private static final int CORES = Runtime.getRuntime().availableProcessors();
 	/** Unique WindowAggregation instances keyed by idle retention within window duration */
@@ -84,7 +91,9 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 	 
 	
 	/** The length of the window in seconds */
-	private final long windowDuration;	
+	private final long windowDuration;
+	/** The JMX ObjectName for this window */
+	private final ObjectName objectName;
 	/** The earliest timestamp accepted by this window, which is initialized to the first submission and 
 	 * updated to the end of expiring windows (plus one) as they expire 
 	 */
@@ -126,6 +135,12 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 	private final Set<K> emptyIdleKeys = Collections.unmodifiableSet(Collections.emptySet());
 	/** The run thread for this window */
 	private final Thread runThread;
+	/** A placeholder for inserting new periods into the delay index */
+	private final NonBlockingHashMap<K, T> PLACEHOLDER = new NonBlockingHashMap<K, T>();
+	/** A count of created periods */
+	private final LongAdder newPeriodCount = new LongAdder();
+	/** A count of low level aggregation executions */
+	private final LongAdder aggregationCount = new LongAdder();
 	
 	private final SpinLock lock = UnsafeAdapter.allocateSpinLock();
 	
@@ -166,6 +181,7 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 		this.windowDuration = windowDuration;
 		this.idleRetention = idleRetention;
 		this.key = key;
+		objectName = key.toObjectName();
 		this.resetting = resetting;
 		idleRetentionEnabled = idleRetention<1L;
 		idleKeys = idleRetentionEnabled ? CacheBuilder.newBuilder()
@@ -177,6 +193,15 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 		runThread = new Thread(this, "WindowAggregationThread[" + aggregator.getClass().getSimpleName() + ", " + windowDuration + "," + idleRetention + "]");
 		runThread.setDaemon(true);
 		runThread.start();		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.jmx.export.naming.SelfNaming#getObjectName()
+	 */
+	@Override
+	public ObjectName getObjectName() throws MalformedObjectNameException {
+		return objectName;
 	}
 	
 	/**
@@ -259,7 +284,6 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 	}
 	
 	
-	private final NonBlockingHashMap<K, T> PLACEHOLDER = new NonBlockingHashMap<K, T>(); 
 	
 	/**
 	 * Aggregates the passed key/value pair 
@@ -279,6 +303,7 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 			delayQueue.put(new TimestampDelay(ts));
 			aggrMap = new NonBlockingHashMap<K, T>();
 			delayIndex.replace(ts, aggrMap);
+			newPeriodCount.increment();
 		}
 //		try {
 //			lock.xlock(true);
@@ -295,6 +320,7 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 		final T prior = aggrMap.put(key, value);
 		if(prior!=null) {
 			aggregator.aggregateInto(value, prior);
+			aggregationCount.increment();
 		}
 		return true;
 	}
@@ -536,35 +562,127 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 	}
 
 	/**
-	 * Returns the
-	 * @return the windowDuration
+	 * Returns the window duration in seconds
+	 * @return the window duration in seconds
 	 */
+	@ManagedAttribute(description="The window duration in seconds")
 	public long getWindowDuration() {
 		return windowDuration;
 	}
 
 	/**
-	 * Returns the
-	 * @return the running
+	 * Indicates if this window is running or stopped
+	 * @return true if running, false if stopped
 	 */
-	public AtomicBoolean getRunning() {
-		return running;
+	@ManagedAttribute(description="Indicates if this window is running or stopped")
+	public boolean getRunning() {
+		return running.get();
 	}
 
 	/**
-	 * Returns the
-	 * @return the idleRetention
+	 * Returns the idle retention time in ms.
+	 * @return the idle retention time
 	 */
+	@ManagedAttribute(description="The idle key retention time in ms")
 	public long getIdleRetention() {
 		return idleRetention;
 	}
 
 	/**
-	 * Returns the
-	 * @return the idleRetentionEnabled
+	 * Indicates if idle key retention is enabled
+	 * @return true if idle key retention is enabled, false otherwise
 	 */
+	@ManagedAttribute(description="Indicates if idle key retention is enabled")
 	public boolean isIdleRetentionEnabled() {
 		return idleRetentionEnabled;
+	}
+
+	/**
+	 * Returns the earliest timestamp
+	 * @return the earliest timestamp
+	 */
+	@ManagedAttribute(description="The earliest timestamp")
+	public long getEarliestTimestamp() {
+		return earliestTimestamp.get();
+	}
+
+	/**
+	 * Returns the number of currently aggregating periods
+	 * @return the number of currently aggregating periods
+	 */
+	@ManagedAttribute(description="The total number of periods being aggregated")
+	public int getDelayIndex() {
+		return delayIndex.size();
+	}
+	
+	/**
+	 * Returns the total number of keys being aggregated
+	 * @return the total number of keys being aggregated
+	 */
+	@ManagedAttribute(description="The total number of keys being aggregated")
+	public int getTotalKeyCount() {
+		return delayIndex.values().stream().mapToInt(p -> p.size()).sum();
+	}
+
+	/**
+	 * Returns the number of registered actions
+	 * @return the number of registered actions
+	 */
+	@ManagedAttribute(description="The number of registered actions")
+	public int getActionCount() {
+		return actions.size();
+	}
+
+	/**
+	 * Returns the aggregator class name
+	 * @return the aggregator class name
+	 */
+	@ManagedAttribute(description="The aggregator class name")
+	public String getAggregator() {
+		return aggregator.getClass().getName();
+	}
+
+	/**
+	 * Returns the window key
+	 * @return the window key
+	 */
+	@ManagedAttribute(description="The aggregation window key")
+	public String getKey() {
+		return key.toString();
+	}
+
+	/**
+	 * Indicates if the time periods in this window reset when expired
+	 * @return true if the time periods in this window reset when expired, false otherwise
+	 */
+	@ManagedAttribute(description="Indicates if the time periods in this window reset when expired")
+	public boolean isResetting() {
+		return resetting;
+	}
+
+	/**
+	 * Returns the size of the expiration queue
+	 * @return the size of the expiration queue
+	 */
+	@ManagedAttribute(description="The size of the expiration queue")
+	public int getExpirationQueueDepth() {
+		return expirationQueue.size();
+	}
+
+	/**
+	 * Returns the
+	 * @return the newPeriodCount
+	 */
+	public LongAdder getNewPeriodCount() {
+		return newPeriodCount;
+	}
+
+	/**
+	 * Returns the
+	 * @return the aggregationCount
+	 */
+	public LongAdder getAggregationCount() {
+		return aggregationCount;
 	}
 
 }

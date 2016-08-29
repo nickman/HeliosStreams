@@ -156,6 +156,10 @@
       <scope>test</scope>
       <exclusions>
         <exclusion>
+          <artifactId>kafka-unit</artifactId>
+          <groupId>info.batey.kafka</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>spring-boot</artifactId>
           <groupId>org.springframework.boot</groupId>
         </exclusion>
@@ -188,6 +192,10 @@
           <groupId>org.springframework</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>zookeeper</artifactId>
+          <groupId>org.apache.zookeeper</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>curator-client</artifactId>
           <groupId>org.apache.curator</groupId>
         </exclusion>
@@ -202,6 +210,14 @@
         <exclusion>
           <artifactId>kafka-streams</artifactId>
           <groupId>org.apache.kafka</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>kafka_2.11</artifactId>
+          <groupId>org.apache.kafka</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>netty-all</artifactId>
+          <groupId>io.netty</groupId>
         </exclusion>
         <exclusion>
           <artifactId>metrics-jvm</artifactId>
@@ -228,8 +244,24 @@
           <groupId>org.codehaus.groovy</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>trove4j</artifactId>
+          <groupId>net.sf.trove4j</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>jctools-core</artifactId>
           <groupId>org.jctools</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>log4j-core</artifactId>
+          <groupId>org.apache.logging.log4j</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>log4j-slf4j-impl</artifactId>
+          <groupId>org.apache.logging.log4j</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>log4j-1.2-api</artifactId>
+          <groupId>org.apache.logging.log4j</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -260,6 +292,10 @@
           <groupId>com.fasterxml.jackson.core</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>netty</artifactId>
+          <groupId>io.netty</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>async</artifactId>
           <groupId>com.stumbleupon</groupId>
         </exclusion>
@@ -286,6 +322,10 @@
         <exclusion>
           <artifactId>opentsdb_gwt_theme</artifactId>
           <groupId>net.opentsdb</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>zookeeper</artifactId>
+          <groupId>org.apache.zookeeper</groupId>
         </exclusion>
       </exclusions>
     </dependency>

@@ -67,7 +67,7 @@ import com.heliosapm.utils.tuples.NVP;
  * <p><code>com.heliosapm.streams.metrics.router.nodes.StreamedMetricMeterNode</code></p>
  */
 
-public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements ProcessorSupplier<String, StreamedMetric>, Runnable {
+public class StreamedMetricMeterNode extends AbstractMetricStreamNode  {
 	/** The accumulation window size in ms. Defaults to 5000 */
 	private long windowSize = 5000;
 	/** Indicates if the actual value of a metric should be ignored and to focus only on the count of the metric id. Defaults to false. */
@@ -78,167 +78,19 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	private boolean reportInSeconds = true;
 	/** The time window summary to report the final summary using the window start, end (default) or middle time */
 	private TimeWindowSummary windowTimeSummary = TimeWindowSummary.END;
-		
-	private Stream<KeyValue<String, StreamedMetric>> aggregatedStream = null;
-	
 	/** The divisor to report tps (windowSize/1000) */
 	private double tpsDivisor = 5D;
 	/** The number of outbounds sent in the last punctuation */
 	private final LongAdder lastOutbound = new LongAdder();
-	/** Circular counter incremented each time a processor instance's punctuate is invoked, resetting once all known instances have reprocessed */
-	private final AtomicInteger processorInvokes = new AtomicInteger(0);
-	/** The number of processor instances created */
-	private final AtomicInteger processorInstances = new AtomicInteger(0);
-	/** A No Op KeyValue that should be ignored */
-	private static final KeyValue<String, StreamedMetric> OUT = new KeyValue<String, StreamedMetric>("DROPME", null);
 	
 	private WindowAggregation<String, StreamedMetricMeterAggregator, StreamedMetric> wa = null;
-	
-	/** The processor's key value stores indexed by the processor instance id */
-	private final Map<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>> periodEventCounts = new ConcurrentHashMap<Integer, NVP<AtomicBoolean, KeyValueStore<String, long[]>>>();
-
-	private String storeName = null;
-	
-	private Thread runThread = null;
 	private Producer<String, StreamedMetric> producer = null;
-	private final AtomicBoolean keepRunning = new AtomicBoolean(false);
 	
 	
-	/**
-	 * Increments the punctuation period event counter, resetting on the first update of the period
-	 * @param itemsFlushed The number of events processed by one processor
-	 */
-	private void incrementFlushes(final long itemsFlushed) {
-		if(processorInvokes.compareAndSet(processorInstances.get(), 0)) {
-			lastOutbound.reset();
-		} else {
-			processorInvokes.incrementAndGet();
-			lastOutbound.add(itemsFlushed);
-		}
-		
-	}
 	
 	
-	@Override
-	public Processor<String, StreamedMetric> get() {
-		final int instanceId = processorInstances.incrementAndGet();
-		final AtomicBoolean spinLock = new AtomicBoolean(false);
-		final ConcurrentSkipListSet<String> processorKeys = new ConcurrentSkipListSet<String>(); 
-		return new Processor<String, StreamedMetric>() {
-			ProcessorContext context = null;
-			KeyValueStore<String, long[]> store = null;
-			@SuppressWarnings("unchecked")
-			@Override
-			public void init(final ProcessorContext context) {
-				this.context = context;
-				context.schedule(windowSize);
-				store = (KeyValueStore<String, long[]>) context.getStateStore(storeName);
-				periodEventCounts.put(instanceId, new NVP<AtomicBoolean, KeyValueStore<String, long[]>>(spinLock, store));
-				log.info("Processor KeyValueStore: [{}]:[{}]", store.name(), System.identityHashCode(store));
-			}
-
-			@Override
-			public void process(final String key, final StreamedMetric sm) {
-				inboundCount.increment();
-				final boolean valued = sm.isValued();
-				final long timestamp = sm.getTimestamp();
-				final long increment;
-				if(ignoreValues || !valued) {
-					increment = 1L;
-				} else {
-					final StreamedMetricValue smv = !valued ? sm.forValue(1L) : sm.forValue();
-					if(smv.isDoubleValue()) {
-						increment = ignoreDoubles ? 1L : (long)smv.getDoubleValue();
-					} else {
-						increment = smv.getLongValue();
-					}
-				}
-				long[] aggr = store.get(sm.metricKey());
-				if(aggr==null) {
-					aggr = new long[]{timestamp, timestamp, increment};
-				} else {
-					if(timestamp < aggr[0]) {
-						// FIXME: DROP & Increment Count
-						return;
-					}
-					aggr[1] = sm.getTimestamp();
-					aggr[2] += increment; 
-				}
-				store.put(sm.metricKey(), aggr);
-				store.flush();
-				processorKeys.add(sm.metricKey());
-			}
-
-			@Override
-			public void punctuate(final long timestamp) {
-				long sent = 0;
-				KeyValueIterator<String, long[]> iter = store.all(); //range(processorKeys.first(), processorKeys.last());
-				try {
-					final long streamTime = context.timestamp();  // the smallest timestamp
-					while(iter.hasNext()) {
-						final KeyValue<String, long[]> kv = iter.next();
-						if(kv.value!=null) {
-							final double val;
-							if(kv.value[1] < streamTime) {
-								if(kv.value[2]> 0L) {
-									kv.value[2] = 0L;		
-								}
-								val = 0D;
-							} else {
-								val = reportInSeconds ? calcRate(kv.value[2]) : kv.value[2];
-							}
-							//final StreamedMetric sm = StreamedMetric.fromKey(windowTimeSummary.time(kv.value), kv.key, val);
-							final StreamedMetric sm = StreamedMetric.fromKey(streamTime, kv.key, val);
-							context.forward(kv.key, sm);
-//							store.delete(kv.key);
-							outboundCount.increment();
-							sent++;
-						}						
-					}
-					incrementFlushes(sent);
-					iter.close();
-					iter = null;
-					store.flush();
-					
-				} finally {
-//					processorKeys.clear();
-					if(iter!=null) try { iter.close(); } catch (Exception x) {/* No Op */}
-					context.commit();
-				}
-//				for(String key: processorKeys) {
-//					store.delete(key);
-//				}
-				processorKeys.clear();
-				context.commit();
-			}
-
-			@Override
-			public void close() {
-				store.close();
-			}
-			
-		};
-	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see java.lang.Runnable#run()
-	 */
-	@Override
-	public void run() {
-		while(keepRunning.get()) {
-			try {
-				aggregatedStream.map(kv -> producer.send(new ProducerRecord<String, StreamedMetric>(sinkTopic, kv.key, kv.value)));
-				// handle Stream<Future<RecordMetadata>>
-			} catch (Exception ex) {
-				if(ex instanceof InterruptedException) {
-					if(Thread.interrupted()) Thread.interrupted();
-				} else {
-					log.error("Run thread error", ex);
-				}
-			}
-		}
-	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -248,7 +100,6 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	public void configure(final KStreamBuilder streamBuilder) {
 		log.info("Source Topics: {}", Arrays.toString(sourceTopics));
 		log.info("Sink Topic: [{}]", sinkTopic);
-		storeName = "MeteringMetricAccumulator-" + nodeName;
 		// ========================= PROCESSOR STYLE =========================
 		// persistentStores
 //		final KeyValueFactory<String, long[]> factory = Stores.create(storeName).withStringKeys().withValues(HeliosSerdes.TIMEWINDOW_VALUE_SERDE);
@@ -267,7 +118,6 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 				wa.aggregate(k, v.forValue(1L));
 				inboundCount.increment();
 			});
-//		.addSource(nodeName, HeliosSerdes.STRING_SERDE.deserializer(), HeliosSerdes.STREAMED_METRIC_SERDE.deserializer(), sourceTopics)
 		
 	}
 	
@@ -282,37 +132,24 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 		wa.addAction((stream, keys) -> stream.forEach(kv -> { 
 			outboundCount.increment();
 			producer.send(new ProducerRecord<String, StreamedMetric>(sinkTopic, kv.key, kv.value));
-			
+			producer.flush();
 		}));
-		
-//		runThread = new Thread(this, this.nodeName + "RunThread");
-//		runThread.setDaemon(true);
-//		keepRunning.set(true);
-//		runThread.start();
-	}
-	
-	@Override
-	public void close() {		
-		if(runThread!=null) {
-			keepRunning.set(false);
-			runThread.interrupt();
-		}
-		super.close();		
 	}
 	
 	/**
-	 * Writes the content of the time window to a file
-	 * @param dirName The directory name to write to
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.metrics.router.nodes.AbstractMetricStreamNode#close()
 	 */
-	@ManagedOperation(description="Writes the content of the time window to a file")
-	@ManagedOperationParameters({@ManagedOperationParameter(name="OutputDirectory", description="The optional directory to write to. Defaults to tmpdir")})
-	public void writeStateToFile(final String dirName) {
-		final File dir = new File((dirName==null || dirName.trim().isEmpty()) ? System.getProperty("java.io.tmpdir") : dirName.trim());
-		final File f = new File(dir, "MeteringWindowAccumulator-" + nodeName + "-state.txt");
-		f.delete();
-		log.info("Writing file to [{}]...", f);
-//		meteredWindow.writeAsText(f.getAbsolutePath(), HeliosSerdes.WINDOWED_STRING_SERDE, HeliosSerdes.TIMEVALUE_PAIR_SERDE);
-		log.info("Write file to [{}]", f);
+	@Override
+	public void close() {		
+		if(wa!=null) {
+			try { wa.close(); } catch (Exception x) {/* No Op */}
+		}
+		if(producer!=null) {
+			try { producer.close(); } catch (Exception x) {/* No Op */}
+		}
+		
+		super.close();		
 	}
 	
 	/**
@@ -422,17 +259,6 @@ public class StreamedMetricMeterNode extends AbstractMetricStreamNode implements
 	public long getLastOutbound() {
 		return lastOutbound.longValue();
 	}
-
-	/**
-	 * Returns the number of created processor instances
-	 * @return the number of created processor instances
-	 */
-	@ManagedAttribute(description="The number of created processor instances")
-	public int getProcessorInstances() {
-		return processorInstances.get();
-	}
-
-
 
 
 

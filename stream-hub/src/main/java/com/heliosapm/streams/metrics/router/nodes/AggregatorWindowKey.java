@@ -15,6 +15,10 @@
  */
 package com.heliosapm.streams.metrics.router.nodes;
 
+import javax.management.ObjectName;
+
+import com.heliosapm.utils.jmx.JMXHelper;
+
 /**
  * <p>Title: AggregatorWindowKey</p>
  * <p>Description: A compound key identifying a unique WindowAggregation instance</p> 
@@ -31,6 +35,9 @@ public class AggregatorWindowKey<V extends Aggregator<T>, T> {
 	private final Class<V> aggregatorType;
 	private final boolean resetting;
 	
+	/** The format template for JMX ObjectNames */
+	public static final String OBJECT_NAME_TEMPLATE = "com.heliosapm.streams.metrics.router:service=AggWindow,duration=%s,retention=%s,resetting=%s,aggregator=%s";
+	
 	/**
 	 * Creates a new AggregatorWindowKey
 	 * @param windowDuration The window duration in seconds
@@ -43,6 +50,14 @@ public class AggregatorWindowKey<V extends Aggregator<T>, T> {
 		this.retention = retention;
 		this.aggregatorType = aggregatorType;
 		this.resetting = resetting;
+	}
+	
+	/**
+	 * Creates a JMX ObjectName for this key
+	 * @return a JMX ObjectName for this key
+	 */
+	public ObjectName toObjectName() {
+		return JMXHelper.objectName(String.format(OBJECT_NAME_TEMPLATE, windowDuration, retention, resetting, aggregatorType.getSimpleName()));
 	}
 
 

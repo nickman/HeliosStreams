@@ -39,6 +39,13 @@ final Random R = new Random(System.currentTimeMillis());
 loops = {
     return Math.abs(R.nextInt(20));
 }
+longValue = {
+	return Math.abs(R.nextInt(100));
+}
+doubleValue = {
+	return Math.abs(R.nextInt(100) + R.nextDouble());
+}
+
 TOPIC_KEYS = new HashSet();
 unixTime = {
     return TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis())
