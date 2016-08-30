@@ -106,6 +106,12 @@
 			  <artifactId>curator-client</artifactId>
 			  <scope>provided</scope>
 			</dependency>
+			
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-x-discovery</artifactId>
+			</dependency>
+		
 
 
 
