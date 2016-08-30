@@ -23,6 +23,7 @@ import java.util.Properties;
 
 import javax.management.remote.jmxmp.JMXMPConnectorServer;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -38,6 +39,7 @@ import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
+import com.sun.jdmk.remote.cascading.CascadingService;
 
 import de.codecentric.boot.admin.config.EnableAdminServer;
 
@@ -66,17 +68,26 @@ public class StreamHubAdminServer {
 	/** The original system props so we can reset */
 	private static final Map<String, String> VIRGIN_SYS_PROPS = Collections.unmodifiableMap(new HashMap<String, String>(Props.asMap(System.getProperties())));
 	
+	private static JMXMPConnectorServer jmxmp = null;
+	
 	/** The publisher that registers the advertised URL in ZooKeeper */
 	private static ZooKeepPublisher zooKeepPublisher = null;
 	
 	private static SpringApplication springApp = null;
 
-	
-	
+	/**  */
+	private CascadingService cascadingService = new CascadingService(JMXHelper.getHeliosMBeanServer());
 	/**
 	 * Creates a new StreamHubAdminServer
 	 */
 	public StreamHubAdminServer() {
+		jmxmp = JMXHelper.fireUpJMXMPServer(System.getProperty("jmx.jmxmp.uri"));
+		if(jmxmp!=null) {
+			System.out.println("JMXMP Server enabled on [" + jmxmp.getAddress() + "]");
+		}		
+		if(!JMXHelper.isRegistered(CascadingService.CASCADING_SERVICE_DEFAULT_NAME)) {
+			JMXHelper.registerMBean(cascadingService, CascadingService.CASCADING_SERVICE_DEFAULT_NAME);
+		}
 	}
 	
 	/**
@@ -87,10 +98,6 @@ public class StreamHubAdminServer {
 		System.setProperty("spring.application.name", "StreamHubAdmin");
 		Props.setFromUnless(DEFAULT_ADMIN_PROPS, System.getProperties(), false);		
 		installProps(args);
-		final JMXMPConnectorServer jmxmp = JMXHelper.fireUpJMXMPServer(System.getProperty("jmx.jmxmp.uri"));
-		if(jmxmp!=null) {
-			System.out.println("JMXMP Server enabled on [" + jmxmp.getAddress() + "]");
-		}
 		zooKeepPublisher = new ZooKeepPublisher();
 		ExtendedThreadManager.install();
 		springApp = new SpringApplication(StreamHubAdminServer.class);							

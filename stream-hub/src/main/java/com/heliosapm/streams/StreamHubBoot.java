@@ -29,11 +29,14 @@ import javax.management.remote.jmxmp.JMXMPConnectorServer;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ApplicationContext;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 
+import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.common.zoo.AdminFinder;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
-import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
 
@@ -43,7 +46,6 @@ import com.heliosapm.utils.url.URLHelper;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.StreamHubBoot</code></p>
  */
-
 public class StreamHubBoot {
 
 	/** The default host name */
@@ -86,7 +88,6 @@ public class StreamHubBoot {
 	protected final AdminFinder adminFinder;
 	/** The discovered admin server url */
 	protected String adminServerUrl = null;
-	
 	protected StreamHub streamHub = null;
 	
 	/**
@@ -119,16 +120,12 @@ public class StreamHubBoot {
 		for(String key: p.stringPropertyNames()) {
 			log("\t%s : %s", key, p.getProperty(key));
 		}
-				
-		final JMXMPConnectorServer jmxmp = JMXHelper.fireUpJMXMPServer(p.getProperty("jmx.jmxmp.uri", "jmxmp://0.0.0.0:0"));
-		if(jmxmp!=null) {
-			System.out.println("JMXMP Server enabled on [" + jmxmp.getAddress() + "]");
-		}
-		
+		System.setProperty("jmx.jmxmp.uri", p.getProperty("jmx.jmxmp.uri", "jmxmp://0.0.0.0:0"));
 		
 		streamHub = new StreamHub(args, p);
 //		SpringApplication.run(StreamHub.class, args);
 	}
+	
 	
 //	app.addListeners(new ApplicationListener<ApplicationFailedEvent>() {
 //		@Override

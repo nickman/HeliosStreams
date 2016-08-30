@@ -31,13 +31,16 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.SpringApplication;
+import org.springframework.boot.actuate.endpoint.BeansEndpoint;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.EnableMBeanExport;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
@@ -67,6 +70,9 @@ public class StreamHub implements Watcher {
 	private static Thread springBootLaunchThread = null;
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(StreamHub.class);
+	
+	@Autowired
+	protected BeansEndpoint beansEndpoint;
 	
 	
 	/** The original system props so we can reset */
