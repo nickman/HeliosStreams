@@ -18,9 +18,11 @@ under the License.
  */
 package com.heliosapm.streams.discovery;
 
+import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -41,7 +43,9 @@ import org.apache.curator.x.discovery.details.ServiceCacheListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.StdInCommandHandler;
 
 /**
  * <p>Title: Publisher</p>
@@ -96,14 +100,19 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	/** The service cache callback executor */
 	protected final ExecutorService executor = Executors.newCachedThreadPool(threadFactory);
 	
-	/** The serializer */
+	/** The seri<alizer */
 	protected final JsonInstanceSerializer<AdvertisedEndpoint> serializer = new JsonInstanceSerializer<AdvertisedEndpoint>(AdvertisedEndpoint.class); 
 	
 	/** A set of unregistered endpoints */
 	protected final ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>> unregistered = new ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>>(); 
 	/** A set of registered endpoints */
 	protected final ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>> registered = new ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>>(); 
-	
+	/** A set of registered AdvertisedEndpoint event listeners */
+	protected final Set<AdvertisedEndpointListener> listeners = new LinkedHashSet<AdvertisedEndpointListener>();
+	/**
+	 * Acquires the publisher instance
+	 * @return the publisher instance
+	 */
 	public static Publisher getInstance() {
 		if(instance == null) {
 			synchronized(lock) {
@@ -143,6 +152,36 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 		} 
 	}
 	
+	public static void main(String[] args) {
+		log("PublisherTest");
+		final String template = "{ \"jmx\" : \"service:jmx:jmxmp://localhost:%s\", \"host\" : \"njwmint\", \"app\" : \"%s\", " + 
+				"\"endpoints\" : [\"kafka\", \"jvm\"] }";
+		final Publisher p = Publisher.getInstance();
+		p.addEndpointListener(new AdvertisedEndpointListener() {
+			public void onOnlineAdvertisedEndpoint(final AdvertisedEndpoint endpoint) {
+				log("ONLINE:" + endpoint);
+			}
+			public void onOfflineAdvertisedEndpoint(final AdvertisedEndpoint endpoint) {
+				elog("OFFLINE:" + endpoint);
+			}
+		});
+		for(int i = 0; i < 1; i++) {
+			String s = String.format(template, 1420 + i, "FooApp#" + i);
+			final AdvertisedEndpoint ae = JSONOps.parseToObject(s, AdvertisedEndpoint.class);
+			p.register(ae);
+		}
+		StdInCommandHandler.getInstance().run();
+
+		
+	}
+	
+	public static void log(Object msg) {
+		System.out.println(msg);
+	}
+	public static void elog(Object msg) {
+		System.err.println(msg);
+	}
+	
 	/**
 	 * Stops and closes the publisher
 	 */
@@ -153,12 +192,94 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 		registered.clear();		
 	}
 	
+	/**
+	 * <p>Called when the ServiceInstance cache changes</p>
+	 * {@inheritDoc}
+	 * @see org.apache.curator.x.discovery.details.ServiceCacheListener#cacheChanged()
+	 */
 	@Override
 	public void cacheChanged() {
-		
-		
+		final List<ServiceInstance<AdvertisedEndpoint>> cached =  serviceCache.getInstances();
+		synchronized(serviceCache) {			
+			final Set<String> knowRegistereds = new HashSet<String>(registered.keySet());
+			for(ServiceInstance<AdvertisedEndpoint> si: cached) {
+				knowRegistereds.remove(si.getId());
+				final boolean reg = registered.containsKey(si.getId());
+				final boolean notreg = unregistered.containsKey(si.getId());
+				if(reg) {
+					if(notreg) {
+						log.info("Mysterious event. Event [{}] marked as registered and unregistered", si.getPayload());
+						// we'll assume it's a new up						
+						unregistered.remove(si.getId());
+						fireOnlinedEndpoint(si.getPayload());
+					} else {
+						log.info("Confirmed registration of event [{}]", si.getPayload());
+						// Noop
+					}
+				} else {
+					if(notreg) {
+						// endpoint marked unregistered came back to life
+						registered.put(si.getId(), si);
+						unregistered.remove(si.getId());
+						fireOnlinedEndpoint(si.getPayload());
+					} else {
+						// endpoint outside of this vm was registered
+						registered.put(si.getId(), si);
+						fireOnlinedEndpoint(si.getPayload());						
+					}
+				}
+				// now we know these guys are down
+				for(String downKey : knowRegistereds) {
+					final ServiceInstance<AdvertisedEndpoint> downSi = registered.remove(downKey);
+					if(downSi!=null) {
+						fireOffinedEndpoint(downSi.getPayload());
+					}
+				}
+			}
+		}
 	}
 	
+	protected void fireOnlinedEndpoint(final AdvertisedEndpoint endpoint) {
+		for(final AdvertisedEndpointListener listener: listeners) {
+			executor.submit(new Runnable(){
+				@Override
+				public void run() {
+					listener.onOnlineAdvertisedEndpoint(endpoint);
+				}
+			});
+		}
+	}
+	
+	protected void fireOffinedEndpoint(final AdvertisedEndpoint endpoint) {
+		for(final AdvertisedEndpointListener listener: listeners) {
+			executor.submit(new Runnable(){
+				@Override
+				public void run() {
+					listener.onOfflineAdvertisedEndpoint(endpoint);
+				}
+			});
+		}		
+	}
+	
+	/**
+	 * Adds a listener to be notified on endpoint events
+	 * @param listener the listener to register
+	 */
+	public void addEndpointListener(final AdvertisedEndpointListener listener) {
+		if(listener!=null) {
+			listeners.add(listener);
+		}
+	}
+	
+	/**
+	 * Removes a registered endpoint listener
+	 * @param listener the listener to remove
+	 */
+	public void removeEndpointListener(final AdvertisedEndpointListener listener) {
+		if(listener!=null) {
+			listeners.remove(listener);
+		}
+	}
 	
 	
 	@Override
@@ -199,9 +320,29 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 		if(connected.get()) {
 			try {
 				serviceDiscovery.registerService(si);
-				registered.put(si.getId(), unregistered.remove(si.getId()));				
+				registered.put(si.getId(), unregistered.remove(si.getId()));
+				fireOnlinedEndpoint(endpoint);
 			} catch (Exception ex) {
 				log.error("Failed to register endpoint [{}]", endpoint, ex);
+			}
+		}
+	}
+	
+	/**
+	 * Attempts to register the passed ServiceInstance.
+	 * If registration fails or the client is disconnected, will retry on connection resumption.
+	 * @param serviceInstance The ServiceInstance to register
+	 */
+	public void register(final ServiceInstance<AdvertisedEndpoint> serviceInstance) {
+		if(serviceInstance==null) throw new IllegalArgumentException("The passed ServiceInstance was null");
+		unregistered.put(serviceInstance.getId(), serviceInstance);
+		if(connected.get()) {
+			try {
+				serviceDiscovery.registerService(serviceInstance);
+				registered.put(serviceInstance.getId(), unregistered.remove(serviceInstance));
+				fireOnlinedEndpoint(serviceInstance.getPayload());
+			} catch (Exception ex) {
+				log.error("Failed to register endpoint [{}]", serviceInstance.getPayload(), ex);
 			}
 		}
 	}
@@ -210,9 +351,9 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	 * Registers pending or disconnected endpoints
 	 */
 	protected void registerPending() {
-		LinkedHashSet<AdvertisedEndpoint> toRegister = new LinkedHashSet<AdvertisedEndpoint>(unregistered);
-		for(AdvertisedEndpoint ae: toRegister) {
-			register(ae);
+		LinkedHashSet<ServiceInstance<AdvertisedEndpoint>> toRegister = new LinkedHashSet<ServiceInstance<AdvertisedEndpoint>>(unregistered.values());
+		for(ServiceInstance<AdvertisedEndpoint> si: toRegister) {
+			register(si);
 		}
 	}
 	
@@ -220,7 +361,7 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	 * Sets all registered endpoints to unregistered
 	 */
 	protected void setAllPending() {
-		unregistered.addAll(registered);
+		unregistered.putAll(registered);
 		registered.clear();
 	}
 
