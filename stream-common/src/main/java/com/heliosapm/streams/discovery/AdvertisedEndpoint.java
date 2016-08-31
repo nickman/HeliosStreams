@@ -27,6 +27,7 @@ import org.apache.curator.x.discovery.ServiceInstance;
 import org.apache.curator.x.discovery.ServiceType;
 import org.apache.curator.x.discovery.UriSpec;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.json.JSONOps;
@@ -40,6 +41,7 @@ import com.heliosapm.utils.jmx.JMXHelper;
  */
 
 public class AdvertisedEndpoint {
+	/** The URL */
 	@JsonProperty("jmx")
 	protected String jmxUrl;
 	@JsonProperty("endpoints")
@@ -48,6 +50,8 @@ public class AdvertisedEndpoint {
 	protected String app;
 	@JsonProperty("host")
 	protected String host;
+	@JsonProperty("port")
+	protected int port;
 	
 
 	/**
@@ -79,6 +83,7 @@ public class AdvertisedEndpoint {
 		this.app = app.trim();
 		this.host = host.trim();
 		this.endPoints = endPoints;
+		this.port = JMXHelper.serviceUrl(this.jmxUrl).getPort();
 	}
 
 	/**
@@ -94,9 +99,20 @@ public class AdvertisedEndpoint {
 	 * Acquires the service instance that will represent this endpoint
 	 * @return the service instance
 	 */
+	@JsonIgnore
 	public ServiceInstance<AdvertisedEndpoint> getServiceInstance() {
 		final JMXServiceURL jmxServiceUrl = JMXHelper.serviceUrl(jmxUrl);
-		return new ServiceInstance<AdvertisedEndpoint>(host + "-" + app + ":" + jmxServiceUrl, host + "-" + app + ":" + jmxServiceUrl, jmxUrl, jmxServiceUrl.getPort(), -1, this, ManagementFactory.getRuntimeMXBean().getStartTime(), ServiceType.DYNAMIC, new UriSpec(jmxUrl));
+		return new ServiceInstance<AdvertisedEndpoint>(host, app + "/jmx-" + port, jmxUrl, jmxServiceUrl.getPort(), -1, this, ManagementFactory.getRuntimeMXBean().getStartTime(), ServiceType.DYNAMIC, new UriSpec(jmxUrl));
+	}
+	
+	/**
+	 * Returns the expected ZK path for this node
+	 * @param root The publisher service type
+	 * @return the expected zk path
+	 */
+	@JsonIgnore
+	public String getZkPath(final String root) {
+		return String.format("%s/%s/%s/%s-%s", root, host, app, "jmx", port);
 	}
 	
 	public static void main(String[] args) {
@@ -110,9 +126,23 @@ public class AdvertisedEndpoint {
 		final String json = JSONOps.serializeToString(ae);
 		log("JSON:" + json);
 	}
+	
+	public String getId() {
+		return host + "/" + app + "/" + port + "/jmx"; 
+	}
 
 	public static void log(Object msg) {
 		System.out.println(msg);
+	}
+	
+	
+	/**
+	 * Returns the port
+	 * @return the port
+	 */
+	@JsonIgnore
+	public int getPort() {
+		return port;
 	}
 
 	/**

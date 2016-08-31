@@ -38,7 +38,6 @@ import org.apache.curator.x.discovery.ServiceCache;
 import org.apache.curator.x.discovery.ServiceDiscovery;
 import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
-import org.apache.curator.x.discovery.details.JsonInstanceSerializer;
 import org.apache.curator.x.discovery.details.ServiceCacheListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -48,27 +47,41 @@ import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 
 /**
- * <p>Title: Publisher</p>
+ * <p>Title: EndpointPubSub</p>
  * <p>Description: Publishes advertised endpoints to zookeeper</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.discovery.Publisher</code></p>
+ * <p><code>com.heliosapm.streams.discovery.EndpointPubSub</code></p>
  */
 
-public class Publisher implements ConnectionStateListener, ServiceCacheListener {
+public class EndpointPubSub implements ServiceCacheListener {
 	/** The singleton instance */
-	private static volatile Publisher instance = null;
+	private static volatile EndpointPubSub instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
 	
 	/** The config key for the ZooKeeper connect string */
-	public static final String ZK_CONNECT_CONF = "streamhub.config.zookeeperconnect";
+	public static final String ZK_CONNECT_CONF = "streamhub.discovery.zookeeper.connect";
 	/** The default ZooKeeper connect string */
 	public static final String ZK_CONNECT_DEFAULT = "localhost:2181";
 
 	/** The config key for the advertised service type */
-	public static final String SERVICE_TYPE_CONF = "streamhub.config.servicetype";
+	public static final String SERVICE_TYPE_CONF = "streamhub.discovery.servicetype";
 	/** The default advertised service type */
 	public static final String SERVICE_TYPE_DEFAULT = "monitoring-endpoints";
+
+	/** The config key for the zookeeper session timeout */
+	public static final String DISC_SESS_TO_CONF = "streamhub.discovery.timeout.session";
+	/** The default zookeeper session timeout in ms. */
+	public static final int DISC_SESS_TO_DEFAULT = 60 * 1000;
+	
+	/** The config key for the zookeeper connect timeout */
+	public static final String DISC_CONN_TO_CONF = "streamhub.discovery.timeout.connection";
+	/** The default zookeeper session timeout in ms. */
+	public static final int DISC_CONN_TO_DEFAULT = 15 * 1000;
+	
+
+
+	
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -76,6 +89,10 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	protected final String zkConnect;
 	/** The endpoint service type */
 	protected final String serviceType;
+	/** The zookeeper connect timeout in ms. */
+	protected final int connectionTimeout;
+	/** The zookeeper session timeout in ms. */
+	protected final int sessionTimeout;
 	
 	/** The zookeeper curator framework instance to publish with */
 	protected final CuratorFramework curator;
@@ -101,7 +118,7 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	protected final ExecutorService executor = Executors.newCachedThreadPool(threadFactory);
 	
 	/** The seri<alizer */
-	protected final JsonInstanceSerializer<AdvertisedEndpoint> serializer = new JsonInstanceSerializer<AdvertisedEndpoint>(AdvertisedEndpoint.class); 
+	protected final JsonInstanceSerializer<AdvertisedEndpoint> serializer = new JsonInstanceSerializer<AdvertisedEndpoint>(); 
 	
 	/** A set of unregistered endpoints */
 	protected final ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>> unregistered = new ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>>(); 
@@ -113,11 +130,11 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	 * Acquires the publisher instance
 	 * @return the publisher instance
 	 */
-	public static Publisher getInstance() {
+	public static EndpointPubSub getInstance() {
 		if(instance == null) {
 			synchronized(lock) {
 				if(instance == null) {
-					instance = new Publisher();
+					instance = new EndpointPubSub();
 				}
 			}
 		}
@@ -126,37 +143,42 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	
 	
 	/**
-	 * Creates a new Publisher
+	 * Creates a new EndpointPubSub
 	 */
-	public Publisher() {
+	public EndpointPubSub() {
 		zkConnect = ConfigurationHelper.getSystemThenEnvProperty(ZK_CONNECT_CONF, ZK_CONNECT_DEFAULT);
 		serviceType = ConfigurationHelper.getSystemThenEnvProperty(SERVICE_TYPE_CONF, SERVICE_TYPE_DEFAULT);
-		curator = CuratorFrameworkFactory.newClient(zkConnect,  new ExponentialBackoffRetry( 1000, 3 ));
+		connectionTimeout = ConfigurationHelper.getIntSystemThenEnvProperty(DISC_CONN_TO_CONF, DISC_CONN_TO_DEFAULT);
+		sessionTimeout = ConfigurationHelper.getIntSystemThenEnvProperty(DISC_SESS_TO_CONF, DISC_SESS_TO_DEFAULT);
+		curator = CuratorFrameworkFactory.newClient(zkConnect, sessionTimeout, connectionTimeout, new ExponentialBackoffRetry( 1000, 3 ));
 		curator.getConnectionStateListenable().addListener(this);
 		curator.start();
 		serviceDiscovery = ServiceDiscoveryBuilder.builder(AdvertisedEndpoint.class)
 			.basePath(serviceType)
 			.client(curator)
 			.serializer(serializer)
+			.watchInstances(true)
 			.build();	
 		serviceCache = serviceDiscovery.serviceCacheBuilder()
 			.name(serviceType)
 			.threadFactory(threadFactory)
 			.build();		
 		serviceCache.addListener(this, executor);
+		
 		try { 
 			serviceDiscovery.start();
 			serviceCache.start();
+			cacheChanged();
 		} catch (Exception ex) {
-			throw new RuntimeException("Failed to start Publisher", ex);
+			throw new RuntimeException("Failed to start EndpointPubSub", ex);
 		} 
 	}
 	
 	public static void main(String[] args) {
 		log("PublisherTest");
-		final String template = "{ \"jmx\" : \"service:jmx:jmxmp://localhost:%s\", \"host\" : \"njwmint\", \"app\" : \"%s\", " + 
+		final String template = "{ \"jmx\" : \"service:jmx:jmxmp://localhost:%s\", \"host\" : \"njwmint\", \"app\" : \"%s\",  \"port\" : \"%s\"," + 
 				"\"endpoints\" : [\"kafka\", \"jvm\"] }";
-		final Publisher p = Publisher.getInstance();
+		final EndpointPubSub p = EndpointPubSub.getInstance();
 		p.addEndpointListener(new AdvertisedEndpointListener() {
 			public void onOnlineAdvertisedEndpoint(final AdvertisedEndpoint endpoint) {
 				log("ONLINE:" + endpoint);
@@ -165,12 +187,20 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 				elog("OFFLINE:" + endpoint);
 			}
 		});
-		for(int i = 0; i < 1; i++) {
-			String s = String.format(template, 1420 + i, "FooApp#" + i);
+		for(int i = 0; i < 20; i++) {
+			String s = String.format(template, 1420 + i, "FooApp", 1420 + i);
+			log("  ---- REG:" + s);
 			final AdvertisedEndpoint ae = JSONOps.parseToObject(s, AdvertisedEndpoint.class);
 			p.register(ae);
 		}
-		StdInCommandHandler.getInstance().run();
+		StdInCommandHandler.getInstance()
+		.registerCommand("stop", new Runnable(){
+			public void run() {
+				p.close();
+				System.exit(0);
+			}
+		})
+		.run();
 
 		
 	}
@@ -187,6 +217,8 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	 */
 	public void close() {
 		intendToClose.set(true);
+		try { serviceCache.close(); } catch (Exception x) {/* No Op */}
+		try { serviceDiscovery.close(); } catch (Exception x) {/* No Op */}
 		try { curator.close(); } catch (Exception x) {/* No Op */}
 		unregistered.clear();
 		registered.clear();		
@@ -315,10 +347,13 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	 */
 	public void register(final AdvertisedEndpoint endpoint) {
 		if(endpoint==null) throw new IllegalArgumentException("The passed endpoint was null");
-		final ServiceInstance<AdvertisedEndpoint> si = endpoint.getServiceInstance();
+		final ServiceInstance<AdvertisedEndpoint> si = endpoint.getServiceInstance();		
 		unregistered.put(si.getId(), si);
 		if(connected.get()) {
 			try {
+				try {
+					curator.getZookeeperClient().getZooKeeper().delete(endpoint.getZkPath(serviceType), -1);
+				} catch (Exception x) {/* No Op */}
 				serviceDiscovery.registerService(si);
 				registered.put(si.getId(), unregistered.remove(si.getId()));
 				fireOnlinedEndpoint(endpoint);
@@ -338,6 +373,10 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 		unregistered.put(serviceInstance.getId(), serviceInstance);
 		if(connected.get()) {
 			try {
+				try {
+					curator.getZookeeperClient().getZooKeeper().delete(serviceInstance.getPayload().getZkPath(serviceType), -1);
+				} catch (Exception x) {/* No Op */}
+				
 				serviceDiscovery.registerService(serviceInstance);
 				registered.put(serviceInstance.getId(), unregistered.remove(serviceInstance));
 				fireOnlinedEndpoint(serviceInstance.getPayload());
@@ -363,6 +402,42 @@ public class Publisher implements ConnectionStateListener, ServiceCacheListener 
 	protected void setAllPending() {
 		unregistered.putAll(registered);
 		registered.clear();
+	}
+
+
+	/**
+	 * Returns 
+	 * @return the serviceType
+	 */
+	public String getServiceType() {
+		return serviceType;
+	}
+
+
+	/**
+	 * Returns 
+	 * @return the connectionTimeout
+	 */
+	public int getConnectionTimeout() {
+		return connectionTimeout;
+	}
+
+
+	/**
+	 * Returns 
+	 * @return the sessionTimeout
+	 */
+	public int getSessionTimeout() {
+		return sessionTimeout;
+	}
+
+
+	/**
+	 * Returns 
+	 * @return the connected
+	 */
+	public AtomicBoolean getConnected() {
+		return connected;
 	}
 
 
