@@ -35,6 +35,12 @@
 			    <artifactId>kafka-unit</artifactId>
 			    <version>0.6</version>
 			</dependency>
+			
+			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-recipes</artifactId>
+			</dependency>
+			
 		
 		
 		<!--

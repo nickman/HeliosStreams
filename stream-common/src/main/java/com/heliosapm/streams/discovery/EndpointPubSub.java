@@ -393,9 +393,10 @@ public class EndpointPubSub implements ServiceCacheListener {
 	 * If registration fails or the client is disconnected, will retry on connection resumption.
 	 * @param endpoint The endpoint to register
 	 */
+	@SuppressWarnings("null")
 	public void register(final AdvertisedEndpoint endpoint) {
 		if(endpoint==null) throw new IllegalArgumentException("The passed endpoint was null");
-		final ServiceInstance<AdvertisedEndpoint> si = endpoint.getServiceInstance();		
+		ServiceInstance<AdvertisedEndpoint> si = null;		
 		unregistered.put(si.getId(), si);
 		if(connected.get()) {
 			try {

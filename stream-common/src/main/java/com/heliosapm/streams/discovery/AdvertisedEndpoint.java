@@ -18,16 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.discovery;
 
-import java.lang.management.ManagementFactory;
 import java.util.Arrays;
-
-import javax.management.remote.JMXServiceURL;
-
-import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
-import org.apache.curator.x.discovery.ServiceInstance;
-import org.apache.curator.x.discovery.ServiceInstanceBuilder;
-import org.apache.curator.x.discovery.ServiceType;
-import org.apache.curator.x.discovery.UriSpec;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -44,21 +35,20 @@ import com.heliosapm.utils.jmx.JMXHelper;
  */
 
 public class AdvertisedEndpoint {
-	/** The URL */
+	/** The JMX URL */
 	@JsonProperty("jmx")
-	@org.codehaus.jackson.annotate.JsonProperty("jmx")
 	protected String jmxUrl;
+	/** The published endpoints indicating to monitors what the categories of data collection available are */
 	@JsonProperty("endpoints")
-	@org.codehaus.jackson.annotate.JsonProperty("endpoints")
 	protected String[] endPoints;
+	/** The app name */
 	@JsonProperty("app")
-	@org.codehaus.jackson.annotate.JsonProperty("app")
 	protected String app;
+	/** The host name */
 	@JsonProperty("host")
-	@org.codehaus.jackson.annotate.JsonProperty("host")
 	protected String host;
+	/** The monitoring port */
 	@JsonProperty("port")
-	@org.codehaus.jackson.annotate.JsonProperty("port")
 	protected int port;
 	
 
@@ -103,27 +93,6 @@ public class AdvertisedEndpoint {
 		this(jmxUrl.toString(), AgentName.getInstance().getAppName(), AgentName.getInstance().getHostName(), endPoints);
 	}
 	
-	/**
-	 * Acquires the service instance that will represent this endpoint
-	 * @return the service instance
-	 */
-	@JsonIgnore
-	@org.codehaus.jackson.annotate.JsonIgnore	
-	public ServiceInstance<AdvertisedEndpoint> getServiceInstance() {
-		try {
-			return  ServiceInstance.<AdvertisedEndpoint>builder()			
-				.id(host + "-" + app + "-jmx-" + port)
-				.name("jmx")
-				.payload(this)
-				.port(port)
-				.registrationTimeUTC(System.currentTimeMillis())
-				.serviceType(ServiceType.DYNAMIC)
-				.address(jmxUrl)
-				.build();
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to create ServiceInstance for [" + this + "]", ex);
-		}
-	}
 	
 	/**
 	 * Returns the expected ZK path for this node
@@ -131,30 +100,34 @@ public class AdvertisedEndpoint {
 	 * @return the expected zk path
 	 */
 	@JsonIgnore
-	@org.codehaus.jackson.annotate.JsonIgnore
 	public String getZkPath(final String root) {
 		return String.format("%s/%s/%s/%s-%s", root, host, app, "jmx", port);
 	}
 	
-	public static void main(String[] args) {
-		log("AE Test");
-		final String jsonText = "{ \"jmx\" : \"service:jmx:jmxmp://localhost:1421\", \"host\" : \"njwmint\", \"app\" : \"foo\", " + 
-				"\"endpoints\" : [\"kafka\", \"jvm\"] }";
-		log(jsonText);
-		AdvertisedEndpoint ae = JSONOps.parseToObject(jsonText, AdvertisedEndpoint.class);
-		log("POJO:" + ae);
-		ae = new AdvertisedEndpoint("service:jmx:jmxmp://localhost:1421", "foo", "njwmint", "kafka", "jvm");
-		final String json = JSONOps.serializeToString(ae);
-		log("JSON:" + json);
+	/**
+	 * Returns the parent path elements for this endpoint
+	 * @param root the publisher service type
+	 * @return the parent path elements for this endpoint
+	 */
+	@JsonIgnore
+	public String[] getZkPathElements(final String root) {
+		return new String[]{root, host, app};
 	}
 	
-	@org.codehaus.jackson.annotate.JsonIgnore
+	/**
+	 * Returns a byte array containing the JSON representing this endpoint
+	 * @return a byte array containing the JSON representing this endpoint
+	 */
+	public byte[] toByteArray() {
+		return JSONOps.serializeToBytes(this);
+	}
+	/**
+	 * Returns this endpoints unique id
+	 * @return this endpoints unique id
+	 */
+	@JsonIgnore
 	public String getId() {
 		return host + "/" + app + "/" + port + "/jmx"; 
-	}
-
-	public static void log(Object msg) {
-		System.out.println(msg);
 	}
 	
 	
@@ -163,7 +136,6 @@ public class AdvertisedEndpoint {
 	 * @return the port
 	 */
 	@JsonIgnore
-	@org.codehaus.jackson.annotate.JsonIgnore
 	public int getPort() {
 		return port;
 	}
@@ -201,6 +173,10 @@ public class AdvertisedEndpoint {
 		return host;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#toString()
+	 */
 	@Override
 	public String toString() {
 		StringBuilder builder = new StringBuilder();
@@ -216,6 +192,10 @@ public class AdvertisedEndpoint {
 		return builder.toString();
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#hashCode()
+	 */
 	@Override
 	public int hashCode() {
 		final int prime = 31;
@@ -226,6 +206,10 @@ public class AdvertisedEndpoint {
 		return result;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
 	@Override
 	public boolean equals(Object obj) {
 		if (this == obj)
