@@ -41,6 +41,8 @@ public class TestListener {
 				elog("OFFLINE:" + endpoint);
 			}
 		});
+//		final int loaded = p.load();
+//		log("Loaded [" + loaded + "] endpoints");
 		StdInCommandHandler.getInstance()
 		.registerCommand("stop", new Runnable(){
 			public void run() {
@@ -48,6 +50,37 @@ public class TestListener {
 				System.exit(0);
 			}
 		})
+		.registerCommand("names", new Runnable(){
+			public void run() {
+				try {
+					log("Names:" + p.serviceDiscovery.queryForNames());
+				} catch (Exception ex) {
+					ex.printStackTrace(System.err);
+				}
+			}
+		})
+		.registerCommand("load", new Runnable(){
+			public void run() {
+				try {
+					final int x = p.load();
+					log("Instances Loaded:" + x);
+				} catch (Exception ex) {
+					ex.printStackTrace(System.err);
+				}
+			}
+		})
+		.registerCommand("cache", new Runnable(){
+			public void run() {
+				try {
+					final int x = p.serviceCache.getInstances().size();
+					
+					log("Cache Instances Loaded:" + x);
+				} catch (Exception ex) {
+					ex.printStackTrace(System.err);
+				}
+			}
+		})
+		
 		.run();
 
 	}

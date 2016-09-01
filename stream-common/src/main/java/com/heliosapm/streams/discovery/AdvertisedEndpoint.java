@@ -23,7 +23,9 @@ import java.util.Arrays;
 
 import javax.management.remote.JMXServiceURL;
 
+import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
+import org.apache.curator.x.discovery.ServiceInstanceBuilder;
 import org.apache.curator.x.discovery.ServiceType;
 import org.apache.curator.x.discovery.UriSpec;
 
@@ -38,19 +40,25 @@ import com.heliosapm.utils.jmx.JMXHelper;
  * <p>Description: Artifact published to zookeep to advertise a monitoring endpoint and associated details.</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.discovery.AdvertisedEndpoint</code></p>
+ * 
  */
 
 public class AdvertisedEndpoint {
 	/** The URL */
 	@JsonProperty("jmx")
+	@org.codehaus.jackson.annotate.JsonProperty("jmx")
 	protected String jmxUrl;
 	@JsonProperty("endpoints")
+	@org.codehaus.jackson.annotate.JsonProperty("endpoints")
 	protected String[] endPoints;
 	@JsonProperty("app")
+	@org.codehaus.jackson.annotate.JsonProperty("app")
 	protected String app;
 	@JsonProperty("host")
+	@org.codehaus.jackson.annotate.JsonProperty("host")
 	protected String host;
 	@JsonProperty("port")
+	@org.codehaus.jackson.annotate.JsonProperty("port")
 	protected int port;
 	
 
@@ -100,9 +108,21 @@ public class AdvertisedEndpoint {
 	 * @return the service instance
 	 */
 	@JsonIgnore
+	@org.codehaus.jackson.annotate.JsonIgnore	
 	public ServiceInstance<AdvertisedEndpoint> getServiceInstance() {
-		final JMXServiceURL jmxServiceUrl = JMXHelper.serviceUrl(jmxUrl);
-		return new ServiceInstance<AdvertisedEndpoint>(host, app + "/jmx-" + port, jmxUrl, jmxServiceUrl.getPort(), -1, this, ManagementFactory.getRuntimeMXBean().getStartTime(), ServiceType.DYNAMIC, new UriSpec(jmxUrl));
+		try {
+			return  ServiceInstance.<AdvertisedEndpoint>builder()			
+				.id(host + "-" + app + "-jmx-" + port)
+				.name("jmx")
+				.payload(this)
+				.port(port)
+				.registrationTimeUTC(System.currentTimeMillis())
+				.serviceType(ServiceType.DYNAMIC)
+				.address(jmxUrl)
+				.build();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to create ServiceInstance for [" + this + "]", ex);
+		}
 	}
 	
 	/**
@@ -111,6 +131,7 @@ public class AdvertisedEndpoint {
 	 * @return the expected zk path
 	 */
 	@JsonIgnore
+	@org.codehaus.jackson.annotate.JsonIgnore
 	public String getZkPath(final String root) {
 		return String.format("%s/%s/%s/%s-%s", root, host, app, "jmx", port);
 	}
@@ -127,6 +148,7 @@ public class AdvertisedEndpoint {
 		log("JSON:" + json);
 	}
 	
+	@org.codehaus.jackson.annotate.JsonIgnore
 	public String getId() {
 		return host + "/" + app + "/" + port + "/jmx"; 
 	}
@@ -141,6 +163,7 @@ public class AdvertisedEndpoint {
 	 * @return the port
 	 */
 	@JsonIgnore
+	@org.codehaus.jackson.annotate.JsonIgnore
 	public int getPort() {
 		return port;
 	}

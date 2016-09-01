@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.streams.discovery;
 
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -32,15 +33,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.framework.state.ConnectionState;
-import org.apache.curator.framework.state.ConnectionStateListener;
 import org.apache.curator.retry.ExponentialBackoffRetry;
 import org.apache.curator.x.discovery.ServiceCache;
 import org.apache.curator.x.discovery.ServiceDiscovery;
 import org.apache.curator.x.discovery.ServiceDiscoveryBuilder;
 import org.apache.curator.x.discovery.ServiceInstance;
+import org.apache.curator.x.discovery.ServiceProvider;
 import org.apache.curator.x.discovery.details.ServiceCacheListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.zookeeper.data.Stat;
 
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -67,7 +69,7 @@ public class EndpointPubSub implements ServiceCacheListener {
 	/** The config key for the advertised service type */
 	public static final String SERVICE_TYPE_CONF = "streamhub.discovery.servicetype";
 	/** The default advertised service type */
-	public static final String SERVICE_TYPE_DEFAULT = "monitoring-endpoints";
+	public static final String SERVICE_TYPE_DEFAULT = "/monitoring-endpoints";
 
 	/** The config key for the zookeeper session timeout */
 	public static final String DISC_SESS_TO_CONF = "streamhub.discovery.timeout.session";
@@ -104,6 +106,8 @@ public class EndpointPubSub implements ServiceCacheListener {
 	protected final ServiceDiscovery<AdvertisedEndpoint> serviceDiscovery;
 	/** The service discovery cache */
 	protected final ServiceCache<AdvertisedEndpoint> serviceCache;
+	/** The service provider */
+	protected final ServiceProvider<AdvertisedEndpoint> serviceProvider;
 	/** The service cache thread factory */
 	protected final ThreadFactory threadFactory = new ThreadFactory() {
 		final AtomicInteger serial = new AtomicInteger();
@@ -118,7 +122,7 @@ public class EndpointPubSub implements ServiceCacheListener {
 	protected final ExecutorService executor = Executors.newCachedThreadPool(threadFactory);
 	
 	/** The seri<alizer */
-	protected final JsonInstanceSerializer<AdvertisedEndpoint> serializer = new JsonInstanceSerializer<AdvertisedEndpoint>(); 
+	protected final org.apache.curator.x.discovery.details.JsonInstanceSerializer<AdvertisedEndpoint> serializer = new org.apache.curator.x.discovery.details.JsonInstanceSerializer<AdvertisedEndpoint>(AdvertisedEndpoint.class); 
 	
 	/** A set of unregistered endpoints */
 	protected final ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>> unregistered = new ConcurrentHashMap<String, ServiceInstance<AdvertisedEndpoint>>(); 
@@ -157,26 +161,57 @@ public class EndpointPubSub implements ServiceCacheListener {
 			.basePath(serviceType)
 			.client(curator)
 			.serializer(serializer)
-			.watchInstances(true)
+			.watchInstances(true)			
 			.build();	
 		serviceCache = serviceDiscovery.serviceCacheBuilder()
 			.name(serviceType)
 			.threadFactory(threadFactory)
 			.build();		
 		serviceCache.addListener(this, executor);
+		serviceProvider = serviceDiscovery.serviceProviderBuilder().serviceName("jmx").build();
 		
 		try { 
 			serviceDiscovery.start();
 			serviceCache.start();
+			serviceProvider.start();
 			cacheChanged();
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to start EndpointPubSub", ex);
 		} 
 	}
 	
+	/**
+	 * Loads any instances from zookeep
+	 * @return the number of loaded instances
+	 */
+	public int load() {
+		try {
+			int count = 0;
+			final Iterator<String> hosts = curator.getChildren().forPath(serviceType).iterator();
+			while(hosts.hasNext()) {
+				final String host = hosts.next();
+				final Iterator<String> apps = curator.getChildren().forPath(serviceType + "/" + host).iterator();
+				while(apps.hasNext()) {
+					final String app = apps.next();
+					final ServiceInstance<AdvertisedEndpoint> si = serviceDiscovery.queryForInstance(host, app);
+					final ServiceInstance<AdvertisedEndpoint> prior = registered.put(si.getId(), si);
+					unregistered.remove(si.getId());
+					count++; 
+					if(prior==null) {
+						fireOnlinedEndpoint(si.getPayload());
+					}
+				}
+			}
+			return count;
+		} catch (Exception ex) {
+			log.error("Failed to load services", ex);
+			throw new RuntimeException("Failed to load services", ex);
+		}
+	}
+	
 	public static void main(String[] args) {
 		log("PublisherTest");
-		final String template = "{ \"jmx\" : \"service:jmx:jmxmp://localhost:%s\", \"host\" : \"njwmint\", \"app\" : \"%s\",  \"port\" : \"%s\"," + 
+		final String template = "{ \"jmx\" : \"service:jmx:jmxmp://localhost:%s\", \"host\" : \"%s\", \"app\" : \"%s\",  \"port\" : \"%s\"," + 
 				"\"endpoints\" : [\"kafka\", \"jvm\"] }";
 		final EndpointPubSub p = EndpointPubSub.getInstance();
 		p.addEndpointListener(new AdvertisedEndpointListener() {
@@ -187,12 +222,24 @@ public class EndpointPubSub implements ServiceCacheListener {
 				elog("OFFLINE:" + endpoint);
 			}
 		});
-		for(int i = 0; i < 20; i++) {
-			String s = String.format(template, 1420 + i, "FooApp", 1420 + i);
-			log("  ---- REG:" + s);
-			final AdvertisedEndpoint ae = JSONOps.parseToObject(s, AdvertisedEndpoint.class);
-			p.register(ae);
+		//final String[] hosts = {"hostA", "hostB", "hostC"};
+		final String[] hosts = {"hostE", "hostF", "hostG"};
+		final String[] apps = {"appX", "appY", "appZ"};
+		int portCounter = 1420;
+		for(String host: hosts) {
+			for(String app: apps) {
+				String s = String.format(template, portCounter, host, app, portCounter);
+				final AdvertisedEndpoint ae = JSONOps.parseToObject(s, AdvertisedEndpoint.class);
+				p.register(ae);
+				portCounter++;
+			}
 		}
+//		for(int i = 0; i < 20; i++) {
+//			String s = String.format(template, 1420 + i, "FooApp", 1420 + i);
+//			log("  ---- REG:" + s);
+//			final AdvertisedEndpoint ae = JSONOps.parseToObject(s, AdvertisedEndpoint.class);
+//			p.register(ae);
+//		}
 		StdInCommandHandler.getInstance()
 		.registerCommand("stop", new Runnable(){
 			public void run() {
@@ -216,7 +263,8 @@ public class EndpointPubSub implements ServiceCacheListener {
 	 * Stops and closes the publisher
 	 */
 	public void close() {
-		intendToClose.set(true);
+		intendToClose.set(true);		
+		try { serviceProvider.close(); } catch (Exception x) {/* No Op */}
 		try { serviceCache.close(); } catch (Exception x) {/* No Op */}
 		try { serviceDiscovery.close(); } catch (Exception x) {/* No Op */}
 		try { curator.close(); } catch (Exception x) {/* No Op */}
