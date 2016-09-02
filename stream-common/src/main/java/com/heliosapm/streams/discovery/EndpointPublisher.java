@@ -15,7 +15,8 @@
  */
 package com.heliosapm.streams.discovery;
 
-import java.util.Collections;
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,19 +39,21 @@ import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
 
+import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.CloseableService;
 import com.heliosapm.utils.io.StdInCommandHandler;
 
 /**
  * <p>Title: EndpointPublisher</p>
- * <p>Description: </p> 
+ * <p>Description: Publishes a JMX monitoring discovery endpoint to zookeeper</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.discovery.EndpointPublisher</code></p>
  */
 
-public class EndpointPublisher implements ConnectionStateListener {
+public class EndpointPublisher implements ConnectionStateListener, Closeable {
 	/** The singleton instance */
 	private static volatile EndpointPublisher instance = null;
 	/** The singleton instance ctor lock */
@@ -138,6 +141,7 @@ public class EndpointPublisher implements ConnectionStateListener {
 	 * Creates a new EndpointPubSub
 	 */
 	private EndpointPublisher() {
+		CloseableService.getInstance().register(this);
 		zkConnect = ConfigurationHelper.getSystemThenEnvProperty(ZK_CONNECT_CONF, ZK_CONNECT_DEFAULT);
 		serviceType = ConfigurationHelper.getSystemThenEnvProperty(SERVICE_TYPE_CONF, SERVICE_TYPE_DEFAULT);
 		connectionTimeout = ConfigurationHelper.getIntSystemThenEnvProperty(DISC_CONN_TO_CONF, DISC_CONN_TO_DEFAULT);
@@ -167,8 +171,9 @@ public class EndpointPublisher implements ConnectionStateListener {
 
 	/**
 	 * Stops and closes the publisher
+	 * @throws IOException won't be thrown, but required
 	 */
-	public void close() {
+	public void close() throws IOException {
 		intendToClose.set(true);		
 		try { curator.close(); } catch (Exception x) {/* No Op */}
 		unregistered.clear();
@@ -241,6 +246,19 @@ public class EndpointPublisher implements ConnectionStateListener {
 				log.error("Failed to register endpoint [{}]", endpoint, ex);
 			}
 		}
+	}
+	
+	/**
+	 * Attempts to register the passed end point.
+	 * If registration fails or the client is disconnected, will retry on connection resumption.
+	 * @param jmxUrl The advertised JMXMP URL
+	 * @param endPoints The advertised monitoring categories
+	 */
+	public void register(final String jmxUrl, final String...endPoints) {
+		final String app = AgentName.getInstance().getAppName();
+		final String host = AgentName.getInstance().getHostName();
+		final AdvertisedEndpoint ae = new AdvertisedEndpoint(jmxUrl, app, host, endPoints);
+		register(ae);
 	}
 	
 	/**
@@ -322,7 +340,9 @@ public class EndpointPublisher implements ConnectionStateListener {
 		StdInCommandHandler.getInstance()
 		.registerCommand("stop", new Runnable(){
 			public void run() {
-				p.close();
+				try {
+					p.close();
+				} catch (Exception x) {/* No Op */}
 				System.exit(0);
 			}
 		})

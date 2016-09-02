@@ -15,6 +15,8 @@
  */
 package com.heliosapm.streams.discovery;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -23,6 +25,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
+
+import javax.management.MBeanNotificationInfo;
+import javax.management.Notification;
+import javax.management.NotificationBroadcasterSupport;
 
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
@@ -39,7 +47,10 @@ import org.apache.zookeeper.data.Stat;
 
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.CloseableService;
 import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 
 /**
  * <p>Title: EndpointListener</p>
@@ -49,11 +60,21 @@ import com.heliosapm.utils.io.StdInCommandHandler;
  * <p><code>com.heliosapm.streams.discovery.EndpointListener</code></p>
  */
 
-public class EndpointListener implements ConnectionStateListener, TreeCacheListener {
+public class EndpointListener extends NotificationBroadcasterSupport implements EndpointListenerMBean, ConnectionStateListener, TreeCacheListener, Closeable {
 	/** The singleton instance */
 	private static volatile EndpointListener instance = null;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
+	
+	/** Definitions of JMX notifications emitted by this service */
+	private static final MBeanNotificationInfo[] NOTIF_INFOS = new MBeanNotificationInfo[] {
+		new MBeanNotificationInfo(new String[]{NOTIF_SERVICE_CONNECT}, Notification.class.getName(), "Initial Sookeeper connection"),
+		new MBeanNotificationInfo(new String[]{NOTIF_SERVICE_DISCONNECT}, Notification.class.getName(), "Zookeeper disconnect"),
+		new MBeanNotificationInfo(new String[]{NOTIF_SERVICE_RECONNECT}, Notification.class.getName(), "Zookeeper reconnect"),
+		new MBeanNotificationInfo(new String[]{NOTIF_ENDPOINT_UP}, Notification.class.getName(), "Discovery of a new endpoint"),
+		new MBeanNotificationInfo(new String[]{NOTIF_ENDPOINT_DOWN}, Notification.class.getName(), "Loss of a known endpoint")
+	};
+	
 	
 	/** The config key for the ZooKeeper connect string */
 	public static final String ZK_CONNECT_CONF = "streamhub.discovery.zookeeper.connect";
@@ -85,6 +106,12 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 	protected final int connectionTimeout;
 	/** The zookeeper session timeout in ms. */
 	protected final int sessionTimeout;
+	/** Factory for notification serial numbers */
+	protected final AtomicLong notifSerial = new AtomicLong();
+	/** A counter of up endpoint events */
+	protected final LongAdder upEvents = new LongAdder();
+	/** A counter of down endpoint events */
+	protected final LongAdder downEvents = new LongAdder();
 
 	/** The zookeeper curator framework instance to listen with */
 	protected final CuratorFramework curator;
@@ -142,9 +169,11 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 	 * @param listeners an optional array of endpoint listeners to add
 	 */
 	private EndpointListener(final AdvertisedEndpointListener...listeners) {
+		super(SharedNotificationExecutor.getInstance(), NOTIF_INFOS);
 		for(AdvertisedEndpointListener listener : listeners) {
 			instance.addEndpointListener(listener);
 		}		
+		CloseableService.getInstance().register(this);
 		zkConnect = ConfigurationHelper.getSystemThenEnvProperty(ZK_CONNECT_CONF, ZK_CONNECT_DEFAULT);
 		serviceType = ConfigurationHelper.getSystemThenEnvProperty(SERVICE_TYPE_CONF, SERVICE_TYPE_DEFAULT);
 		connectionTimeout = ConfigurationHelper.getIntSystemThenEnvProperty(DISC_CONN_TO_CONF, DISC_CONN_TO_DEFAULT);
@@ -158,8 +187,12 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 			.setExecutor(executor)
 			.setMaxDepth(5)
 			.build();
-				//new PathChildrenCache(curator, serviceType, true, false, executor);
 		treeCache.getListenable().addListener(this, executor);
+		try {
+			JMXHelper.registerMBean(OBJECT_NAME, this);
+		} catch (Exception ex) {
+			log.warn("Failed to register management interface. Will continue without.", ex);
+		}		
 		connectClients();
 	}
 	
@@ -176,8 +209,9 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 
 	/**
 	 * Stops and closes the publisher
+	 * @throws IOException Won't be thrown, but required.
 	 */
-	public void close() {
+	public void close() throws IOException {
 		intendToClose.set(true);		
 		try { treeCache.close(); } catch (Exception x) {/* No Op */}
 		try { curator.close(); } catch (Exception x) {/* No Op */}
@@ -194,20 +228,23 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 		log.info("ZK Connection State Change to [{}]", newState.name());
 		connected.set(newState.isConnected());
 		switch(newState) {			
-			case CONNECTED:							
+			case CONNECTED:	
+				sendNotification(new Notification(NOTIF_SERVICE_CONNECT, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "EndpointListener connected to Zookeeper at [" + zkConnect + "]"));
 				break;
 			case LOST:
+				final int lostEndpoints = registered.size();
 				registered.clear();
+				sendNotification(new Notification(NOTIF_SERVICE_DISCONNECT, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "EndpointListener lost connection to Zookeeper [" + zkConnect + "]. Lost [" + lostEndpoints + "] endpoints"));
 				break;
 			case READ_ONLY:
 				break;
 			case RECONNECTED:
+				sendNotification(new Notification(NOTIF_SERVICE_RECONNECT, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "EndpointListener re-connected to Zookeeper at [" + zkConnect + "]"));
 				break;
 			case SUSPENDED:
 				break;
 			default:
 				break;
-		
 		}		
 	}
 	
@@ -233,31 +270,22 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 			eph = -1;
 		}
 		
-		log.info("Cache Change [{}] --> [{}], eph:{}", event.getType().name(), path, eph);
+		log.debug("Cache Change [{}] --> [{}], eph:{}", event.getType().name(), path, eph);
 		switch(event.getType()) {
-		case CONNECTION_LOST:
-			break;
-		case CONNECTION_RECONNECTED:
-			break;
-		case CONNECTION_SUSPENDED:
-			break;
-		case INITIALIZED:
-			break;
-		case NODE_ADDED:
-			if(childData!=null) {
-				onNodeAdded(childData);
-			}
-			break;
-		case NODE_REMOVED:
-			if(childData!=null) {
-				onNodeRemoved(childData);
-			}			
-			break;
-		case NODE_UPDATED:
-			break;
-		default:
-			break;
-		
+			case NODE_ADDED:
+				if(childData!=null) {
+					onNodeAdded(childData);
+				}
+				break;
+			case NODE_REMOVED:
+				if(childData!=null) {
+					onNodeRemoved(childData);
+				}			
+				break;
+			case NODE_UPDATED:
+				break;
+			default:
+				break;
 		}
 	}
 	
@@ -275,6 +303,10 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 				registered.put(data.getPath(), ae);
 				log.info("Discovered Endpoint: [{}]", ae);
 				fireOnlinedEndpoint(ae);
+				final Notification notif = new Notification(NOTIF_ENDPOINT_UP, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "EndpointListener discovered new endpoint [" + ae + "]");
+				notif.setUserData(JSONOps.serializeToString(ae));
+				sendNotification(notif);
+				upEvents.increment();
 			}
 		}
 	}
@@ -292,12 +324,19 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 				registered.remove(data.getPath());
 				log.info("Endpoint Down: [{}]", ae);
 				fireOfflinedEndpoint(ae);
+				final Notification notif = new Notification(NOTIF_ENDPOINT_DOWN, OBJECT_NAME, notifSerial.incrementAndGet(), System.currentTimeMillis(), "Endpoint down [" + ae + "]");
+				notif.setUserData(JSONOps.serializeToString(ae));
+				sendNotification(notif);
+				downEvents.increment();
 			}
-		}
-	
+		}	
 	}
 	
 	
+	/**
+	 * Notifies registered listeners of a new endpoint
+	 * @param endpoint the new endpoint
+	 */
 	protected void fireOnlinedEndpoint(final AdvertisedEndpoint endpoint) {
 		for(final AdvertisedEndpointListener listener: listeners) {
 			executor.submit(new Runnable(){
@@ -309,6 +348,10 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 		}
 	}
 	
+	/**
+	 * Notifies registered listeners of a lost endpoint
+	 * @param endpoint the lost endpoint
+	 */
 	protected void fireOfflinedEndpoint(final AdvertisedEndpoint endpoint) {
 		for(final AdvertisedEndpointListener listener: listeners) {
 			executor.submit(new Runnable(){
@@ -340,46 +383,95 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 		}
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getListenerCount()
+	 */
+	@Override
+	public int getListenerCount() {
+		return listeners.size();
+	}
 	
-	
-
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getZkConnection()
+	 */
+	@Override
+	public String getZkConnection() {
+		return zkConnect;
+	}
 
 	/**
-	 * Returns 
-	 * @return the serviceType
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getServiceType()
 	 */
+	@Override
 	public String getServiceType() {
 		return serviceType;
 	}
 	
 	/**
-	 * Returns 
-	 * @return the connectionTimeout
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getConnectionTimeout()
 	 */
+	@Override
 	public int getConnectionTimeout() {
 		return connectionTimeout;
 	}
 
 
 	/**
-	 * Returns 
-	 * @return the sessionTimeout
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getSessionTimeout()
 	 */
+	@Override
 	public int getSessionTimeout() {
 		return sessionTimeout;
 	}
 
 
 	/**
-	 * Returns 
-	 * @return the connected
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#isConnected()
 	 */
-	public AtomicBoolean getConnected() {
-		return connected;
+	@Override
+	public boolean isConnected() {
+		return connected.get();
+	}
+	
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getUpEvents()
+	 */
+	@Override
+	public long getUpEvents() {
+		return upEvents.longValue();
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getDownEvents()
+	 */
+	@Override
+	public long getDownEvents() {
+		return downEvents.longValue();
+	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.discovery.EndpointListenerMBean#getRegisteredEndpoints()
+	 */
+	@Override
+	public int getRegisteredEndpoints() {
+		return registered.size();
 	}
 
 	public static void main(String[] args) {
 		log("ListenerTest");
+		JMXHelper.fireUpJMXMPServer(1209);
 		final EndpointListener p = EndpointListener.getInstance();
 		p.addEndpointListener(new AdvertisedEndpointListener() {
 			public void onOnlineAdvertisedEndpoint(final AdvertisedEndpoint endpoint) {
@@ -393,7 +485,9 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 		StdInCommandHandler.getInstance()
 		.registerCommand("stop", new Runnable(){
 			public void run() {
-				p.close();
+				try {
+					p.close();
+				} catch (Exception x) {/* No Op */}				
 				System.exit(0);
 			}
 		})
@@ -415,6 +509,8 @@ public class EndpointListener implements ConnectionStateListener, TreeCacheListe
 	public static void elog(Object msg) {
 		System.err.println(msg);
 	}
+
+
 
 
 	
