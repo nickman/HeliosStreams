@@ -29,6 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.curator.CuratorZookeeperClient;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.api.BackgroundCallback;
+import org.apache.curator.framework.api.CuratorEvent;
 import org.apache.curator.framework.state.ConnectionState;
 import org.apache.curator.framework.state.ConnectionStateListener;
 import org.apache.curator.retry.ExponentialBackoffRetry;
@@ -221,23 +223,20 @@ public class EndpointPublisher implements ConnectionStateListener, Closeable {
 			try {
 				try {
 					try { zoo.delete(endpoint.getZkPath(serviceType), -1); } catch (Exception x) {/* No Op */}
-					final StringBuilder path = new StringBuilder();
-					for(String pathElement: endpoint.getZkPathElements(serviceType)) {
-						if(path.length()!=0) path.append("/"); 
-						path.append(pathElement);
-						final String zkPath = path.toString();
-						if(zoo.exists(zkPath, false)==null) {
-							zoo.create(path.toString(), new byte[]{}, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.PERSISTENT);
-						}
-					}
-					zoo.create(endpoint.getZkPath(serviceType), endpoint.toByteArray(), ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL, new  AsyncCallback.StringCallback() {
-						@Override
-						public void processResult(final int rc, final String path, final Object ctx, final String name) {
-							log.info("Register callback. rc:{}, path:[{}], ctx:[{}], name:[{}]", rc, path, ctx, name);
-							registered.put(endpoint.getId(), endpoint);
-							unregistered.remove(endpoint.getId());							
-						}
-					}, endpoint);
+					final String zkPath = endpoint.getZkPath(serviceType);
+					curator.create()
+						.creatingParentContainersIfNeeded()
+						.withMode(CreateMode.EPHEMERAL)
+						.inBackground(new BackgroundCallback() {
+							@Override
+							public void processResult(final CuratorFramework client, final CuratorEvent event) throws Exception {								
+								log.info("Register callback. rc:{}, path:[{}], ctx:[{}], name:[{}]", event.getResultCode(), event.getPath(), event.getContext(), event.getName());
+								if(event.getResultCode() >= 0) {									
+									registered.put(endpoint.getId(), endpoint);
+									unregistered.remove(endpoint.getId());																
+								}
+							}
+						}, executor).forPath(zkPath, endpoint.toByteArray());
 				} catch (Exception ex) {
 					log.error("Failed to register endpoint [{}]",  endpoint.getId(), ex);
 				}
