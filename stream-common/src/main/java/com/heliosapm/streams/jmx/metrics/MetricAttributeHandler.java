@@ -23,6 +23,7 @@ import java.lang.reflect.Method;
 import javax.management.ImmutableDescriptor;
 import javax.management.MBeanAttributeInfo;
 
+import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.Sampling;
 import com.codahale.metrics.Snapshot;
@@ -31,14 +32,17 @@ import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
 
 /**
- * <p>Title: MBeanInfoGenerator</p>
+ * <p>Title: MetricAttributeHandler</p>
  * <p>Description: Generates MBeanInfo for a registered metric</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.jmx.metrics.MBeanInfoGenerator</code></p>
+ * <p><code>com.heliosapm.streams.jmx.metrics.MetricAttributeHandler</code></p>
  */
 
-public interface MBeanInfoGenerator {
+public interface MetricAttributeHandler {
+	
 	public NVP<Metric, MBeanAttributeInfo[]> minfo(final Metric metric);
+	
+	
 	
 	public static interface Getter {
 		public Object get();
@@ -73,53 +77,69 @@ public interface MBeanInfoGenerator {
 	}
 	
 	
-	public static class CounterMBeanInfoGenerator implements MBeanInfoGenerator {
+	public static class CounterMBeanInfoGenerator implements MetricAttributeHandler {
 		@Override
 		public NVP<Metric, MBeanAttributeInfo[]> minfo(final Metric metric) {
 			return new NVP<Metric, MBeanAttributeInfo[]>(metric, new MBeanAttributeInfo[]{
 				new MBeanAttributeInfo("Count", "long", "The counter's current value", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Counter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getCount"))
-						.fput("metricType", new AttributeGetter(metric, "counter"))
+						.fput("metricType", "counter")
 					))
 			});
 		}
 	}
 	
-	public static class MeterMBeanInfoGenerator implements MBeanInfoGenerator {
+	public static class GaugeMBeanInfoGenerator implements MetricAttributeHandler {
+		@Override
+		public NVP<Metric, MBeanAttributeInfo[]> minfo(final Metric metric) {
+			final Object sample = ((Gauge<?>)metric).getValue();
+			
+			return new NVP<Metric, MBeanAttributeInfo[]>(metric, new MBeanAttributeInfo[]{
+				new MBeanAttributeInfo("Gauge", sample.getClass().getName(), "The gauges's current value", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
+						.fput("metricClass", com.codahale.metrics.Gauge.class.getName())
+						.fput("invoker", new AttributeGetter(metric, "getValue"))
+						.fput("metricType", "gauge")
+					))
+			});
+		}
+	}
+	
+	
+	public static class MeterMBeanInfoGenerator implements MetricAttributeHandler {
 		@Override
 		public NVP<Metric, MBeanAttributeInfo[]> minfo(final Metric metric) {
 			return new NVP<Metric, MBeanAttributeInfo[]>(metric, new MBeanAttributeInfo[]{
 				new MBeanAttributeInfo("MeterCount", "long", "The number of events that have been marked", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getCount"))
-						.fput("metricType", new AttributeGetter(metric, "counter"))
+						.fput("metricType", "counter")
 					)),
 				new MBeanAttributeInfo("Rate15m", "double", "The fifteen-minute exponentially-weighted moving average rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getFifteenMinuteRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					)),
 				new MBeanAttributeInfo("Rate5m", "double", "The five-minute exponentially-weighted moving average rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getFiveMinuteRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					)),
 				new MBeanAttributeInfo("Rate1m", "double", "The one-minute exponentially-weighted moving average rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getOneMinuteRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					)),
 				new MBeanAttributeInfo("MeanRate", "double", "The mean rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getMeanRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					))
 			});
 		}
 	}
 	
-	public static class HistogramMBeanInfoGenerator implements MBeanInfoGenerator {
+	public static class HistogramMBeanInfoGenerator implements MetricAttributeHandler {
 		@Override
 		public NVP<Metric, MBeanAttributeInfo[]> minfo(final Metric metric) {
 			return new NVP<Metric, MBeanAttributeInfo[]>(metric, new MBeanAttributeInfo[]{
@@ -182,7 +202,7 @@ public interface MBeanInfoGenerator {
 		}
 	}
 	
-	public static class TimerMBeanInfoGenerator implements MBeanInfoGenerator {
+	public static class TimerMBeanInfoGenerator implements MetricAttributeHandler {
 		@Override
 		public NVP<Metric, MBeanAttributeInfo[]> minfo(final Metric metric) {
 			return new NVP<Metric, MBeanAttributeInfo[]>(metric, new MBeanAttributeInfo[]{
@@ -194,22 +214,22 @@ public interface MBeanInfoGenerator {
 				new MBeanAttributeInfo("TimerRate15m", "double", "The fifteen-minute exponentially-weighted moving average rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getFifteenMinuteRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					)),
 				new MBeanAttributeInfo("TimerRate5m", "double", "The five-minute exponentially-weighted moving average rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getFiveMinuteRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					)),
 				new MBeanAttributeInfo("TimerRate1m", "double", "The one-minute exponentially-weighted moving average rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getOneMinuteRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					)),
 				new MBeanAttributeInfo("TimerMeanRate", "double", "The mean rate at which events have occurred since the meter was created", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 						.fput("metricClass", com.codahale.metrics.Meter.class.getName())
 						.fput("invoker", new AttributeGetter(metric, "getMeanRate"))
-						.fput("metricType", new AttributeGetter(metric, "gauge"))
+						.fput("metricType", "gauge")
 					)),
 				
 				new MBeanAttributeInfo("Timer75thPct", "double", "The value at the 75th percentile in the distribution.", true, false, false, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)

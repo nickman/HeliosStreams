@@ -22,22 +22,30 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.management.AttributeNotFoundException;
 import javax.management.ImmutableDescriptor;
 import javax.management.MBeanAttributeInfo;
 import javax.management.MBeanConstructorInfo;
+import javax.management.MBeanException;
 import javax.management.MBeanInfo;
 import javax.management.MBeanNotificationInfo;
 import javax.management.MBeanOperationInfo;
 import javax.management.Notification;
 import javax.management.NotificationBroadcasterSupport;
 import javax.management.ObjectName;
+import javax.management.ReflectionException;
 import javax.management.StandardEmitterMBean;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.codahale.metrics.Meter;
 import com.codahale.metrics.Metric;
+import com.codahale.metrics.MetricSet;
+import com.heliosapm.streams.jmx.metrics.MetricType.AttributeAdapter;
+import com.heliosapm.streams.jmx.metrics.MetricType.SnapshotMember;
 import com.heliosapm.utils.collections.FluentMap;
+import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.tuples.NVP;
@@ -49,22 +57,13 @@ import com.heliosapm.utils.tuples.NVP;
  * <p><code>com.heliosapm.streams.jmx.metrics.DropWizardMetrics</code></p>
  */
 
-public class DropWizardMetrics extends StandardEmitterMBean {
+public class DropWizardMetrics extends StandardEmitterMBean implements DropWizardMetricsMXBean {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** This mbean's assigned ObjectName */
 	protected final ObjectName objectName;
-	/** A map of the metrics registered in this MBean */
-	protected final Map<MetricType, Metric> metricMap = MetricType.metricMap();
-	
-	/** The type of notification emitted when the MBeanInfo changes */
-	public static final String INFO_CHANGE = "jmx.mbean.info.changed";
-	
-	/** Array of supported notifications */
-	protected static final MBeanNotificationInfo[] notifInfos = new MBeanNotificationInfo[]{
-			new MBeanNotificationInfo(new String[]{INFO_CHANGE}, Notification.class.getName(), "Emitted when a DropWizardMetric MBean implements new meta-data")
-	}; 
-	
+	/** The description for this mbean */
+	protected final String description;
 	/** We have no op infos yet */
 	protected final MBeanOperationInfo[] opInfos = {};
 	/** We have no ctor infos yet */
@@ -77,15 +76,29 @@ public class DropWizardMetrics extends StandardEmitterMBean {
 	protected final Map<String, Metric> attrMetrics = new ConcurrentHashMap<String, Metric>();
 	/** A map of MBeanAttributeInfos instances keyed by the attribute name */
 	protected final Map<String, MBeanAttributeInfo> attrInfos = new ConcurrentHashMap<String, MBeanAttributeInfo>();
+	/** A map of AttributeAdapters keyed by the attribute name */
+	protected final Map<String, AttributeAdapter> attrAdapters = new ConcurrentHashMap<String, AttributeAdapter>();
 	
+	/** The type of notification emitted when the MBeanInfo changes */
+	public static final String INFO_CHANGE = "jmx.mbean.info.changed";
+	
+	/** Array of supported notifications */
+	protected static final MBeanNotificationInfo[] notifInfos = new MBeanNotificationInfo[]{
+			new MBeanNotificationInfo(new String[]{INFO_CHANGE}, Notification.class.getName(), "Emitted when a DropWizardMetric MBean implements new meta-data")
+	}; 
+	
+	 
 	
 	/**
 	 * Creates a new DropWizardMetrics
 	 * @param objectName The object name to register this mbean with
+	 * @param description A description for the metric set to be exposed by this mbean
 	 */
-	public DropWizardMetrics(final ObjectName objectName) {
+	public DropWizardMetrics(final ObjectName objectName, final String description) {
 		super(DropWizardMetricsMXBean.class, true, new NotificationBroadcasterSupport(SharedNotificationExecutor.getInstance(), notifInfos));
+		if(objectName==null) throw new IllegalArgumentException("The passed object name was null");
 		this.objectName = objectName;
+		this.description = (description==null || description.trim().isEmpty()) ? "DropWizard Metric Set" : description.trim();		
 	}
 
 	/**
@@ -98,14 +111,31 @@ public class DropWizardMetrics extends StandardEmitterMBean {
 		try { JMXHelper.registerMBean(objectName, this); } catch (Exception x) {/* No Op */}
 	}
 	
-	public void add(final Metric metric) {
+	public void addMetricSet(final MetricSet metric) {
+		
+	}
+	
+	public void addMetric(final Metric metric, final String name, final String description) {
 		final MetricType metricType = MetricType.metricType(metric);
-		if(metricMap.containsKey(metricType)) throw new IllegalStateException("This mbean already contains a metric type of [" + metricType + "]");
-		metricMap.put(metricType, metric);
-		final NVP<Metric, MBeanAttributeInfo[]> metricAttrInfos = metricType.minfo(metric);
-		for(MBeanAttributeInfo info: metricAttrInfos.getValue()) {
-			attrInfos.put(info.getName(), info);
-			attrMetrics.put(info.getName(), metric);			
+		NVP<MBeanAttributeInfo[], AttributeAdapter[]> nvp = MetricType.attrInfos(metricType.aa, name, description, metric);
+		MBeanAttributeInfo[] attributeInfos = nvp.getKey();
+		AttributeAdapter[] adapters = nvp.getValue();
+		for(int i = 0; i < attributeInfos.length; i++) {
+			attrInfos.put(attributeInfos[i].getName(), attributeInfos[i]);
+			attrMetrics.put(attributeInfos[i].getName(), metric);
+			attrAdapters.put(attributeInfos[i].getName(), adapters[i]);
+			
+		}
+		if(metricType.aa.isSampling()) {
+			nvp = MetricType.attrInfos(SnapshotMember.MAX, name, description, metric);
+			attributeInfos = nvp.getKey();
+			adapters = nvp.getValue();
+			for(int i = 0; i < attributeInfos.length; i++) {
+				attrInfos.put(attributeInfos[i].getName(), attributeInfos[i]);
+				attrMetrics.put(attributeInfos[i].getName(), metric);
+				attrAdapters.put(attributeInfos[i].getName(), adapters[i]);
+				
+			}			
 		}
 		final MBeanInfo minfo = getCachedMBeanInfo();
 		cacheMBeanInfo(minfo);
@@ -114,11 +144,29 @@ public class DropWizardMetrics extends StandardEmitterMBean {
 		sendNotification(notif);
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.StandardMBean#getAttribute(java.lang.String)
+	 */
+	@Override
+	public Object getAttribute(final String attribute) throws AttributeNotFoundException, MBeanException, ReflectionException {
+		// TODO Auto-generated method stub
+		return super.getAttribute(attribute);
+	}
+	
 	@Override
 	protected MBeanInfo getCachedMBeanInfo() {		
-		return new MBeanInfo(getClass().getName(), "DropWizard Metric Set", attrInfos.values().toArray(new MBeanAttributeInfo[0]), ctorInfos, opInfos, notifInfos, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
+		return new MBeanInfo(getClass().getName(), description, attrInfos.values().toArray(new MBeanAttributeInfo[0]), ctorInfos, opInfos, notifInfos, new ImmutableDescriptor(FluentMap.newMap(String.class, Object.class)
 			.fput("infoTimeout", 10000L)
 		));
 	}
 
+	public static void main(String[] args) {
+		JMXHelper.fireUpJMXMPServer(2259);
+		DropWizardMetrics dwm = new DropWizardMetrics(JMXHelper.objectName("dw:service=Metrics"), "Metric Test");
+		JMXHelper.registerMBean(dwm, dwm.objectName);
+		dwm.addMetric(new Meter(), "MessagesPerS", "Kafka Messages Per Second");
+		StdInCommandHandler.getInstance().run();
+	}
+	
 }
