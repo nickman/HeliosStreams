@@ -46,6 +46,7 @@ import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.ACL;
 import org.apache.zookeeper.data.Stat;
 
+import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -322,16 +323,17 @@ public class ZooKeepPublisher extends NotificationBroadcasterSupport implements 
 	 * Attempts a series of methods of divining the host name
 	 * @return the determined host name
 	 */
-	public static String hostName() {	
-		String host = System.getProperty(CONFIG_HOST_NAME, "").trim();
-		if(host!=null && !host.isEmpty()) return host;
-		host = LocalHost.getHostNameByNic();
-		if(host!=null) return host;		
-		host = LocalHost.getHostNameByInet();
-		if(host!=null) return host;
-		host = System.getenv(IS_WIN ? "COMPUTERNAME" : "HOSTNAME");
-		if(host!=null && !host.trim().isEmpty()) return host;
-		return HOST;
+	public static String hostName() {
+		return AgentName.getInstance().getHostName();
+//		String host = System.getProperty(CONFIG_HOST_NAME, "").trim();
+//		if(host!=null && !host.isEmpty()) return host;
+//		host = LocalHost.getHostNameByNic();
+//		if(host!=null) return host;		
+//		host = LocalHost.getHostNameByInet();
+//		if(host!=null) return host;
+//		host = System.getenv(IS_WIN ? "COMPUTERNAME" : "HOSTNAME");
+//		if(host!=null && !host.trim().isEmpty()) return host;
+//		return HOST;
 	}	
 	
 	/**

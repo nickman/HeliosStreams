@@ -23,7 +23,7 @@ import org.apache.kafka.streams.processor.TimestampExtractor;
 
 /**
  * <p>Title: StreamedMetricTimestampExtractor</p>
- * <p>Description: </p> 
+ * <p>Description: Timestamp extractor for StreamedMetrics supporting a few different in-flight types </p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.StreamedMetricTimestampExtractor</code></p>
  */

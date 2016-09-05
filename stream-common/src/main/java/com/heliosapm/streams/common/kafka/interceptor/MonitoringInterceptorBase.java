@@ -24,6 +24,8 @@ import java.util.TreeMap;
 
 import javax.management.ObjectName;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
@@ -64,6 +66,8 @@ public abstract class MonitoringInterceptorBase<K, V> {
 	protected final Hashtable<String, String> jmxProperties = new Hashtable<String, String>();
 	protected ObjectName totalObjectName;
 	protected ObjectName totalHistObjectName;
+	
+	protected final Logger log = LogManager.getLogger(getClass());
 	
 	/** The metrics registry */
 	protected final SharedMetricsRegistry mr = SharedMetricsRegistry.getInstance();
@@ -121,10 +125,9 @@ public abstract class MonitoringInterceptorBase<K, V> {
 			final Hashtable<String, String> props = new Hashtable<String, String>(jmxProperties);
 			props.put("topic", topicName);
 			if(pId!=-1L) {
-				props.put("partition", "" + partitionId);
+				props.put("partition", "" + pId);
 			}
 			final ObjectName objectName = objectName(jmxDomain, props);	
-			objectNames.add(objectName);
 			meter = SharedMetricsRegistry.getInstance().mxMeter(objectName, "Msgs", "Kafka Client " + noun + " Messaging Rate Metrics");
 			cachedMeters.replace(key, meter);
 		}
@@ -145,11 +148,10 @@ public abstract class MonitoringInterceptorBase<K, V> {
 			final Hashtable<String, String> props = new Hashtable<String, String>(jmxProperties);
 			props.put("topic", topicName);
 			if(pId!=-1L) {
-				props.put("partition", "" + partitionId);
+				props.put("partition", "" + pId);
 			}
 			final ObjectName objectName = objectName(jmxDomain, props);	
-			@SuppressWarnings("unused")
-			final boolean exists = objectNames.add(objectName);
+			objectNames.add(objectName);			
 			histogram = SharedMetricsRegistry.getInstance().mxHistogram(objectName, "Bytes", "Kafka Client " + noun + " Byte Transfer Metrics");
 			cachedHistograms.replace(key, histogram);
 		}

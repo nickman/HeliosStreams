@@ -20,19 +20,16 @@ package com.heliosapm.streams;
 
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.TreeSet;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.actuate.endpoint.BeansEndpoint;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -40,14 +37,12 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.EnableMBeanExport;
 import org.springframework.context.annotation.ImportResource;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.ContextRefreshedEvent;
 
 import com.heliosapm.utils.collections.Props;
-import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.url.URLHelper;
 
 /**
@@ -107,6 +102,7 @@ public class StreamHub implements Watcher {
 	
 	public StreamHub(final String[] args, final Properties p) {
 		try {			
+			System.setProperty("jmx.jmxmp.discovery.advertised", "jvm,kafka-consumer,kafka-producer");
 			System.setProperty("spring.boot.admin.client.enabled", "true");
 			System.setProperty("info.version", "1.0.1");
 			System.setProperty("spring.boot.admin.client.name", "StreamHubNode");
@@ -123,23 +119,6 @@ public class StreamHub implements Watcher {
 				public void onApplicationEvent(final ContextRefreshedEvent event) {
 					try {
 						log.info("\n\t==================================================\n\tStreamHubNode Started [{}]\n\t==================================================\n", event.getApplicationContext().getId());
-						StdInCommandHandler.getInstance()
-						.registerCommandIfNotInstalled("beans", new Runnable(){
-							@Override
-							public void run() {
-								if(appCtx==null) {
-									loge("AppContext Not Loaded Yet");
-									return;
-								}
-
-								final TreeSet<String> beanNames = new TreeSet<String>(Arrays.asList(appCtx.getBeanDefinitionNames()));
-								log("Bean Names:\n==========");
-								for(String beanName: beanNames) {
-									log("\t" + beanName);
-								}
-								log("==========");
-							}
-						});
 						
 					} catch (Exception ex) {
 						System.err.println("AppContext Startup Failure. Shutting down. Stack trace follows.");
@@ -169,29 +148,19 @@ public class StreamHub implements Watcher {
 			springBootLaunchThread.setContextClassLoader(this.getClass().getClassLoader());
 			springBootLaunchThread.setDaemon(true);
 			springBootLaunchThread.start();
-			
-			log.info("Starting StdIn Handler");
-			final Thread MAIN = Thread.currentThread();
-			StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
-				@Override
+			final Thread stopThread = Thread.currentThread();
+			Runtime.getRuntime().addShutdownHook(new Thread("StreamHubShutdownHook"){
 				public void run() {
-					log.info("StdIn Handler Shutting Down AppCtx....");
-//					Thread stopThread = new Thread("ShutdownThread") {
-//						public void run() {
-//							
-//						}
-//					};
-					SpringApplication.exit(appCtx, new ExitCodeGenerator(){
-						@Override
-						public int getExitCode() {
-							return 1;
-						}});
-					
-					MAIN.interrupt();
-					
+					stopThread.interrupt();
 				}
-			})
-			.runAsync(true).join();
+			});
+			try {
+				Thread.currentThread().join();
+			} catch (InterruptedException iex) {
+				log("StopThread Interrupted. Shutting Down....");
+			}
+			
+			
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw new RuntimeException("Failed to start StreamHub Instance", ex);

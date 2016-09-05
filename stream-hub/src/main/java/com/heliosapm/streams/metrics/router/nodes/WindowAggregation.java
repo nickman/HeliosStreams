@@ -57,6 +57,7 @@ import org.springframework.jmx.export.naming.SelfNaming;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadPool;
@@ -85,7 +86,7 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 			.objectName(JMXHelper.objectName("com.heliosapm.streams.metrics.router:service=WindowAggregationThreadPool"))
 			.poolName("WindowAggregationThreadPool")
 			.prestart(CORES)
-			.queueSize(1)
+			.queueSize(ConfigurationHelper.getIntSystemThenEnvProperty("streams.windowaggregation.threadpool.queuesize", 128))
 			.build();
 	 
 	

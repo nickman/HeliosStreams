@@ -202,7 +202,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** flag indicating if rescheduling can occur */
 	protected final AtomicBoolean canReschedule = new AtomicBoolean(false);
 	/** The hystrix command factory to use if hystrix is enabled */
-	protected final HystrixCommandProvider<Object> commandBuilder;
+	protected HystrixCommandProvider<Object> commandBuilder = null;
 	
 	/** The deployment sequence id */
 	protected int deploymentId = 0;
@@ -258,11 +258,12 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		regionKey = packageKey.substring(packageKey.indexOf('.')+1);
 		classKey = getClass().getName();		
 		hystrixEnabled.set(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_HYSTRIX_ENABLED, DEFAULT_HYSTRIX_ENABLED));
-			
-		commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, packageSegs[0] + packageSegs[1])
-			.andCommandKey(classKey)
-			.andThreadPoolKey(regionKey.replace('.', '-'))
-			.build();
+		if(hystrixEnabled.get()) {
+			commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, packageSegs[0] + packageSegs[1])
+				.andCommandKey(classKey)
+				.andThreadPoolKey(regionKey.replace('.', '-'))
+				.build();
+		}
 			
 	}
 	

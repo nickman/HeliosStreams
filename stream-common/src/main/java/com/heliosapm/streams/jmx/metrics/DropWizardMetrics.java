@@ -158,8 +158,7 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 		cacheMBeanInfo(minfo);
 		final Notification notif = new Notification(INFO_CHANGE, objectName, notifSerial.incrementAndGet(), System.currentTimeMillis());
 		notif.setUserData(minfo);
-		sendNotification(notif);
-		System.err.println("DWM Added Metrics: [" + objectName + "]:" + attrInfos.keySet());
+		sendNotification(notif);		
 	}
 	
 	/**

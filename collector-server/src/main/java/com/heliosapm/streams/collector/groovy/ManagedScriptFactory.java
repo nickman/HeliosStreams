@@ -157,7 +157,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	
 	/** The expected directory names under the collector-service root */
 	public static final Set<String> DIR_NAMES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
-			"templates", "tmp", "lib", "bin", "conf", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
+			"dynamic", "templates", "tmp", "lib", "bin", "conf", "datasources", "web", "collectors", "cache", "db", "chronicle", "ssh", "fixtures"
 	)));
 	
 	/** The collector service root directory */

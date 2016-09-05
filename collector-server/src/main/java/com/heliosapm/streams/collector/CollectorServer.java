@@ -31,13 +31,13 @@ import org.apache.logging.log4j.LogManager;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.context.web.SpringBootServletInitializer;
 import org.springframework.cloud.client.circuitbreaker.EnableCircuitBreaker;
 import org.springframework.cloud.netflix.hystrix.EnableHystrix;
 import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
 import org.springframework.cloud.netflix.turbine.EnableTurbine;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -46,7 +46,6 @@ import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
-import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
@@ -68,6 +67,7 @@ import com.heliosapm.utils.url.URLHelper;
 @EnableCircuitBreaker
 @EnableHystrixDashboard
 @EnableTurbine
+//@ComponentScan({"com.heliosapm.streams.collector.jmx.discovery.*"})
 public class CollectorServer extends  SpringBootServletInitializer {
 	
 	/** The command help text */
@@ -254,7 +254,18 @@ public class CollectorServer extends  SpringBootServletInitializer {
 			PrivateAccessor.invokeStatic(BOOT_CLASS, "getInstance");			
 		}
 		
-		StdInCommandHandler.getInstance().run();
+		final Thread stopThread = Thread.currentThread();
+		Runtime.getRuntime().addShutdownHook(new Thread("CollectorServerShutdownHook"){
+			public void run() {
+				stopThread.interrupt();
+			}
+		});
+		try {
+			Thread.currentThread().join();
+		} catch (InterruptedException iex) {
+			System.out.println("StopThread Interrupted. Shutting Down....");
+		}
+		
 	}
 	
 //	private static void initDir(final File rootDirectory) {

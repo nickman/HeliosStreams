@@ -141,7 +141,7 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 	
 	protected final NonBlockingHashMap<ObjectName, DropWizardMetrics> objectNameMetrics = new NonBlockingHashMap<ObjectName, DropWizardMetrics>(); 
 	
-	protected synchronized void installMXBean(final ObjectName objectName, final String name, String description, final Metric metric) {
+	protected void installMXBean(final ObjectName objectName, final String name, String description, final Metric metric) {
 		if(objectName==null) throw new IllegalArgumentException("The passed ObjectName was null");
 		if(name==null || name.trim().isEmpty()) throw new IllegalArgumentException("The passed name was null or empty");
 		if(metric==null) throw new IllegalArgumentException("The passed Metric was null");
@@ -150,15 +150,12 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 		if(dwm==null || dwm==PLACEHOLDER) {
 			dwm = new DropWizardMetrics(objectName, description);
 			objectNameMetrics.replace(objectName, dwm);
-			log.info("Creating new DWM for [{}}", objectName);
 			try {
 				JMXHelper.registerMBean(dwm, objectName);
 			} catch (Exception ex) {
 				/* No Op ? */
 				log.error("Error registering DWM: [{}]", objectName, ex);
 			}
-		} else {
-			log.info("Found existing DWM for [{}}", objectName);
 		}
 		dwm.addMetric(metric, name, description);
 	}
