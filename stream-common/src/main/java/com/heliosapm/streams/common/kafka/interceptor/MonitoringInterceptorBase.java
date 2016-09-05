@@ -39,6 +39,8 @@ import com.heliosapm.streams.tracing.TagKeySorter;
  * <p>Description: The base class for the monitor interceptors</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.common.kafka.interceptor.InterceptorBase</code></p>
+ * @param <K> The message key type
+ * @param <V> The message value type
  */
 
 public abstract class MonitoringInterceptorBase<K, V> {

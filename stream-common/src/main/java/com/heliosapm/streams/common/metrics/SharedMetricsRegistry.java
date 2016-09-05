@@ -150,11 +150,15 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 		if(dwm==null || dwm==PLACEHOLDER) {
 			dwm = new DropWizardMetrics(objectName, description);
 			objectNameMetrics.replace(objectName, dwm);
+			log.info("Creating new DWM for [{}}", objectName);
 			try {
 				JMXHelper.registerMBean(dwm, objectName);
 			} catch (Exception ex) {
 				/* No Op ? */
+				log.error("Error registering DWM: [{}]", objectName, ex);
 			}
+		} else {
+			log.info("Found existing DWM for [{}}", objectName);
 		}
 		dwm.addMetric(metric, name, description);
 	}

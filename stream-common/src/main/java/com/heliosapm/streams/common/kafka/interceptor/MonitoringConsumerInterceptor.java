@@ -31,6 +31,8 @@ import org.apache.kafka.common.TopicPartition;
  * <p>Description: A monitoring interceptor for kafka consumers</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.common.kafka.interceptor.MonitoringConsumerInterceptor</code></p>
+ * @param <K> The message key type
+ * @param <V> The message value type
  */
 
 public class MonitoringConsumerInterceptor<K, V> extends MonitoringInterceptorBase<K, V> implements ConsumerInterceptor<K, V> {

@@ -34,6 +34,8 @@ import org.apache.kafka.common.TopicPartition;
  * <p>Description: </p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterceptor</code></p>
+ * @param <K> The message key type
+ * @param <V> The message value type
  */
 
 public class SwitchableMonitoringInterceptor<K,V>  implements ConsumerInterceptor<K, V>, ProducerInterceptor<K,V> {

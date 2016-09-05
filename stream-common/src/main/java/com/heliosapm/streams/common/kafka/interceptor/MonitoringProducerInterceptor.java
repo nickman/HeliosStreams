@@ -27,6 +27,8 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  * <p>Description: A monitoring interceptor for kafka producer</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.common.kafka.interceptor.MonitoringProducerInterceptor</code></p>
+ * @param <K> The message key type
+ * @param <V> The message value type
  */
 
 public class MonitoringProducerInterceptor<K, V> extends MonitoringInterceptorBase<K, V> implements ProducerInterceptor<K, V> {
