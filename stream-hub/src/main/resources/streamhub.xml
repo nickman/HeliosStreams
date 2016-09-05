@@ -89,6 +89,7 @@
     	</property>
     	<property name="timeExtractor" value="${streamhub.config.timeextractor:com.heliosapm.streams.metrics.TextLineTimestampExtractor}"/>
     	<property name="streamThreads" value="1"/>    	
+    	<property name="monitoringInterceptorEnabled" value="${streamhub.config.streams.monitorinterceptor:true}"/>
     </bean>
     
     

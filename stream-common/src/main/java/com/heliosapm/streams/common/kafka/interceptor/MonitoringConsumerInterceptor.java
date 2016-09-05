@@ -34,6 +34,7 @@ import org.apache.kafka.common.TopicPartition;
  */
 
 public class MonitoringConsumerInterceptor<K, V> extends MonitoringInterceptorBase<K, V> implements ConsumerInterceptor<K, V> {
+	
 	/**
 	 * Creates a new MonitoringConsumerInterceptor
 	 */

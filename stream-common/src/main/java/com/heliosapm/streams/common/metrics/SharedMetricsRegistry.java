@@ -21,19 +21,27 @@ package com.heliosapm.streams.common.metrics;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 
+import javax.management.ObjectName;
+
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
+import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.Counter;
+import com.codahale.metrics.DefaultObjectNameFactory;
+import com.codahale.metrics.ExponentiallyDecayingReservoir;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.JmxReporter;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.ObjectNameFactory;
+import com.codahale.metrics.Reporter;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
+import com.heliosapm.streams.jmx.metrics.DropWizardMetrics;
 import com.heliosapm.utils.jmx.JMXHelper;
 
 /**
@@ -44,7 +52,7 @@ import com.heliosapm.utils.jmx.JMXHelper;
  * <p><code>com.heliosapm.streams.common.metrics.SharedMetricsRegistry</code></p>
  */
 
-public class SharedMetricsRegistry extends MetricRegistry implements SharedMetricsRegistryMBean {   // ObjectNameFactory
+public class SharedMetricsRegistry extends MetricRegistry implements SharedMetricsRegistryMBean, ObjectNameFactory, Reporter {   // ObjectNameFactory
 	/** The single instance */
 	private static volatile SharedMetricsRegistry instance = null;
 	/** The single instance ctor lock */
@@ -52,8 +60,11 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 	
 	/** Instance logger */
 	private final Logger log = LoggerFactory.getLogger(getClass());
-	/** The JMX reporter for the registry */
+	/** The default JMX reporter for the registry if ours fails */
 	private final JmxReporter jmxReporter;
+	
+	/** The default ObjectNameFactory if ours fails */
+	protected static final DefaultObjectNameFactory DEFAULT_ON_FACTORY = new DefaultObjectNameFactory();
 	
 	/**
 	 * Acquires the SharedMetricsRegistry singleton instance
@@ -77,7 +88,7 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 		super();
 		jmxReporter = JmxReporter.forRegistry(this)
 				.registerWith(JMXHelper.getHeliosMBeanServer())
-				.inDomain("tsdb.agent.metrics")
+				.inDomain("agent.metrics")
 //				.createsObjectNamesWith(this)
 				.build();
 		jmxReporter.start();
@@ -124,7 +135,159 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 		return g;
 	}
 	
+	//addMetric(final Metric metric, final String name, final String description)
+	
+	private static final DropWizardMetrics PLACEHOLDER = new DropWizardMetrics(JMXHelper.objectName("fake:name=fake"), "Placeholder");
+	
+	protected final NonBlockingHashMap<ObjectName, DropWizardMetrics> objectNameMetrics = new NonBlockingHashMap<ObjectName, DropWizardMetrics>(); 
+	
+	protected synchronized void installMXBean(final ObjectName objectName, final String name, String description, final Metric metric) {
+		if(objectName==null) throw new IllegalArgumentException("The passed ObjectName was null");
+		if(name==null || name.trim().isEmpty()) throw new IllegalArgumentException("The passed name was null or empty");
+		if(metric==null) throw new IllegalArgumentException("The passed Metric was null");
+		
+		DropWizardMetrics dwm = objectNameMetrics.putIfAbsent(objectName, PLACEHOLDER);
+		if(dwm==null || dwm==PLACEHOLDER) {
+			dwm = new DropWizardMetrics(objectName, description);
+			objectNameMetrics.replace(objectName, dwm);
+			try {
+				JMXHelper.registerMBean(dwm, objectName);
+			} catch (Exception ex) {
+				/* No Op ? */
+			}
+		}
+		dwm.addMetric(metric, name, description);
+	}
+	
+	protected void installMXBean(final ObjectName objectName, final String name, final Metric metric) {
+		installMXBean(objectName, name, null, metric);
+	}
+	
+	/**
+	 * Creates a counter and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @param description An optional description 
+	 * @return the created counter
+	 */
+	public Counter mxCounter(final ObjectName objectName, final String name, String description) {
+		final Counter metric = new Counter();
+		installMXBean(objectName, name, description, metric);
+		return metric;		
+	}
+	
+	/**
+	 * Creates a counter and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @return the created counter
+	 */
+	public Counter mxCounter(final ObjectName objectName, final String name) {
+		return mxCounter(objectName, name, null);
+	}
 
+	/**
+	 * Creates a Timer and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @param description An optional description 
+	 * @return the created Timer
+	 */
+	public Timer mxTimer(final ObjectName objectName, final String name, String description) {
+		final Timer metric = new Timer();
+		installMXBean(objectName, name, description, metric);
+		return metric;		
+	}
+	
+	/**
+	 * Creates a Timer and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @return the created Timer
+	 */
+	public Timer mxTimer(final ObjectName objectName, final String name) {
+		return mxTimer(objectName, name, null);
+	}
+	
+	/**
+	 * Creates a Histogram and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @param description An optional description 
+	 * @return the created Histogram
+	 */
+	public Histogram mxHistogram(final ObjectName objectName, final String name, String description) {
+		final Histogram metric = new Histogram(new ExponentiallyDecayingReservoir());
+		installMXBean(objectName, name, description, metric);
+		return metric;		
+	}
+	
+	/**
+	 * Creates a Histogram and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @return the created Histogram
+	 */
+	public Histogram mxHistogram(final ObjectName objectName, final String name) {
+		return mxHistogram(objectName, name, null);
+	}
+	
+	/**
+	 * Creates a Meter and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @param description An optional description 
+	 * @return the created Meter
+	 */
+	public Meter mxMeter(final ObjectName objectName, final String name, String description) {
+		final Meter metric = new Meter();
+		installMXBean(objectName, name, description, metric);
+		return metric;		
+	}
+	
+	/**
+	 * Creates a Meter and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @return the created Meter
+	 */
+	public Meter mxMeter(final ObjectName objectName, final String name) {
+		return mxMeter(objectName, name, null);
+	}
+	
+	/**
+	 * Creates a Gauge and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @param description An optional description 
+	 * @return the created Gauge
+	 */
+	public <T> Gauge<T> mxGauge(final Callable<T> provider, final ObjectName objectName, final String name, String description) {
+		final Gauge<T> metric = new Gauge<T>(){
+			@Override
+			public T getValue() {
+				try {
+					return provider.call();
+				} catch (Exception ex) {
+					throw new RuntimeException(ex);
+				}
+			}
+		};
+		installMXBean(objectName, name, description, metric);
+		return metric;		
+	}
+	
+	/**
+	 * Creates a Gauge and registers it in an MXBean
+	 * @param objectName The JMX ObjectName for the MXBean
+	 * @param name The prefix for the MXBean attribute names
+	 * @return the created Gauge
+	 */
+	public <T> Gauge<T> Gauge(final Callable<T> provider, final ObjectName objectName, final String name) {
+		return mxGauge(provider, objectName, name, null);
+	}
+	
+	
 	/**
 	 * {@inheritDoc}
 	 * @see com.codahale.metrics.MetricRegistry#counter(java.lang.String)
@@ -133,6 +296,7 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 	public Counter counter(final String name) {
 		return super.counter("counter." + name);
 	}
+	
 		
 
 	/**
@@ -160,6 +324,12 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 	@Override
 	public Meter meter(final String name) {
 		return super.meter("meter." + name);
+	}
+
+	@Override
+	public ObjectName createName(String type, String domain, String name) {
+		// TODO Auto-generated method stub
+		return null;
 	}
 		
 //	@Override

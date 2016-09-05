@@ -442,7 +442,7 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 //				}
 				if(period!=null) {
 					//log.info("Processing Aggregation Period: [{}]", new Date(td.timestampMs));
-					log.info("Processing Aggregation Period: [{}]", td.key);
+					log.debug("Processing Aggregation Period: [{}]", td.key);
 					executor.execute(new Runnable(){
 						@Override
 						public void run() {

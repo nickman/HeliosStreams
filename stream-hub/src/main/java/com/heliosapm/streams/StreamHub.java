@@ -59,7 +59,7 @@ import com.heliosapm.utils.url.URLHelper;
 
 @SpringBootApplication
 @ImportResource("classpath:streamhub.xml")
-@EnableAutoConfiguration 
+//@EnableAutoConfiguration 
 @EnableMBeanExport
 public class StreamHub implements Watcher {
 	/** The current booted app context */
@@ -114,6 +114,7 @@ public class StreamHub implements Watcher {
 			final String configLocation = p.getProperty("spring.config.location");
 			System.out.println("Spring Config Location [" + configLocation + "]");
 			System.setProperty("spring.config.location", configLocation);
+			
 			System.out.println("Booting StreamHub from spring.boot.admin.url [" + p.getProperty("spring.boot.admin.url") + "]");
 //			System.getProperties().putAll(p);
 			springApp = new SpringApplication(StreamHub.class);		

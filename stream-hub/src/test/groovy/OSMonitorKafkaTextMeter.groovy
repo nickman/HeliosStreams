@@ -9,9 +9,9 @@ import java.lang.management.*;
 TO_TOPIC = "tsdb.metrics.text.meter"
 
 Properties props = new Properties();
-//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+props.put("bootstrap.servers", "localhost:9093,localhost:9094");
 //props.put("bootstrap.servers", "localhost:9092");
-props.put("bootstrap.servers", "10.22.114.37:9092");
+//props.put("bootstrap.servers", "10.22.114.37:9092");
 
 props.put("acks", "all");
 props.put("retries", 0);

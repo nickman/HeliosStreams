@@ -18,18 +18,9 @@ under the License.
  */
 package com.heliosapm.streams.common.kafka.interceptor;
 
-import java.util.Map;
-import java.util.concurrent.Callable;
-
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.ProducerInterceptor;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.TopicPartition;
-import org.cliffc.high_scale_lib.NonBlockingHashMap;
-
-import com.codahale.metrics.Histogram;
-import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 
 /**
  * <p>Title: MonitoringProducerInterceptor</p>
@@ -39,15 +30,6 @@ import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
  */
 
 public class MonitoringProducerInterceptor<K, V> extends MonitoringInterceptorBase<K, V> implements ProducerInterceptor<K, V> {
-	/** A map of histograms keyed by the topic name */
-	protected final NonBlockingHashMap<String, Histogram> histograms = new NonBlockingHashMap<String, Histogram>(); 
-	/** The key format to get the histogram */	
-	protected String hKey = null;
-	
-	protected Histogram histogram(final String topicName) {
-		return histograms.get(topicName, new Callable<Histogram>(){ public Histogram call(){return SharedMetricsRegistry.getInstance().histogram(String.format(hKey, topicName)); }});
-	}
-	
 
 	/**
 	 * Creates a new MonitoringProducerInterceptor
@@ -75,18 +57,12 @@ public class MonitoringProducerInterceptor<K, V> extends MonitoringInterceptorBa
 	@Override	
 	public void onAcknowledgement(final RecordMetadata metadata, final Exception exception) {
 		if(metadata!=null) {
-			histogram(metadata.topic()).update(metadata.serializedKeySize() + metadata.serializedValueSize());
+			final int total = metadata.serializedKeySize() + metadata.serializedValueSize();
+			totalHistogram.update(total);
+			histogram(metadata.topic(), metadata.partition()).update(total);
 		}
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.common.kafka.interceptor.MonitoringInterceptorBase#configure(java.util.Map)
-	 */
-	public void configure(final Map<String, ?> configs) {
-		super.configure(configs);
-		hKey = "message.size.service=KafkaProducer.host=" + hostName + ".app=" + appName + ".topic=%s";		
-	}
 
 
 }

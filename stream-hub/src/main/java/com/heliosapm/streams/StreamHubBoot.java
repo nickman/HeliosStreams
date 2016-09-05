@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.streams;
 
 import java.lang.management.ManagementFactory;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.HashMap;
@@ -107,6 +108,11 @@ public class StreamHubBoot {
 		adminFinder = AdminFinder.getInstance(args);
 		log(">>>>> Discovering admin server url from Zookeep [%s].....", adminFinder.getZookeepConnect());
 		adminServerUrl = adminFinder.getAdminURL(true);
+		
+		URL url = URLHelper.toURL(adminServerUrl);
+		String rawUri = url.getProtocol() + "://" + url.getHost() + ":" + url.getPort();		
+		System.setProperty("spring.cloud.config.uri", rawUri);
+		
 		log("<<<<< Discovered admin server url: [%s]", adminServerUrl);
 				
 		final String nodeConfigUrl = adminServerUrl + "/nodeconfig/" + HOST.toLowerCase() + "/streamhub.properties";
@@ -118,7 +124,7 @@ public class StreamHubBoot {
 //		p.setProperty("spring.config.location", nodeConfigUrl);
 		log("<<<<< Configured marching orders. App Properties: [%s]", p.size());
 		for(String key: p.stringPropertyNames()) {
-			log("\t%s : %s", key, p.getProperty(key));
+			//log("\t%s : %s", key, p.getProperty(key));
 		}
 		System.setProperty("jmx.jmxmp.uri", p.getProperty("jmx.jmxmp.uri", "jmxmp://0.0.0.0:0"));
 		

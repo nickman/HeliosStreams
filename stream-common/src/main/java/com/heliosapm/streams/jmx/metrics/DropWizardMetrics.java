@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.management.Attribute;
+import javax.management.AttributeList;
 import javax.management.AttributeNotFoundException;
 import javax.management.ImmutableDescriptor;
 import javax.management.MBeanAttributeInfo;
@@ -42,6 +44,7 @@ import org.apache.logging.log4j.Logger;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Metric;
 import com.codahale.metrics.MetricSet;
+import com.codahale.metrics.Timer;
 import com.heliosapm.streams.jmx.metrics.MetricType.AttributeAdapter;
 import com.heliosapm.streams.jmx.metrics.MetricType.SnapshotMember;
 import com.heliosapm.utils.collections.FluentMap;
@@ -73,7 +76,7 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 	protected final AtomicInteger notifSerial = new AtomicInteger();
 	
 	/** A map of metric instances keyed by the attribute name */
-	protected final Map<String, Metric> attrMetrics = new ConcurrentHashMap<String, Metric>();
+	protected final ConcurrentHashMap<String, Metric> attrMetrics = new ConcurrentHashMap<String, Metric>();
 	/** A map of MBeanAttributeInfos instances keyed by the attribute name */
 	protected final Map<String, MBeanAttributeInfo> attrInfos = new ConcurrentHashMap<String, MBeanAttributeInfo>();
 	/** A map of AttributeAdapters keyed by the attribute name */
@@ -102,6 +105,16 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 	}
 
 	/**
+	 * Indicates if the passed metric is managed by this mbean
+	 * @param metric the metric to test for 
+	 * @return true if the passed metric is managed by this mbean, false otherwise
+	 */
+	public boolean hasMetric(final Metric metric) {
+		return attrMetrics.containsValue(metric);
+	}
+	
+	
+	/**
 	 * [Re-]Publishes this MBean
 	 */
 	public void publish() {
@@ -112,7 +125,9 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 	}
 	
 	public void addMetricSet(final MetricSet metric) {
-		
+		for(Map.Entry<String, Metric> entry : metric.getMetrics().entrySet()) {
+			addMetric(entry.getValue(), entry.getKey(), null);
+		}
 	}
 	
 	public void addMetric(final Metric metric, final String name, final String description) {
@@ -121,20 +136,22 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 		MBeanAttributeInfo[] attributeInfos = nvp.getKey();
 		AttributeAdapter[] adapters = nvp.getValue();
 		for(int i = 0; i < attributeInfos.length; i++) {
-			attrInfos.put(attributeInfos[i].getName(), attributeInfos[i]);
-			attrMetrics.put(attributeInfos[i].getName(), metric);
-			attrAdapters.put(attributeInfos[i].getName(), adapters[i]);
-			
+			if(!attrInfos.containsKey(attributeInfos[i].getName())) {
+				attrInfos.put(attributeInfos[i].getName(), attributeInfos[i]);
+				attrMetrics.put(attributeInfos[i].getName(), metric);
+				attrAdapters.put(attributeInfos[i].getName(), adapters[i]);
+			}
 		}
 		if(metricType.aa.isSampling()) {
 			nvp = MetricType.attrInfos(SnapshotMember.MAX, name, description, metric);
 			attributeInfos = nvp.getKey();
 			adapters = nvp.getValue();
 			for(int i = 0; i < attributeInfos.length; i++) {
-				attrInfos.put(attributeInfos[i].getName(), attributeInfos[i]);
-				attrMetrics.put(attributeInfos[i].getName(), metric);
-				attrAdapters.put(attributeInfos[i].getName(), adapters[i]);
-				
+				if(!attrInfos.containsKey(attributeInfos[i].getName())) {
+					attrInfos.put(attributeInfos[i].getName(), attributeInfos[i]);
+					attrMetrics.put(attributeInfos[i].getName(), metric);
+					attrAdapters.put(attributeInfos[i].getName(), adapters[i]);
+				}
 			}			
 		}
 		final MBeanInfo minfo = getCachedMBeanInfo();
@@ -142,6 +159,7 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 		final Notification notif = new Notification(INFO_CHANGE, objectName, notifSerial.incrementAndGet(), System.currentTimeMillis());
 		notif.setUserData(minfo);
 		sendNotification(notif);
+		System.err.println("DWM Added Metrics: [" + objectName + "]:" + attrInfos.keySet());
 	}
 	
 	/**
@@ -150,8 +168,32 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 	 */
 	@Override
 	public Object getAttribute(final String attribute) throws AttributeNotFoundException, MBeanException, ReflectionException {
-		// TODO Auto-generated method stub
-		return super.getAttribute(attribute);
+		if(attribute==null || attribute.trim().isEmpty()) throw new IllegalArgumentException("Attribute Name was null or empty");
+		final String attr = attribute.trim();
+		final Metric metric = attrMetrics.get(attr);
+		final AttributeAdapter aa = attrAdapters.get(attr);
+		if(metric==null || aa==null) throw new AttributeNotFoundException("Metric Attribute [" + attr + "] not found");
+		return aa.invoke(metric);
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see javax.management.StandardMBean#getAttributes(java.lang.String[])
+	 */
+	@Override
+	public AttributeList getAttributes(final String[] attributes) {
+		final AttributeList attrList = new AttributeList();
+		if(attributes==null || attributes.length==0) {
+			return attrList;
+		}
+		for(String attrName : attributes) {
+			if(attrName==null || attrName.trim().isEmpty()) continue;
+			try {
+				final Object obj = getAttribute(attrName.trim());
+				attrList.add(new Attribute(attrName.trim(), obj));
+			} catch (Exception x) {/* No Op */}
+		}
+		return super.getAttributes(attributes);
 	}
 	
 	@Override
@@ -163,10 +205,16 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 
 	public static void main(String[] args) {
 		JMXHelper.fireUpJMXMPServer(2259);
-		DropWizardMetrics dwm = new DropWizardMetrics(JMXHelper.objectName("dw:service=Metrics"), "Metric Test");
+		final DropWizardMetrics dwm = new DropWizardMetrics(JMXHelper.objectName("dw:service=Metrics"), "Metric Test");
 		JMXHelper.registerMBean(dwm, dwm.objectName);
 		dwm.addMetric(new Meter(), "MessagesPerS", "Kafka Messages Per Second");
-		StdInCommandHandler.getInstance().run();
+		StdInCommandHandler.getInstance()
+			.registerCommand("next", new Runnable(){
+				public void run() {
+					dwm.addMetric(new Timer(), "Elapsed", "Kafka Messages Processing");
+				}
+			})
+			.run();
 	}
 	
 }
