@@ -165,6 +165,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 	
 	/**
 	 * Creates a new JMXClient
+	 * @param key A key that will uniquely identify the created client
 	 * @param cs A string parsed as <b><code>&lt;JMX URL&gt;[[,&lt;Connect Timeout (sec)&gt;],&lt;Credentials&gt;]</code></b>
 	 * @return the JMXClient
 	 */
@@ -246,10 +247,14 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 		remoteApp = qArgs.get(APP_QUERY_ARG);
 		remoteHost = qArgs.get(HOST_QUERY_ARG);
 		hystrixEnabled.set(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_HYSTRIX_ENABLED, DEFAULT_HYSTRIX_ENABLED));
-		commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, "jmx-remote-" + jmxServiceUrl.getProtocol())
-				.andCommandKey(jmxServiceUrl.getHost().replace('.', '-') + "." + jmxServiceUrl.getPort())
-				.andThreadPoolKey("jmxremoting")
-				.build();
+		if(hystrixEnabled.get()) {
+			commandBuilder = HystrixCommandFactory.getInstance().builder(CONFIG_HYSTRIX, "jmx-remote-" + jmxServiceUrl.getProtocol())
+					.andCommandKey(jmxServiceUrl.getHost().replace('.', '-') + "." + jmxServiceUrl.getPort())
+					.andThreadPoolKey("jmxremoting")
+					.build();
+		} else {
+			commandBuilder = null;
+		}
 		
 		
 		try {

@@ -167,9 +167,14 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	protected final File libDirectory;
 	/** The 3rd party JDBC lib directory */
 	protected final File jdbcLibDirectory;
+	/** The discovery dynamic script directory */
+	protected final File dynamicDirectory;
 	
 	/** The collector service script directory */
 	protected final File scriptDirectory;
+	/** The template script directory */
+	protected final File templateDirectory;
+	
 	/** The collector service fixture directory */
 	protected final File fixtureDirectory;
 	/** The collector service conf directory */
@@ -342,12 +347,14 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		jdbcLibDirectory = new File(libDirectory, "jdbc");
 		jdbcLibDirectory.mkdir();
 		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
+		templateDirectory = new File(rootDirectory, "templates").getAbsoluteFile();
 		dataSourceDirectory = new File(rootDirectory, "datasources").getAbsoluteFile();
 		fixtureDirectory = new File(rootDirectory, "fixtures").getAbsoluteFile();
 		confDirectory = new File(rootDirectory, "conf").getAbsoluteFile();
 		tmpDirectory = new File(rootDirectory, "tmp").getAbsoluteFile();		
 		tracerFactory = initTracing(confDirectory);
 		scriptPath = scriptDirectory.toPath();
+		dynamicDirectory = new File(rootDirectory, "dynamic").getAbsoluteFile();
 		System.setProperty("helios.collectors.script.root", scriptDirectory.getAbsolutePath());
 		libDirClassLoader = new URLClassLoader(listLibJarUrls(libDirectory, new HashSet<URL>()));
 		loadJDBCDrivers();
@@ -516,7 +523,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			}
 		};
 	}
-	
+
 	/**
 	 * Compiles and deploys the script in the passed file
 	 * @param source The file to compile the source from
@@ -524,6 +531,17 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 */
 	@Override
 	public ManagedScript compileScript(final File source) {
+		return compileScript(source, null);
+	}
+	
+	/**
+	 * Compiles and deploys the script in the passed file
+	 * @param source The file to compile the source from
+	 * @param bindings An optional map of bindings to inject into the script
+	 * @return the script instance
+	 */
+	@Override
+	public ManagedScript compileScript(final File source, final Map<String, Object> bindings) {
 		if(source==null) throw new IllegalArgumentException("The passed source file was null");
 		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
 		final long startTime = System.currentTimeMillis();
@@ -542,6 +560,9 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			//final ManagedScript ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{new Binding(bSource.getBindingMap())}, Binding.class);
 			final ManagedScript ms = msClazz.newInstance();
 			final long elapsedTime = System.currentTimeMillis() - startTime;			
+			if(bindings!=null) {
+				ms.bindingMap.putAll(bindings);
+			}
 			ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
 			sendCompilationEvent(ms);
 			success = true;
@@ -1222,6 +1243,22 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		this.appCtx = appCtx;		
 		//springInstance = appCtx.getBean("ManagedScriptFactory", ManagedScriptFactoryMBean.class);
 		springInstance = appCtx.getBean(ManagedScriptFactoryMBean.class);
+	}
+
+	/**
+	 * Returns the dynamic discovery script directory
+	 * @return the dynamic discovery script directory
+	 */
+	public File getDynamicDirectory() {
+		return dynamicDirectory;
+	}
+	
+	/**
+	 * Returns the template directory
+	 * @return the template directory
+	 */
+	public File getTemplateDirectory() {
+		return templateDirectory;
 	}
 
 }

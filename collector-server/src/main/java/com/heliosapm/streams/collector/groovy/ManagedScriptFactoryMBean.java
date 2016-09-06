@@ -64,6 +64,13 @@ public interface ManagedScriptFactoryMBean {
 	 */
 	public ManagedScript compileScript(final File source);
 
+	/**
+	 * Compiles and deploys the script in the passed file
+	 * @param source The file to compile the source from
+	 * @param bindings An optional map of bindings to inject into the compiled sript
+	 * @return the script instance
+	 */
+	public ManagedScript compileScript(final File source, final Map<String, Object> bindings);
 	
 	/**
 	 * Returns the cummulative number of successful compilations
