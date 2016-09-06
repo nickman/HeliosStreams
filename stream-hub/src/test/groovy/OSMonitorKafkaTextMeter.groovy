@@ -9,9 +9,10 @@ import java.lang.management.*;
 TO_TOPIC = "tsdb.metrics.text.meter"
 
 Properties props = new Properties();
-props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
 //props.put("bootstrap.servers", "localhost:9092");
 //props.put("bootstrap.servers", "10.22.114.37:9092");
+props.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
 
 props.put("acks", "all");
 props.put("retries", 0);
@@ -26,13 +27,13 @@ props.put("value.serializer", "org.apache.kafka.common.serialization.StringSeria
 
 
 METRIC_TEMPLATES = [
-    "%s,1,ptms.ibs, pdk-pt-cepas-01, app=ptms",    // UNIX TIME !!
-    "%s,1,ptms.xyz, pdk-pt-cepas-01, app=ptms",
-    "%s,1,ptms.abc, pdk-pt-cepas-01, app=ptms",
-    "%s,1,ptms.foo, pdk-pt-cepas-01, app=ptms",
-    "%s,1.0,ptms.bar, pdk-pt-cepas-01, app=ptms",
-    "%s,1.0,ptms.snafu, pdk-pt-cepas-01, app=ptms",
-    "%s,1.0,act.ibs, pdk-pt-cepas-01, app=ptms"
+    "%s,1,ptms.ibs, pdk-pt-cepas-01, ptms",    // UNIX TIME !!
+    "%s,1,ptms.xyz, pdk-pt-cepas-01, ptms",
+    "%s,1,ptms.abc, pdk-pt-cepas-01, ptms",
+    "%s,1,ptms.foo, pdk-pt-cepas-01, ptms",
+    "%s,1.0,ptms.bar, pdk-pt-cepas-01, ptms",
+    "%s,1.0,ptms.snafu, pdk-pt-cepas-01, ptms",
+    "%s,1.0,act.ibs, pdk-pt-cepas-01, ptms"
 ]
 
 final Random R = new Random(System.currentTimeMillis());

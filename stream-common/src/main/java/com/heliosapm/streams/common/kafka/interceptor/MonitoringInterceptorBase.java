@@ -34,6 +34,7 @@ import com.codahale.metrics.Meter;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.tracing.TagKeySorter;
+import com.heliosapm.utils.jmx.JMXHelper;
 
 
 /**
@@ -195,7 +196,7 @@ public abstract class MonitoringInterceptorBase<K, V> {
 			groupId = groupId.trim();
 			if(commitKeyBuilder.length()>0) commitKeyBuilder.append("."); 
 			commitKeyBuilder.append(groupId);
-//			jmxProperties.put("group", groupId);
+			jmxProperties.put("group", groupId);
 		} else {
 			serviceBuilder.append("%s");
 			noPartServiceBuilder.append("%s");
@@ -212,18 +213,7 @@ public abstract class MonitoringInterceptorBase<K, V> {
 
 	
 	protected static ObjectName objectName(final String domain, final Hashtable<String, String> props) {
-		final Map<String, String> map = new TreeMap<String, String>(TagKeySorter.INSTANCE);
-		map.putAll(props);
-		try {
-			final StringBuilder b = new StringBuilder(domain).append(":");
-			for(Map.Entry<String, String> entry: map.entrySet()) {
-				b.append(entry.getKey()).append("=").append(entry.getValue()).append(",");
-			}
-			return new ObjectName(b.deleteCharAt(b.length()-1).toString());
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to create ObjectName for [" + domain + ":" + props);
-		}
-		
+		return JMXHelper.objectName(domain, props, TagKeySorter.INSTANCE);
 	}
 	
 	

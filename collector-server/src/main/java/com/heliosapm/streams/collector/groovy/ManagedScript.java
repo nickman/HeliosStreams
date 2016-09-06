@@ -667,6 +667,15 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	}
 	
 	/**
+	 * Adds the passed bindings to this script's binding map
+	 * @param additionalBindings the bindings to add
+	 */
+	public void addBindings(final Map<String, Object> additionalBindings) {
+		if(additionalBindings==null) throw new IllegalArgumentException("The passed additional bindings map was null");
+		bindingMap.putAll(additionalBindings);
+	}
+	
+	/**
 	 * <p>Handles exceptions thrown during the collection operation</p>
 	 * {@inheritDoc}
 	 * @see java.lang.Thread.UncaughtExceptionHandler#uncaughtException(java.lang.Thread, java.lang.Throwable)

@@ -604,7 +604,8 @@ public class StreamedMetricValue extends StreamedMetric {
 //	}
 	
 	@Override
-	StreamedMetricValue read(final DataInputStream dis) {		
+	StreamedMetricValue read(final DataInputStream dis) {
+		reset();
 		try {
 			super.read(dis);
 			final byte type = dis.readByte();

@@ -55,9 +55,12 @@ if(thisTime!=priorTime) {
 	maxMems = get('maxMems', {		
 		return jmxHelper.getMaxMems(jmxClient);
 	});
-	maxFileDescriptors = get('maxFileDescriptors', {		
-		return jmxClient.getAttribute(jmxHelper.MXBEAN_OS_ON, "MaxFileDescriptorCount");
-	});
+	def _attrMap = jmxHelper.getAttributes(jmxHelper.MXBEAN_OS_ON, jmxClient);
+	if(_attrMap.containsKey("MaxFileDescriptorCount")) {
+		maxFileDescriptors = get('maxFileDescriptors', {				
+			return _attrMap.get("MaxFileDescriptorCount");
+		});
+	}
 	totalSwapSpaceSize = get('totalSwapSpaceSize', {		
 		return jmxClient.getAttribute(jmxHelper.MXBEAN_OS_ON, "TotalSwapSpaceSize");
 	});
@@ -175,8 +178,10 @@ tracer {
 		}
 		tracer.pushSeg("usedswapspace").trace(totalSwapSpaceSize - attrs.get('FreeSwapSpaceSize'), ts).popSeg();
 		tracer.pushSeg("pctusedswapspace").trace((totalSwapSpaceSize - attrs.get('FreeSwapSpaceSize'))/totalSwapSpaceSize*100, ts).popSeg();
-		log.info("MAX FD: [{}], OPEN FD: [{}]", maxFileDescriptors, attrs.get('OpenFileDescriptorCount'));
-		tracer.pushSeg("pctusedfiledescs").trace((maxFileDescriptors - attrs.get('OpenFileDescriptorCount'))/maxFileDescriptors*100, ts).popSeg();
+		if(attrs.containsKey('OpenFileDescriptorCount')) {
+			log.info("MAX FD: [{}], OPEN FD: [{}]", maxFileDescriptors, attrs.get('OpenFileDescriptorCount'));
+			tracer.pushSeg("pctusedfiledescs").trace((maxFileDescriptors - attrs.get('OpenFileDescriptorCount'))/maxFileDescriptors*100, ts).popSeg();
+		}
 		tracer.pushSeg("usedPhysicalMem").trace((totalPhysicalMemory - attrs.get('FreePhysicalMemorySize')), ts).popSeg();
 		tracer.pushSeg("pctusedPhysicalMem").trace((totalPhysicalMemory - attrs.get('FreePhysicalMemorySize'))/totalPhysicalMemory*100, ts).popSeg();
 		if(attrs.containsKey('ProcessCpuLoad') && attrs.containsKey('SystemCpuLoad')) {

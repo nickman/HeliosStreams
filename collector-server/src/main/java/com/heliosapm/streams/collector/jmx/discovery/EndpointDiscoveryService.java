@@ -40,6 +40,7 @@ import org.springframework.stereotype.Component;
 
 import com.google.common.io.Files;
 import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
+import com.heliosapm.streams.collector.jmx.JMXClient;
 import com.heliosapm.streams.discovery.AdvertisedEndpoint;
 import com.heliosapm.streams.discovery.AdvertisedEndpointListener;
 import com.heliosapm.streams.discovery.EndpointListener;
@@ -87,7 +88,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 			log.info(">>>>> Starting EndpointDiscoveryService...");
 			endpointListener = EndpointListener.getInstance();
 			endpointListener.addEndpointListener(this);			
-			scriptFactory = ManagedScriptFactory.getInstance();
+			scriptFactory = appCtx.getBean(ManagedScriptFactory.class);
 			dynamicDirectory = scriptFactory.getDynamicDirectory();
 			endpointTemplateDirectory = new File(scriptFactory.getTemplateDirectory(), "endpoints");
 			log.info("<<<<< EndpointDiscoveryService Started.");
@@ -117,7 +118,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 	public void onOnlineAdvertisedEndpoint(final AdvertisedEndpoint endpoint) {
 		log.info("Endpoint UP [{}]", endpoint);
 		try {
-			final File appDirectory = createEndpointMonitorDirectory(endpoint);
+			deployEndpointMonitors(endpoint);
 		} catch (Exception ex) {
 			log.error("Failed to activate monitoring for endpoint [{}]", endpoint, ex);
 		}
@@ -143,19 +144,25 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 	/**
 	 * @param endpoint
 	 * TODO: add execution schedule configuration options
+	 * TODO: add jmxconnection timeout
 	 */
 	protected void deployEndpointMonitors(final AdvertisedEndpoint endpoint) {
 		final File appDirectory = createEndpointMonitorDirectory(endpoint);
-		final Map<String, Object> bindings = new HashMap<String, Object>();
-		
 		final Set<File> deployedFiles = new NonBlockingHashSet<File>();
 		for(String endpointType: endpoint.getEndPoints()) {
-			File templateScript = new File(endpointTemplateDirectory, endpointType + "-15s.groovy");
-			if(!templateScript.canRead()) {
+			final Map<String, Object> bindings = new HashMap<String, Object>();
+			bindings.put("endpoint", endpoint);
+			bindings.put("host", endpoint.getHost());
+			bindings.put("app", endpoint.getApp());
+			bindings.put("jmxurl", endpoint.getJmxUrl());
+			bindings.put("jmxClient", new JMXClient(endpoint.getJmxUrl(), 10000));
+			
+			File templateScript = new File(endpointTemplateDirectory, endpointType + ".groovy");
+			if(!templateScript.canRead() || templateScript.length() == 0) {
 				log.warn("No endpoint script found for endpoint type [{}]",  endpointType);
 				continue;
 			}
-			File deployedScript = new File(appDirectory, endpointType + ".groovy");
+			File deployedScript = new File(appDirectory, endpointType + "-15s.groovy");
 			if(deployedScript.exists()) deployedScript.delete();
 			try {
 				Files.copy(templateScript, deployedScript);
@@ -164,7 +171,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 				continue;
 			}
 			log.info("Activating [{}].....", deployedScript);
-			scriptFactory.compileScript(deployedScript);
+			scriptFactory.compileScript(deployedScript).addBindings(bindings);
 			deployedFiles.add(deployedScript);
 		}
 		final NVP<AdvertisedEndpoint, Set<File>> deploys = new NVP<AdvertisedEndpoint, Set<File>>(endpoint, deployedFiles);

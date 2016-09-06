@@ -361,7 +361,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	                			i++;
 	                			final ConsumerRecord<String, ByteBuf> record = iter.next();
 	                			final ByteBuf b = record.value();
-	                			log.info("Polled Record #{}: {} bytes", i, b.readableBytes());
+	                			log.debug("Polled Record #{}: {} bytes", i, b.readableBytes());
 	                			messageQueue.writeEntry(b);
 	                			
 	                		}

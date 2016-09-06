@@ -618,6 +618,7 @@ public class StreamedMetric implements BytesMarshallable {
 	 * Resets this metric to make it ready for a new read
 	 */
 	void reset() {
+		metricKey = null;
 		valueType = null;
 		tags.clear();
 	}

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<launchConfiguration type="org.eclipse.jdt.launching.localJavaApplication">
+<listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_PATHS">
+<listEntry value="/collector-server/src/main/java/com/heliosapm/streams/collector/CollectorServer.java"/>
+</listAttribute>
+<listAttribute key="org.eclipse.debug.core.MAPPED_RESOURCE_TYPES">
+<listEntry value="1"/>
+</listAttribute>
+<stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value="com.heliosapm.streams.collector.CollectorServer"/>
+<stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="--root=./src/test/resources/discovery --console --jmxmp=2345"/>
+<stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="collector-server"/>
+</launchConfiguration>

@@ -64,6 +64,7 @@
 		<jexl.version>3.0</jexl.version>
 		<disruptor.version>3.3.4</disruptor.version>
 		<hystrix-core.version>1.5.3</hystrix-core.version>
+		<quartz.version>2.2.2</quartz.version>
 		<!-- <kafka.version>0.9.0.1</kafka.version> -->
 		<kafka.version>0.10.0.1</kafka.version>
 		<zookeeper.version>3.4.8</zookeeper.version>
@@ -266,6 +267,19 @@
 				<artifactId>heliosutils</artifactId>
 				<version>${heliosutils.version}</version>				
 			</dependency>
+
+		    <!--
+		      ========================================
+		      Cron Scheduling
+		      ========================================
+		      -->
+
+			<dependency>
+			  <groupId>org.quartz-scheduler</groupId>
+			  <artifactId>quartz</artifactId>
+			  <version>${quartz.version}</version>
+			</dependency>
+
 
 		    <!--
 		      ========================================

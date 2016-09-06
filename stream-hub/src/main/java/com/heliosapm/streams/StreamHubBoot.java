@@ -96,13 +96,14 @@ public class StreamHubBoot {
 	 * @param args The command line args
 	 */
 	public StreamHubBoot(final String[] args) {
+		System.setProperty("helios.id.app", "StreamHub");
 		if(System.getProperty("os.name", "").toLowerCase().contains("windows")) {
 			for(String key: stateStoreInMems) {
 				System.setProperty(key, "true");
 			}
 		}
 		System.setProperty("java.net.preferIPv4Stack" , "true");
-		System.setProperty("spring.output.ansi.enabled", "DETECT");
+		System.setProperty("spring.output.ansi.enabled", "ALWAYS");
 		System.setProperty("org.apache.logging.log4j.simplelog.StatusLogger.level", "OFF");
 		ExtendedThreadManager.install();		
 		adminFinder = AdminFinder.getInstance(args);
