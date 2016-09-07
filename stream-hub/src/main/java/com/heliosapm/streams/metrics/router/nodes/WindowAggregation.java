@@ -620,6 +620,16 @@ public class WindowAggregation<K, V extends Aggregator<T>, T> implements Runnabl
 	public long getEarliestTimestamp() {
 		return earliestTimestamp.get();
 	}
+	
+	/**
+	 * Returns the earliest timestamp as a date
+	 * @return the earliest timestamp as a date
+	 */
+	@ManagedAttribute(description="The earliest timestamp as a date")
+	public Date getEarliestDate() {
+		return new Date(earliestTimestamp.get());
+	}
+	
 
 	/**
 	 * Returns the number of currently aggregating periods
