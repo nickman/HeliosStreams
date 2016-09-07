@@ -1,3 +1,4 @@
+//!STOP
 // copied from src/test/resources/test-root/templates/std-jvm.groovy, except for JMXClient
 //  Should make this a link
 

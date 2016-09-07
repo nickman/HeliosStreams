@@ -20,7 +20,6 @@ package com.heliosapm.streams.common.kafka.interceptor;
 
 import java.util.Hashtable;
 import java.util.Map;
-import java.util.TreeMap;
 
 import javax.management.ObjectName;
 
@@ -29,6 +28,7 @@ import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
@@ -80,6 +80,8 @@ public abstract class MonitoringInterceptorBase<K, V> {
 	protected Meter totalMeter;
 	/** The total histogram */
 	protected Histogram totalHistogram;
+	/** The grand total byte transfer counter */
+	protected Counter gtCounter;
 	
 	/** True if this is a producer interceptor, false if a consumer */
 	protected final boolean producer;
@@ -89,12 +91,15 @@ public abstract class MonitoringInterceptorBase<K, V> {
 	protected final String noun;
 	
 	private static final Meter PLACEHOLDER_METER = new Meter();
+	private static final Counter PLACEHOLDER_COUNTER = new Counter();
 	private static final Histogram PLACEHOLDER_HISTOGRAM = new Histogram(null);
 	
 	/** A cache of meters keyed by topic + partition */
 	protected final NonBlockingHashMap<String, Meter> cachedMeters = new NonBlockingHashMap<String, Meter>(); 
 	/** A cache of histograms keyed by topic + partition */
 	protected final NonBlockingHashMap<String, Histogram> cachedHistograms = new NonBlockingHashMap<String, Histogram>(); 
+	/** A cache of counters keyed by topic + partition */
+	protected final NonBlockingHashMap<String, Counter> cachedCounters = new NonBlockingHashMap<String, Counter>(); 
 
 	/**
 	 * Creates a new MonitoringInterceptorBase
@@ -134,6 +139,30 @@ public abstract class MonitoringInterceptorBase<K, V> {
 		}
 		return meter;
 	}
+
+	/**
+	 * Acquires a counter for the passed topic name and partition id
+	 * @param topicName The topic name
+	 * @param partitionId The partition id
+	 * @return the assigned counter
+	 */
+	protected Counter counter(final String topicName, final Integer partitionId) {		
+		final long pId = partitionId==null ? -1L : partitionId;
+		final String key = topicName + pId + producer;
+		Counter counter = cachedCounters.putIfAbsent(key, PLACEHOLDER_COUNTER);
+		if(counter==null || counter==PLACEHOLDER_COUNTER) {
+			final Hashtable<String, String> props = new Hashtable<String, String>(jmxProperties);
+			props.put("topic", topicName);
+			if(pId!=-1L) {
+				props.put("partition", "" + pId);
+			}
+			final ObjectName objectName = objectName(jmxDomain, props);	
+			counter = SharedMetricsRegistry.getInstance().mxCounter(objectName, "TotalBytes", "Kafka Client " + noun + " Total Byte Transfer Metrics");
+			cachedCounters.replace(key, counter);
+		}
+		return counter;
+	}
+	
 	
 	/**
 	 * Acquires a histogram for the passed topic name and partition id
@@ -208,7 +237,8 @@ public abstract class MonitoringInterceptorBase<K, V> {
 		totalObjectName = objectName(jmxDomain, jmxProperties);
 		objectNames.add(totalObjectName);
 		totalMeter = SharedMetricsRegistry.getInstance().mxMeter(totalObjectName, "Msgs", "Kafka Client " + noun + " Total Messaging Rate Metrics");
-		if(producer) totalHistogram = SharedMetricsRegistry.getInstance().mxHistogram(totalObjectName, "Bytes", "Kafka Client " + noun + " Byte Transfer Metrics");
+		gtCounter = SharedMetricsRegistry.getInstance().mxCounter(totalObjectName, "TotalBytes", "Kafka Client " + noun + " Total Byte Transfer Metrics");
+		if(producer) totalHistogram = SharedMetricsRegistry.getInstance().mxHistogram(totalObjectName, "Bytes", "Kafka Client " + noun + " Message Size Metrics");
 	}
 
 	

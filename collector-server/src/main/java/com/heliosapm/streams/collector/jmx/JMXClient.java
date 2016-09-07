@@ -536,7 +536,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 	 * @throws IOException
 	 * @see javax.management.MBeanServerConnection#getAttributes(javax.management.ObjectName, java.lang.String[])
 	 */
-	public AttributeList getAttributes(ObjectName name, String[] attributes)
+	public AttributeList getAttributes(final ObjectName name, final String...attributes)
 			throws InstanceNotFoundException, ReflectionException, IOException {
 		return server().getAttributes(name, attributes);
 	}

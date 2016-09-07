@@ -192,7 +192,7 @@ public class DropWizardMetrics extends StandardEmitterMBean implements DropWizar
 				attrList.add(new Attribute(attrName.trim(), obj));
 			} catch (Exception x) {/* No Op */}
 		}
-		return super.getAttributes(attributes);
+		return attrList;
 	}
 	
 	@Override

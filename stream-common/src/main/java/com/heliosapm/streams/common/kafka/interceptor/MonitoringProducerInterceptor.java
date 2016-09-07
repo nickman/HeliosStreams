@@ -18,12 +18,9 @@ under the License.
  */
 package com.heliosapm.streams.common.kafka.interceptor;
 
-import java.util.Map;
-
 import org.apache.kafka.clients.producer.ProducerInterceptor;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.clients.producer.internals.DefaultPartitioner;
 
 /**
  * <p>Title: MonitoringProducerInterceptor</p>
@@ -64,6 +61,7 @@ public class MonitoringProducerInterceptor<K, V> extends MonitoringInterceptorBa
 		if(metadata!=null) {
 			final int total = metadata.serializedKeySize() + metadata.serializedValueSize();
 			totalHistogram.update(total);
+			gtCounter.inc(total);
 			histogram(metadata.topic(), -1).update(total);
 		}
 	}

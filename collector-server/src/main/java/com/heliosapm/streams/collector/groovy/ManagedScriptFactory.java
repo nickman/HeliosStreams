@@ -557,13 +557,28 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			gcs.setCachable(false);
 			final Class<ManagedScript> msClazz = gcl.parseClass(gcs);
 			ReferenceService.getInstance().newWeakReference(msClazz, null);
-			//final ManagedScript ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{new Binding(bSource.getBindingMap())}, Binding.class);
-			final ManagedScript ms = msClazz.newInstance();
+//			final ManagedScript ms;
+//			if(bindings!=null) {
+//				for(Constructor<?> ctor: msClazz.getDeclaredConstructors()) {
+//					System.err.println("MSCLASS DCTOR:" + ctor.toGenericString());
+//				}
+//				for(Constructor<?> ctor: msClazz.getConstructors()) {
+//					System.err.println("MSCLASS CTOR:" + ctor.toGenericString());
+//				}
+//				
+//				final Constructor<ManagedScript> ctor = msClazz.getDeclaredConstructor(Map.class);
+//				ms = ctor.newInstance(bindings);
+////				ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{bindings}, Map.class); 
+//			} else {
+//				ms = msClazz.newInstance();
+//			}
+//			
+			final ManagedScript ms = ManagedScript.instantiate(msClazz, bindings);
 			final long elapsedTime = System.currentTimeMillis() - startTime;			
+			ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
 			if(bindings!=null) {
 				ms.bindingMap.putAll(bindings);
-			}
-			ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
+			}			
 			sendCompilationEvent(ms);
 			success = true;
 			managedScripts.put(source, ms);
@@ -584,6 +599,10 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			errMsg = "Failed to instantiate script for source ["+ source + "]";
 			log.error(errMsg, ex);
 			throw new RuntimeException(errMsg, ex);
+		} catch (Throwable t) {
+			errMsg = "Failed to instantiate script for source ["+ source + "]";
+			log.error(errMsg, t);
+			throw new RuntimeException(errMsg, t);			
 		} finally {
 			if(!success) {
 				sendCompilationEvent(source.getAbsolutePath().replace(scriptDirectory.getAbsolutePath(), ""), errMsg, null);

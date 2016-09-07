@@ -231,14 +231,34 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	}
 	
 	/** A map of the declared fields of this class keyed by the field name */
-	protected final NonBlockingHashMap<String, Field> fields = new NonBlockingHashMap<String, Field>(); 
+	protected final NonBlockingHashMap<String, Field> fields = new NonBlockingHashMap<String, Field>();
+	
+	private static final ThreadLocal<Map<String, Object>> ctorBindings = new ThreadLocal<Map<String, Object>>(); 
+	
+	static ManagedScript instantiate(final Class<ManagedScript> clazz, final Map<String, Object> initialBindings) throws Exception {
+		ctorBindings.set(initialBindings);
+		try {
+			return clazz.newInstance();
+		} finally {
+			ctorBindings.remove();
+		}
+	}
+
+	/**
+	 * Creates a new ManagedScript
+	 */
+	public ManagedScript() {
+		this(ctorBindings.get());
+	}
 
 	
 	/**
 	 * Creates a new ManagedScript
+	 * @param initialBindings Initial bindings required for instantiation
 	 */
 	@SuppressWarnings("unchecked")
-	public ManagedScript() {
+	public ManagedScript(final Map<String, Object> initialBindings) {
+		super(new Binding(initialBindings));
 		springMode = CollectorServer.isSpringMode();
 		cache = GlobalCacheService.getInstance();
 		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
@@ -1163,7 +1183,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/**
 	 * Retrieves a value from cache
 	 * @param key The key to retrieve by
-	 * @param expiryPeriod The expiry period for the newly created cache value if created
+	 * @param expiryPeriod The expiry period for the newly created cache value if created (ms)
 	 * @param createIfNotFound A closure that will create the value if not found in cache
 	 * @return The value or null if the key was not bound and the closure returned null
 	 * @param <T> The expected type of the object being retrieved

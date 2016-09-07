@@ -20,6 +20,7 @@ package com.heliosapm.streams.tracing.writers;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -92,8 +93,13 @@ public class JMXWriter extends AbstractMetricWriter {
 	protected void doMetrics(Collection<StreamedMetric> metrics) {
 		if(metrics==null || metrics.isEmpty()) return;
 		for(final StreamedMetric sm: metrics) {			
-			getMetric(sm)
-				.update(sm);
+			try {
+				getMetric(sm)
+					.update(sm);
+				sentMetrics.increment();
+			} catch (Exception ex) {
+				failedMetrics.increment();
+			}
 		}
 	}
 	
@@ -115,9 +121,8 @@ public class JMXWriter extends AbstractMetricWriter {
 		final Map<String, String> tags = new HashMap<String, String>(sm.getTags());
 		final String mn = sm.getMetricName();
 		final String domain = tags.remove("host");
-		tags.put("metric", mn);
-		
-		return JMXHelper.objectName(domain, tags, TagKeySorter.INSTANCE);
+		tags.put("metric", mn);		
+		return JMXHelper.objectName(domain, tags, SORTER);
 	}
 
 	/**
@@ -147,4 +152,26 @@ public class JMXWriter extends AbstractMetricWriter {
 		/* No Op */
 	}
 
+	
+	public static class MetricTagKeySorter implements Comparator<String> {
+
+		public int compare(final String o1, final String o2) {
+			if(o1.equals(o2)) return 0;
+			if(o1.equalsIgnoreCase(o2)) return -1;
+			final int d = doCompare(o1, o2);
+			if(d!=Integer.MAX_VALUE) return d;
+			return o1.toLowerCase().compareTo(o2.toLowerCase());
+		}
+		
+		protected int doCompare(final String var1, final String var2) {
+			if("metric".equalsIgnoreCase(var1)) return 1;
+			else if("metric".equalsIgnoreCase(var2)) return -1;
+	        return "app".equalsIgnoreCase(var1)
+	        		? -1: ("app".equalsIgnoreCase(var2)
+	        			? 1: ("host".equalsIgnoreCase(var1)
+	        		?-1:("host".equalsIgnoreCase(var2)
+	        			? 1: 2147483647)));
+	    }
+	}
+	public static final MetricTagKeySorter SORTER = new MetricTagKeySorter(); 
 }

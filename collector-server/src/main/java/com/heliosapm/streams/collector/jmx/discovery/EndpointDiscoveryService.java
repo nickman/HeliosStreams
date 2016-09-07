@@ -44,6 +44,7 @@ import com.heliosapm.streams.collector.jmx.JMXClient;
 import com.heliosapm.streams.discovery.AdvertisedEndpoint;
 import com.heliosapm.streams.discovery.AdvertisedEndpointListener;
 import com.heliosapm.streams.discovery.EndpointListener;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.tuples.NVP;
 
 /**
@@ -150,18 +151,26 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 		final File appDirectory = createEndpointMonitorDirectory(endpoint);
 		final Set<File> deployedFiles = new NonBlockingHashSet<File>();
 		for(String endpointType: endpoint.getEndPoints()) {
-			final Map<String, Object> bindings = new HashMap<String, Object>();
-			bindings.put("endpoint", endpoint);
-			bindings.put("host", endpoint.getHost());
-			bindings.put("app", endpoint.getApp());
-			bindings.put("jmxurl", endpoint.getJmxUrl());
-			bindings.put("jmxClient", new JMXClient(endpoint.getJmxUrl(), 10000));
 			
 			File templateScript = new File(endpointTemplateDirectory, endpointType + ".groovy");
 			if(!templateScript.canRead() || templateScript.length() == 0) {
 				log.warn("No endpoint script found for endpoint type [{}]",  endpointType);
 				continue;
 			}
+			
+			if(ManagedScriptFactory.isDisabled(templateScript)) {
+				log.warn("Endpoint script type [{}] is disabled",  endpointType);
+				continue;
+			}
+
+			final Map<String, Object> bindings = new HashMap<String, Object>();
+			bindings.put("endpoint", endpoint);
+			bindings.put("host", endpoint.getHost());
+			bindings.put("app", endpoint.getApp());
+			bindings.put("jmxurl", endpoint.getJmxUrl());
+			bindings.put("jmxClient", new JMXClient(endpoint.getJmxUrl(), 10000));
+			bindings.put("jmxHelper", JMXHelper.class);
+			
 			File deployedScript = new File(appDirectory, endpointType + "-15s.groovy");
 			if(deployedScript.exists()) deployedScript.delete();
 			try {
@@ -171,7 +180,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 				continue;
 			}
 			log.info("Activating [{}].....", deployedScript);
-			scriptFactory.compileScript(deployedScript).addBindings(bindings);
+			scriptFactory.compileScript(deployedScript, bindings);
 			deployedFiles.add(deployedScript);
 		}
 		final NVP<AdvertisedEndpoint, Set<File>> deploys = new NVP<AdvertisedEndpoint, Set<File>>(endpoint, deployedFiles);
