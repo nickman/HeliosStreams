@@ -62,11 +62,12 @@ public class KMetricAggreagator {
 		  Properties streamsConfiguration = new Properties();
 		    // Give the Streams application a unique name.  The name must be unique in the Kafka cluster
 		    // against which the application is run.
-		    streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, "KMetricAggreagatorZ");
+		    streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, "KMetricAggreagator");
 		    // Where to find Kafka broker(s).
-		    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "pdk-pt-cltsdb-02.intcx.net:9092,pdk-pt-cltsdb-04.intcx.net:9092,pdk-pt-cltsdb-03.intcx.net:9092");
+		    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "pdk-pt-cltsdb-02.intcx.net:9092,pdk-pt-cltsdb-04.intcx.net:9092,pdk-pt-cltsdb-03.intcx.net:9092");
 		    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092,localhost:9093,localhost:9094");
-//		    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.5.202.251:9092,10.5.202.251:9093,10.5.202.251:9094");
+		    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.5.202.251:9092,10.5.202.251:9093,10.5.202.251:9094");
+		    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.22.114.37:9092,10.22.114.37:9093,10.22.114.37:9094");
 		    
 		    // Where to find the corresponding ZooKeeper ensemble.
 		    streamsConfiguration.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "pdk-pt-cltsdb-02.intcx.net:2181,pdk-pt-cltsdb-04.intcx.net:2181,pdk-pt-cltsdb-03.intcx.net:2181");
@@ -83,6 +84,13 @@ public class KMetricAggreagator {
 		    window.toStream().foreach((w, smv) -> log.info("W: [{}]:[{}] ---> [{}]", w.key(), w.window().start(), smv.toString()));
 		    
 		    KafkaStreams streams = new KafkaStreams(builder, streamsConfiguration);
+		    streams.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+				@Override
+				public void uncaughtException(final Thread t, final Throwable e) {
+					log.error("Uncaught exception on [{}]",  t, e);
+					
+				}
+			});
 		    streams.start();
 
 		    StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
