@@ -30,8 +30,8 @@
             <AppenderRef ref="Console-Appender" level="info"/>               
         </Logger>
            
-        <Root level="info">
-            <AppenderRef ref="Console-Appender"/>
+        <Root level="debug">
+            <AppenderRef ref="Console-Appender" level="debug"/>
         </Root>
     </Loggers>
 </Configuration>

@@ -62,11 +62,14 @@ public class KMetricAggreagator {
 		  Properties streamsConfiguration = new Properties();
 		    // Give the Streams application a unique name.  The name must be unique in the Kafka cluster
 		    // against which the application is run.
-		    streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, "KMetricAggreagatorX");
+		    streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, "KMetricAggreagatorZ");
 		    // Where to find Kafka broker(s).
-		    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092,localhost:9093,localhost:9094");
+		    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "pdk-pt-cltsdb-02.intcx.net:9092,pdk-pt-cltsdb-04.intcx.net:9092,pdk-pt-cltsdb-03.intcx.net:9092");
+		    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092,localhost:9093,localhost:9094");
+//		    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.5.202.251:9092,10.5.202.251:9093,10.5.202.251:9094");
+		    
 		    // Where to find the corresponding ZooKeeper ensemble.
-		    streamsConfiguration.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "pdk-pt-cltsdb-02:2181,pdk-pt-cltsdb-04:2181,pdk-pt-cltsdb-04:2181");
+		    streamsConfiguration.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "pdk-pt-cltsdb-02.intcx.net:2181,pdk-pt-cltsdb-04.intcx.net:2181,pdk-pt-cltsdb-03.intcx.net:2181");
 		    // Specify default (de)serializers for record keys and for record values.
 		    streamsConfiguration.put(StreamsConfig.KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
 		    streamsConfiguration.put(StreamsConfig.VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass().getName());
@@ -108,7 +111,10 @@ public class KMetricAggreagator {
     static class SMAgg implements org.apache.kafka.streams.kstream.Aggregator<String, StreamedMetric, StreamedMetricValue> {
 		@Override
 		public StreamedMetricValue apply(final String aggKey, final StreamedMetric value, final StreamedMetricValue aggregate) {
-			if(aggregate==null) return value.forValue(1L);
+			if(aggregate==null) {
+				log.info("Initializing [{}]", aggKey);
+				return value.forValue(1L);
+			}
 			return aggregate.increment(value.forValue(1L).getValueNumber().longValue());
 		}
     	
