@@ -23,6 +23,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
@@ -44,10 +45,8 @@ import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Window;
 import org.apache.kafka.streams.kstream.Windowed;
-import org.apache.kafka.streams.processor.Processor;
-import org.apache.kafka.streams.processor.ProcessorContext;
-import org.apache.kafka.streams.state.WindowStore;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
+import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 
 import com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterceptor;
@@ -78,7 +77,7 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	/** The aggregation table */
 	protected KTable<Windowed<String>, StreamedMetricValue> window = null;
 	/** The last delivered metric by key */
-	protected final NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> lastEntry = new NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>>();
+	protected final Set<NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>>> lastEntries = new NonBlockingHashSet<NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>>>();	
 	/** The producer used to send messages from the background tasks */
 	protected Producer<String, StreamedMetricValue> producer = null;
 	
@@ -193,6 +192,12 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 		scheduler.shutdownNow();
 		try { producer.close(); } catch (Exception x) {/* No Op */}
 	}
+	
+	private NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> newlastEntry() {
+		NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> acc = new NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>>();
+		lastEntries.add(acc);
+		return acc;
+	}
 
 
 	/**
@@ -206,6 +211,7 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	    window = rawMetrics.aggregateByKey(new SMAggInit(), new SMAgg(), TimeWindows.of(STORE_NAME, windowDuration), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_VALUE_SERDE);
 	    window.toStream()
 	    .flatMap(new KeyValueMapper<Windowed<String>, StreamedMetricValue, Iterable<KeyValue<String,StreamedMetricValue>>>() {
+	    	protected final NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> lastEntry = newlastEntry();	    	
 	    	@Override
 	    	public Iterable<KeyValue<String, StreamedMetricValue>> apply(final Windowed<String> key, final StreamedMetricValue value) {
 	    		final NVP<Window, StreamedMetricValue> prior = lastEntry.put(key.key(), new NVP<Window, StreamedMetricValue>(key.window(), value));
@@ -219,7 +225,7 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 		}).to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_VALUE_SERDE, sinkTopic);
 	    if(System.getProperties().containsKey("streams.debug")) {
 		    streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic)
-		    	.foreach((k,v) -> System.err.println("W: [" + new Date(v.getTimestamp()) + "] [" + v.metricKey() + "]:" + v.forValue(0D).getValueNumber()));
+		    	.foreach((k,v) -> System.err.println("[" + Thread.currentThread() + "] W: [" + new Date(v.getTimestamp()) + "] [" + v.metricKey() + "]:" + v.forValue(0D).getValueNumber()));
 	    }
 	    
 	    
@@ -240,33 +246,35 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	 * @see java.lang.Runnable#run()
 	 */
 	public void run() {
-		try {
-			final long now = System.currentTimeMillis();
-			for(Map.Entry<String, NVP<Window, StreamedMetricValue>> entry: lastEntry.entrySet()) {
-				final String key = entry.getKey();
-				final NVP<Window, StreamedMetricValue> value = entry.getValue();
-				final Window win = value.getKey();
-				final StreamedMetricValue smv = value.getValue();				
-				final long diff = now - win.end(); 
-				if(diff > windowDuration) {
-					if(smv.getValueNumber().doubleValue() > 0D) {
-						producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, adjust(smv, win)));
-						entry.setValue(new NVP<Window, StreamedMetricValue>(win, StreamedMetricValue.fromKey(now, smv.metricKey(), 0D)));
-						log.debug("Sent closing value for [{}]", smv.metricKey());
-						continue;
-					}
-					
-					if(diff > idleDuration) {
-						lastEntry.remove(key);
-						log.info("Removed expired key [{}]", key);
-					} else {
-						producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, StreamedMetricValue.fromKey(now, smv.metricKey(), 0L)));
-						log.debug("Filling in for key [{}] until [{}]", key, new Date(win.end() + idleDuration));
+		for(NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> lastEntry: lastEntries) {
+			try {
+				final long now = System.currentTimeMillis();
+				for(Map.Entry<String, NVP<Window, StreamedMetricValue>> entry: lastEntry.entrySet()) {
+					final String key = entry.getKey();
+					final NVP<Window, StreamedMetricValue> value = entry.getValue();
+					final Window win = value.getKey();
+					final StreamedMetricValue smv = value.getValue();				
+					final long diff = now - win.end(); 
+					if(diff > windowDuration) {
+						if(smv.getValueNumber().doubleValue() > 0D) {
+							producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, adjust(smv, win)));
+							entry.setValue(new NVP<Window, StreamedMetricValue>(win, StreamedMetricValue.fromKey(now, smv.metricKey(), 0D)));
+							log.debug("Sent closing value for [{}]", smv.metricKey());
+							continue;
+						}
+						
+						if(diff > idleDuration) {
+							lastEntry.remove(key);
+							log.info("Removed expired key [{}]", key);
+						} else {
+							producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, StreamedMetricValue.fromKey(now, smv.metricKey(), 0L)));
+							log.debug("Filling in for key [{}] until [{}]", key, new Date(win.end() + idleDuration));
+						}
 					}
 				}
+			} catch (Exception ex) {
+				log.error("Background task failure", ex);
 			}
-		} catch (Exception ex) {
-			log.error("Background task failure", ex);
 		}
 	}
 	
@@ -314,8 +322,16 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	 */
 	@ManagedAttribute(description="The number of windows in the last entry cache.")
 	public int getStateEntryCount() {
-		return lastEntry.size();
+		return lastEntries.stream().mapToInt((h) -> {return h.size();}).sum();
 	}
 
+	/**
+	 * Returns the number of accumulators created
+	 * @return the number of accumulators created
+	 */
+	@ManagedAttribute(description="The the number of accumulators created.")
+	public int getAccumulatorCount() {
+		return lastEntries.size();
+	}
 	
 }
