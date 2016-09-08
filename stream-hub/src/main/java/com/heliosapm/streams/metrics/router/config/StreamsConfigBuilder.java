@@ -38,6 +38,8 @@ import org.apache.kafka.streams.StreamsConfig;
 import org.apache.kafka.streams.processor.DefaultPartitionGrouper;
 import org.apache.kafka.streams.processor.PartitionGrouper;
 import org.apache.kafka.streams.processor.TimestampExtractor;
+import org.springframework.jmx.export.annotation.ManagedAttribute;
+import org.springframework.jmx.export.annotation.ManagedResource;
 
 import com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterceptor;
 
@@ -48,7 +50,7 @@ import com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterc
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder</code></p>
  */
-
+@ManagedResource(objectName="com.heliosapm.streams.metrics:service=StreamsConfig")
 public class StreamsConfigBuilder {
 	
 	/** The default client id which is the runtime name */
@@ -173,6 +175,15 @@ public class StreamsConfigBuilder {
 			p.put(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG, SwitchableMonitoringInterceptor.class.getName());
 		}
 		return p;
+	}
+	
+	/**
+	 * Returns the builder properties
+	 * @return the builder properties
+	 */
+	@ManagedAttribute(description="The streams configuration")
+	public Properties getConfig() {
+		return buildProperties();
 	}
 	
 	/**

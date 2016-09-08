@@ -36,7 +36,9 @@ public class StreamedMetricTimestampExtractor implements TimestampExtractor {
 		final Object v = record.value();
 		if(v==null) return System.currentTimeMillis();
 		if(v instanceof StreamedMetric) {
-			return ((StreamedMetric)v).getTimestamp();
+			final StreamedMetric sm = (StreamedMetric)v;
+			//System.err.println("[" + Thread.currentThread().getName() + "] ----EX TS:" + sm.getTimestamp());
+			return sm.getTimestamp();
 		} else if(v instanceof CharSequence) {
 			return StreamedMetric.fromString(((CharSequence)v).toString().trim()).getTimestamp();
 		} else if(v instanceof long[]) {

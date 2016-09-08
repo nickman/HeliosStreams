@@ -55,6 +55,9 @@ public class MonitoringConsumerInterceptor<K, V> extends MonitoringInterceptorBa
 		totalMeter.mark(records.count());
 		for(ConsumerRecord<K, V> r : records) {
 			meter(r.topic(), r.partition()).mark();
+			final int size = r.serializedKeySize() + r.serializedValueSize();
+			histogram(r.topic(), r.partition()).update(size);
+			counter(r.topic(), r.partition()).inc(size);
 		}
 		return records;
 	}

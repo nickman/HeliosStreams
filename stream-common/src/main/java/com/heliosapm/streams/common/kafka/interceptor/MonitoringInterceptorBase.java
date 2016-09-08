@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.common.kafka.interceptor;
 
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
 
@@ -243,7 +245,32 @@ public abstract class MonitoringInterceptorBase<K, V> {
 
 	
 	protected static ObjectName objectName(final String domain, final Hashtable<String, String> props) {
-		return JMXHelper.objectName(domain, props, TagKeySorter.INSTANCE);
+		return JMXHelper.objectName(domain, props, new InterceptorTagKeySorter("app", "host", "group", "topic", "partition"));
+	}
+	
+	protected static class InterceptorTagKeySorter implements Comparator<String> {
+		// app=streamhub,host=njwmint,group=StreamHub,partition=14,topic=tsdb.metrics.meter
+		final Map<String, Integer> order;
+		public InterceptorTagKeySorter(final String...orderedKeys) {
+			order =  new HashMap<String, Integer>(orderedKeys.length);
+			for(int i = 0; i < orderedKeys.length; i++) {
+				order.put(orderedKeys[i], i);
+			}
+		}
+		
+		@Override
+		public int compare(final String o1, final String o2) {
+			if(o1.equals(o2)) return 0;
+			final Integer i1 = order.get(o1);
+			final Integer i2 = order.get(o2);
+			if(i1!=null && i2!=null) {
+				return i1.compareTo(i2);
+			}
+			if(i1==null && i2==null) return o1.compareTo(o2);
+			
+			return 0;
+		}
+		
 	}
 	
 	

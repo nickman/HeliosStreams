@@ -108,6 +108,7 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	 */
 	public static void main(String[] args) {
 		JMXHelper.fireUpJMXMPServer(1423);
+		System.setProperty("streams.debug", "true");
 		Properties streamsConfiguration = new Properties();
 	    streamsConfiguration.put(StreamsConfig.APPLICATION_ID_CONFIG, "KMetricAggreagatorX");
 	    streamsConfiguration.put(ProducerConfig.INTERCEPTOR_CLASSES_CONFIG, SwitchableMonitoringInterceptor.class.getName());
@@ -196,6 +197,7 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	private NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> newlastEntry() {
 		NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> acc = new NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>>();
 		lastEntries.add(acc);
+		
 		return acc;
 	}
 
@@ -225,7 +227,7 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 		}).to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_VALUE_SERDE, sinkTopic);
 	    if(System.getProperties().containsKey("streams.debug")) {
 		    streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic)
-		    	.foreach((k,v) -> System.err.println("[" + Thread.currentThread() + "] W: [" + new Date(v.getTimestamp()) + "] [" + v.metricKey() + "]:" + v.forValue(0D).getValueNumber()));
+		    	.foreach((k,v) -> System.err.println("[" + new Date() + "<" + Thread.currentThread() + ">] WWWW: [" + new Date(v.getTimestamp()) + "] [" + v.metricKey() + "]:" + v.forValue(0D).getValueNumber()));
 	    }
 	    
 	    
@@ -322,7 +324,7 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	 */
 	@ManagedAttribute(description="The number of windows in the last entry cache.")
 	public int getStateEntryCount() {
-		return lastEntries.stream().mapToInt((h) -> {return h.size();}).sum();
+		return lastEntries.stream().mapToInt(NonBlockingHashMap::size).sum();
 	}
 
 	/**
