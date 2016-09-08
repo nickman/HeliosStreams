@@ -29,6 +29,7 @@ import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.BeanNameAware;
+import org.springframework.beans.factory.DisposableBean;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 import org.springframework.jmx.export.annotation.ManagedMetric;
 import org.springframework.jmx.export.annotation.ManagedOperation;
@@ -48,7 +49,7 @@ import jsr166e.LongAdder;
  * <p><code>com.heliosapm.streams.metrics.router.nodes.AbstractMetricStreamNode</code></p>
  */
 @ManagedResource
-public abstract  class AbstractMetricStreamNode implements MetricStreamNode, BeanNameAware, SelfNaming {
+public abstract  class AbstractMetricStreamNode implements MetricStreamNode, BeanNameAware, SelfNaming, DisposableBean {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());	
 	/** The node name */
@@ -85,6 +86,15 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	 */
 	public void close()  {
 		/* No Op */
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.beans.factory.DisposableBean#destroy()
+	 */
+	@Override
+	public void destroy() throws Exception {
+		close();		
 	}
 	
 	/**

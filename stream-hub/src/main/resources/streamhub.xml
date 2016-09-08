@@ -47,11 +47,13 @@
     
     <!-- final long windowDuration, final long idleRetention, final boolean resetting, final V aggregator -->
     
+    <!-- 
+    
     <bean id="MeteringAggregation" class="com.heliosapm.streams.metrics.router.nodes.WindowAggregation" factory-method="getInstance">
-    	<constructor-arg value="5"/>  		<!-- Window duration in seconds -->
-    	<constructor-arg value="0"/>  		<!-- Idle Key retention in seconds -->
-    	<constructor-arg value="true"/> 	<!-- Period Reset -->
-    	<constructor-arg> 					<!-- The aggregator -->
+    	<constructor-arg value="5"/>  		
+    	<constructor-arg value="0"/>  		
+    	<constructor-arg value="true"/> 	
+    	<constructor-arg> 					
     		<bean id="MeteringAggregationAggregator" class="com.heliosapm.streams.metrics.router.nodes.StreamedMetricMeterAggregator"/>
     	</constructor-arg>
     </bean>
@@ -67,6 +69,14 @@
 		<property name="windowTimeSummary" value="${streamhub.meter.window.summary:MIDDLE}"/>
     </bean>
     
+    -->
+    
+    <bean id="metricMeteringNode" class="com.heliosapm.streams.metrics.router.nodes.KMetricAggreagator">
+		<property name="sinkTopic" value="${streamhub.meter.sink:tsdb.metrics.binary}"/>
+		<property name="sourceTopics" value="${streamhub.meter.sources:tsdb.metrics.meter}"/>
+		<property name="windowDuration" value="5000"/>    
+		<property name="idleDuration" value="300000"/>
+    </bean>
     
     <bean id="metricRouter" class="com.heliosapm.streams.metrics.router.MetricRouterBuilder">
 		<property name="configBuilder" ref="streamsConfig"/>
@@ -88,7 +98,7 @@
     		<util:constant static-field="com.heliosapm.streams.metrics.router.config.StreamsConfigBuilder.DEFAULT_STATE_STORE_NAME" />
     	</property>
     	<property name="timeExtractor" value="${streamhub.config.timeextractor:com.heliosapm.streams.metrics.TextLineTimestampExtractor}"/>
-    	<property name="streamThreads" value="1"/>    	
+    	<property name="streamThreads" value="3"/>    	
     	<property name="monitoringInterceptorEnabled" value="${streamhub.config.streams.monitorinterceptor:true}"/>
     </bean>
     
