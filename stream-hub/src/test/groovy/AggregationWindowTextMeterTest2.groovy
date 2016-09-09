@@ -22,15 +22,16 @@ props.put("buffer.memory", 33554432);
 props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
 props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
 
-//props.put("compression.codec", "1");
-//props.put("compressed.topics", TO_TOPIC);
+HOUR_IN_MS = TimeUnit.HOURS.toMillis(1);
+//SUB_HOURS = (HOUR_IN_MS * 24);
+SUB_HOURS = 0L;
+
+
 def R = new Random(System.currentTimeMillis());
-unixTime = {
-    return TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis())
-}
+
 currentSecWindow = { size ->
-    def ut = unixTime();
-    return ut - (ut%size) - 20000; 
+    def ut = TimeUnit.MILLISECONDS.toSeconds(System.currentTimeMillis() - SUB_HOURS);
+    return ut - (ut%size); 
 }
 
 nextSecWindow = { size ->
@@ -65,11 +66,11 @@ doubleValue = { max ->
 
 Producer<String, String> producer = null;
 
-traceNewTime = { count, template, value ->
+traceNewTime = { count, template, value, time ->
     def mn = template.split(",")[2];
     def futures = [];
     for(i in 1..count) {
-        def pr = new ProducerRecord<String, String>(TO_TOPIC, String.format(template, unixTime(), value));
+        def pr = new ProducerRecord<String, String>(TO_TOPIC, String.format(template, time, value));
         futures.add(producer.send(pr));    
     }
     producer.flush();
@@ -79,7 +80,7 @@ traceNewTime = { count, template, value ->
             f.get();
             cnt++;
         }
-        Date dt = new Date();
+        Date dt = new Date(time * 1000);
         println "[$dt]: Submitted $cnt messages for [$mn],  Adj: ${cnt/5}";
     });
 }
@@ -87,30 +88,15 @@ traceNewTime = { count, template, value ->
 
 try {
     producer = new KafkaProducer<String, String>(props);    
-    long nextTime = 0L;
-    for(i in 1..100) {
-        if(nextTime==0L) nextTime = nextWindowMs(5) - System.currentTimeMillis();
-        else nextTime += 5000;
-        int loo = longValue(10)*5;
-        final int index = i;
-        r = [
-            run : {
-                METRIC_TEMPLATES.each() { k,v ->
-                    traceNewTime(longValue(100)*5, k, 1L);
-                }                
-                if(index==100) {
-                    println "\n\tTEST COMPLETE";
-                }
-            }
-        ] as Runnable;         
-        scheduler.schedule(r, nextTime, TimeUnit.MILLISECONDS);
+    long nextTime = currentSecWindow(5);
+    for(i in 1..5) {
+        METRIC_TEMPLATES.each() { k,v ->
+            traceNewTime(longValue(100)*5, k, 1L, nextTime);
+        }                
+        nextTime += 5;
     }
-    println "All tasks scheduled";
-    try {
-        Thread.currentThread().join();
-    } catch (iex) {
-        println "Stopping Sender";
-    }
+    producer.flush();
+    println "Done";
 } finally {
     if(producer!=null) {
         producer.close();
