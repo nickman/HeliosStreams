@@ -20,6 +20,7 @@ package com.heliosapm.streams.metrics.router.nodes;
 
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -29,6 +30,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -45,8 +47,12 @@ import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Window;
 import org.apache.kafka.streams.kstream.Windowed;
+import org.apache.kafka.streams.kstream.internals.TimeWindow;
+import org.apache.kafka.streams.state.QueryableStoreTypes;
+import org.apache.kafka.streams.state.ReadOnlyWindowStore;
+import org.apache.kafka.streams.state.WindowStoreIterator;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
-import org.cliffc.high_scale_lib.NonBlockingHashSet;
+import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
 
 import com.heliosapm.streams.common.kafka.interceptor.SwitchableMonitoringInterceptor;
@@ -56,7 +62,6 @@ import com.heliosapm.streams.metrics.router.StreamHubKafkaClientSupplier;
 import com.heliosapm.streams.serialization.HeliosSerdes;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
-import com.heliosapm.utils.tuples.NVP;
 
 
 /**
@@ -76,8 +81,13 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	protected long idleDuration = 1000 * 60 * 5;
 	/** The aggregation table */
 	protected KTable<Windowed<String>, StreamedMetricValue> window = null;
+	
+	/** The read only query store */
+	protected ReadOnlyWindowStore<String, StreamedMetricValue> windowStore = null;
 	/** The last delivered metric by key */
-	protected final Set<NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>>> lastEntries = new NonBlockingHashSet<NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>>>();	
+	protected final NonBlockingHashMapLong<NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>>> lastEntries = new NonBlockingHashMapLong<NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>>>();
+	/** Index for lastEntries */
+	protected final AtomicLong lastEntriesIndex = new AtomicLong();
 	/** The producer used to send messages from the background tasks */
 	protected Producer<String, StreamedMetricValue> producer = null;
 	
@@ -116,7 +126,8 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092,localhost:9093,localhost:9094");
 	    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.5.202.251:9092,10.5.202.251:9093,10.5.202.251:9094");
 	    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "10.22.114.37:9092,10.22.114.37:9093,10.22.114.37:9094");
-	    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+	    //streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+	    streamsConfiguration.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9093,localhost:9094");
 	    //streamsConfiguration.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "pdk-pt-cltsdb-02.intcx.net:2181,pdk-pt-cltsdb-04.intcx.net:2181,pdk-pt-cltsdb-03.intcx.net:2181");
 	    streamsConfiguration.put(StreamsConfig.ZOOKEEPER_CONNECT_CONFIG, "localhost:2181");
 	    
@@ -131,8 +142,6 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	    KMetricAggregator2 aggregator = new KMetricAggregator2();
 	    aggregator.sinkTopic = "tsdb.metrics.binary";
 	    aggregator.sourceTopics = new String[]{"tsdb.metrics.meter"};
-	    
-	    aggregator.configure(builder);
 		builder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STRING_SERDE, "tsdb.metrics.text.meter")
 		.map((k,v) -> {
 			final StreamedMetric sm = StreamedMetric.fromString(v);
@@ -140,6 +149,8 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 			
 		})		
 		.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, "tsdb.metrics.meter");
+	    
+	    aggregator.configure(builder);
 	    
 	    KafkaStreams streams = new KafkaStreams(builder, streamsConfiguration);
 	    streams.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
@@ -149,7 +160,7 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 				e.printStackTrace(System.err);				
 			}
 		});
-	    streams.start();
+	    streams.start();	    
 	    aggregator.onStart(new StreamHubKafkaClientSupplier(new StreamsConfig(streamsConfiguration), "KMetricAggreagator2X"), streams);
 	    StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
 	    	@Override
@@ -173,6 +184,17 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 		@Override
 		public StreamedMetricValue apply(final String aggKey, final StreamedMetric value, final StreamedMetricValue aggregate) {
 			if(aggregate==null) {
+				
+				if(windowStore==null) windowStore = kafkaStreams.store(STORE_NAME, QueryableStoreTypes.windowStore());
+				final Window win = forTime(value.getTimestamp());
+				final WindowStoreIterator<StreamedMetricValue> iter = windowStore.fetch(value.metricKey(), win.start(), win.end());
+				if(iter.hasNext()) {
+					final StreamedMetricValue last = iter.next().value;
+					log.info("Found prior for:\n\t{}\n\t{}", value, last);
+					return last.forceToLong().increment(
+							value.forValue(1L).getValueNumber().longValue());
+				}
+				
 				//log.info("Initializing [{}]", aggKey);
 				return value.forValue(1L);
 			}
@@ -180,6 +202,12 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 					value.forValue(1L).getValueNumber().longValue()
 			);
 		}    	
+    }
+    
+    public Window forTime(final long time) {
+    	final long startTime = time - (time%windowDuration);
+    	final long endTime = startTime + windowDuration;
+    	return new TimeWindow(startTime, endTime);
     }
     
     @Override
@@ -204,12 +232,15 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	
 	private NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>> newlastEntry() {
 		NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>> acc = new NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>>();
-		lastEntries.add(acc);
-		
+		//Set<NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>>>
+		lastEntries.put(lastEntriesIndex.incrementAndGet(), acc);
+		log.info("LastEntries Retrieval: {}", System.identityHashCode(lastEntries));
 		return acc;
 	}
 
-
+	
+	private static final StreamedMetricValue SMV_PLACEHOLDER = new StreamedMetricValue(1D, "placeholder", Collections.emptyMap()); 
+	private static final NonBlockingHashMap<Window, StreamedMetricValue> NBHM_PLACEHOLDER = new NonBlockingHashMap<Window, StreamedMetricValue>(0); 
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.metrics.router.nodes.MetricStreamNode#configure(org.apache.kafka.streams.kstream.KStreamBuilder)
@@ -218,24 +249,49 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	public void configure(final KStreamBuilder streamBuilder) {
 		rateDivisor = TimeUnit.MILLISECONDS.toSeconds(windowDuration);
 	    KStream<String, StreamedMetric> rawMetrics = streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics);
-	    window = rawMetrics.aggregateByKey(new SMAggInit(), new SMAgg(), TimeWindows.of(STORE_NAME, windowDuration), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_VALUE_SERDE);
+	    window = rawMetrics
+	    .groupByKey()
+	    .aggregate(new SMAggInit(), new SMAgg(), TimeWindows.of(/*STORE_NAME, */windowDuration), HeliosSerdes.STREAMED_METRIC_VALUE_SERDE, STORE_NAME);
+	    		
 	    window.toStream()
+//	    .foreach((w,v) -> {
+//	    	
+//	    });
 	    .flatMap(new KeyValueMapper<Windowed<String>, StreamedMetricValue, Iterable<KeyValue<String,StreamedMetricValue>>>() {
 	    	protected final NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>> lastEntry = newlastEntry();	    	
 	    	@Override
 	    	public Iterable<KeyValue<String, StreamedMetricValue>> apply(final Windowed<String> key, final StreamedMetricValue value) {
-	    		final NonBlockingHashMap<Window, StreamedMetricValue> prior = lastEntry.put(key.key(), new NonBlockingHashMap<Window, StreamedMetricValue>(key.window(), value));
-	    		if(prior!=null && !prior.getKey().equals(key.window())) {
-	    			final StreamedMetricValue smv = prior.getValue();
-//	    			log.info("[{}]-[{}]:{}", new Date(smv.getTimestamp()), smv.metricKey(), smv.getValueNumber());
-	    			return Collections.singletonList(new KeyValue<String, StreamedMetricValue>(key.key(), adjust(smv, key.window())));
+	    		NonBlockingHashMap<Window, StreamedMetricValue> newMap = lastEntry.putIfAbsent(key.key(), NBHM_PLACEHOLDER);
+	    		if(newMap==null || newMap==NBHM_PLACEHOLDER) {
+	    			newMap = new NonBlockingHashMap<Window, StreamedMetricValue>();
+	    			lastEntry.replace(key.key(), newMap);	    			
 	    		}
-	    		return EMPTY_KVS;
+	    		newMap.put(key.window(), value);
+//	    		StreamedMetricValue smv = newMap.get(key.window());
+//	    		if(smv==null) {
+//	    			synchronized(lastEntry) {
+//	    				smv = newMap.get(key.window());
+//	    	    		if(smv==null) {
+//	    	    			newMap.put(key.window(), value);
+//	    	    			return EMPTY_KVS;
+//	    	    		}
+//	    			}
+//	    		} else {
+//	    			
+//	    		}
+//	    		final Number adjust = value.getValueNumber();
+//	    		final Number before = smv.getValueNumber();
+//	    		smv = smv.increment(value.getValueNumber().longValue());
+//	    		final Number after = smv.getValueNumber();
+//	    		log.info("Incremented [{}} with {} from {} to {}", smv.metricKey(), adjust, before, after);
+	    		//return Collections.singletonList(new KeyValue<String, StreamedMetricValue>(key.key(), adjust(smv, key.window())));
+	    		return Collections.singletonList(new KeyValue<String, StreamedMetricValue>(key.key(), value));
 	    	}
-		}).to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_VALUE_SERDE, sinkTopic);
+		});//.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_VALUE_SERDE, sinkTopic);
 	    if(System.getProperties().containsKey("streams.debug")) {
 		    streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic)
-		    	.foreach((k,v) -> System.err.println("[" + new Date() + "<" + Thread.currentThread() + ">] WWWW: [" + new Date(v.getTimestamp()) + "] [" + v.metricKey() + "]:" + v.forValue(0D).getValueNumber()));
+		    	//.foreach((k,v) -> System.err.println("[" + new Date() + "<" + Thread.currentThread() + ">] WWWW: [" + new Date(v.getTimestamp()) + "] [" + v.metricKey() + "]:" + v.forValue(0D).getValueNumber()));
+		    .foreach((k,v) -> System.err.println("[" + new Date() + "] WWWW: [" + new Date(v.getTimestamp()) + "] [" + v.metricKey() + "]:" + v.forValue(0D).getValueNumber()));
 	    }
 	    
 	    
@@ -256,34 +312,42 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	 * @see java.lang.Runnable#run()
 	 */
 	public void run() {
-		for(NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> lastEntry: lastEntries) {
+		log.debug("Running background task: {}:{}", lastEntries.size(), getStateEntryCount());
+		final long now = System.currentTimeMillis();
+		// trace zero for these metric names
+		final Set<String> zeroTraces = new HashSet<String>();
+		for(NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>> lastEntry: lastEntries.values()) {
 			try {
-				final long now = System.currentTimeMillis();
-				for(Map.Entry<String, NVP<Window, StreamedMetricValue>> entry: lastEntry.entrySet()) {
+				
+				for(Map.Entry<String, NonBlockingHashMap<Window, StreamedMetricValue>> entry: lastEntry.entrySet()) {
 					final String key = entry.getKey();
-					final NVP<Window, StreamedMetricValue> value = entry.getValue();
-					final Window win = value.getKey();
-					final StreamedMetricValue smv = value.getValue();				
-					final long diff = now - win.end(); 
-					if(diff > windowDuration) {
-						if(smv.getValueNumber().doubleValue() > 0D) {
-							producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, adjust(smv, win)));
-							entry.setValue(new NVP<Window, StreamedMetricValue>(win, StreamedMetricValue.fromKey(now, smv.metricKey(), 0D)));
-							log.debug("Sent closing value for [{}]", smv.metricKey());
-							continue;
-						}
-						
-						if(diff > idleDuration) {
-							lastEntry.remove(key);
-							log.info("Removed expired key [{}]", key);
-						} else {
-							producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, StreamedMetricValue.fromKey(now, smv.metricKey(), 0L)));
-							log.debug("Filling in for key [{}] until [{}]", key, new Date(win.end() + idleDuration));
-						}
+					final NonBlockingHashMap<Window, StreamedMetricValue> windowSet = entry.getValue();
+					for(Map.Entry<Window, StreamedMetricValue> windows: windowSet.entrySet()) {
+						final Window win = windows.getKey();
+						final StreamedMetricValue smv = windows.getValue();				
+						final long diff = now - win.end(); 
+						if(diff > windowDuration) {
+							if(smv.getValueNumber().doubleValue() > 0D) {
+								producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, adjust(smv, win)));
+								windows.setValue(StreamedMetricValue.fromKey(now, smv.metricKey(), 0D));
+								log.info("Sent closing value for [{}]: {}", smv.metricKey(), smv.getValueNumber());
+								continue;
+							}							
+							if(diff > idleDuration) {
+								lastEntry.remove(key);
+								log.info("Removed expired key [{}]", key);
+							} else {
+								zeroTraces.add(smv.metricKey());
+							}
+						}						
 					}
 				}
 			} catch (Exception ex) {
 				log.error("Background task failure", ex);
+			}
+			for(String metricKey: zeroTraces) {
+				producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, metricKey, StreamedMetricValue.fromKey(now, metricKey, 0L)));
+				log.debug("Filling in for key [{}]", metricKey);				
 			}
 		}
 	}
@@ -332,7 +396,7 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	 */
 	@ManagedAttribute(description="The number of windows in the last entry cache.")
 	public int getStateEntryCount() {
-		return lastEntries.stream().mapToInt(NonBlockingHashMap::size).sum();
+		return lastEntries.values().stream().mapToInt(NonBlockingHashMap::size).sum();
 	}
 
 	/**

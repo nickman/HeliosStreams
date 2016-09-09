@@ -106,7 +106,9 @@ public class TextMeteredMetricsRouter implements UncaughtExceptionHandler {
 		
 		KTable<Windowed<String>, StreamedMetric> meteredWindow = 
 			builder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, "tsdb.metrics.meter")
-			.reduceByKey(sumReducer, TimeWindows.of("MeteringWindowAccumulator", 5000), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
+			.groupByKey()
+			.reduce(sumReducer, TimeWindows.of(/*"MeteringWindowAccumulator", */5000), "MeteringWindowAccumulator");
+			//.reduceByKey(sumReducer, TimeWindows.of(/*"MeteringWindowAccumulator", */5000), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE);
 		
 		meteredWindow.toStream()
 		.map(new KeyValueMapper<Windowed<String>, StreamedMetric, KeyValue<String,StreamedMetric>>() {

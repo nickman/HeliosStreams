@@ -218,7 +218,9 @@ public class KMetricAggreagator extends AbstractMetricStreamNode implements Runn
 	public void configure(final KStreamBuilder streamBuilder) {
 		rateDivisor = TimeUnit.MILLISECONDS.toSeconds(windowDuration);
 	    KStream<String, StreamedMetric> rawMetrics = streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sourceTopics);
-	    window = rawMetrics.aggregateByKey(new SMAggInit(), new SMAgg(), TimeWindows.of(STORE_NAME, windowDuration), HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_VALUE_SERDE);
+	    window = rawMetrics
+	    .groupByKey()
+	    .aggregate(new SMAggInit(), new SMAgg(), TimeWindows.of(/*STORE_NAME, */windowDuration), HeliosSerdes.STREAMED_METRIC_VALUE_SERDE, STORE_NAME);
 	    window.toStream()
 	    .flatMap(new KeyValueMapper<Windowed<String>, StreamedMetricValue, Iterable<KeyValue<String,StreamedMetricValue>>>() {
 	    	protected final NonBlockingHashMap<String, NVP<Window, StreamedMetricValue>> lastEntry = newlastEntry();	    	

@@ -9,8 +9,8 @@ import java.lang.management.*;
 TO_TOPIC = "tsdb.metrics.text.meter"
 scheduler = Executors.newScheduledThreadPool(4);
 Properties props = new Properties();
-//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-props.put("bootstrap.servers", "localhost:9092");
+props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+//props.put("bootstrap.servers", "localhost:9092");
 //props.put("bootstrap.servers", "10.22.114.37:9092");
 //props.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
 
@@ -23,8 +23,8 @@ props.put("key.serializer", "org.apache.kafka.common.serialization.StringSeriali
 props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
 
 HOUR_IN_MS = TimeUnit.HOURS.toMillis(1);
-//SUB_HOURS = (HOUR_IN_MS * 24);
-SUB_HOURS = 0L;
+SUB_HOURS = (HOUR_IN_MS * 24);
+//SUB_HOURS = 0L;
 
 
 def R = new Random(System.currentTimeMillis());
@@ -80,7 +80,7 @@ traceNewTime = { count, template, value, time ->
             f.get();
             cnt++;
         }
-        Date dt = new Date(time * 1000);
+        Date dt = new Date((time + 5) * 1000);
         println "[$dt]: Submitted $cnt messages for [$mn],  Adj: ${cnt/5}";
     });
 }
@@ -89,6 +89,7 @@ traceNewTime = { count, template, value, time ->
 try {
     producer = new KafkaProducer<String, String>(props);    
     long nextTime = currentSecWindow(5);
+    println "Starting time: [${new Date(nextTime * 1000L)}]";
     for(i in 1..5) {
         METRIC_TEMPLATES.each() { k,v ->
             traceNewTime(longValue(100)*5, k, 1L, nextTime);

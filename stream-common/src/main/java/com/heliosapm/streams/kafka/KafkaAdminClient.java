@@ -54,7 +54,7 @@ import kafka.admin.AdminClient;
 import kafka.admin.AdminClient.ConsumerSummary;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
-import kafka.common.TopicExistsException;
+
 import kafka.coordinator.GroupOverview;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
@@ -310,7 +310,7 @@ public class KafkaAdminClient implements Watcher, Closeable {
 	 * @param topicProperties The optional topic properties
 	 * @throws TopicExistsException thrown if the requested topic already exists
 	 */
-	public void createTopic(final String topicName, final int partitionCount, final int replicaCount, final Properties topicProperties) throws TopicExistsException {
+	public void createTopic(final String topicName, final int partitionCount, final int replicaCount, final Properties topicProperties)  {
 		if(!connected.get()) throw new IllegalStateException("The KafkaTestServer is not running");
 		if(topicName==null || topicName.trim().isEmpty()) throw new IllegalArgumentException("The passed topic name was null or empty");
 		if(partitionCount < 1) throw new IllegalArgumentException("Invalid topic partition count: " + partitionCount);
@@ -366,7 +366,7 @@ public class KafkaAdminClient implements Watcher, Closeable {
 	 */
 	public Collection<ConsumerSummary> getConsumers(final String consumerGroup) {
 		if(adminClient==null) throw new IllegalStateException("Admin client not created");
-		return JavaConversions.asJavaCollection(adminClient.describeConsumerGroup(consumerGroup));				
+		return JavaConversions.asJavaCollection(adminClient.describeConsumerGroup(consumerGroup).get());				
 	}	
 	
 	

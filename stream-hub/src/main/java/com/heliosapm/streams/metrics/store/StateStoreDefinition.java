@@ -24,6 +24,9 @@
  */
 package com.heliosapm.streams.metrics.store;
 
+import java.util.Collections;
+import java.util.Map;
+
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serializer;
@@ -64,7 +67,11 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 	protected boolean inMemory = false;
 	/** The built state store supplier */
 	protected StateStoreSupplier stateStoreSupplier = null;
-	
+	/** Indicates if logging is enabled */
+	protected boolean loggingEnabled = false;
+
+
+
 	/**
 	 * {@inheritDoc}
 	 * @see org.springframework.beans.factory.InitializingBean#afterPropertiesSet()
@@ -230,5 +237,46 @@ public class StateStoreDefinition<K,V> implements StateStoreSupplier, Initializi
 		this.name = name;
 		
 	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.kafka.streams.processor.StateStoreSupplier#logConfig()
+	 */
+	@Override
+	public Map<String, String> logConfig() {
+		return Collections.emptyMap();
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see org.apache.kafka.streams.processor.StateStoreSupplier#loggingEnabled()
+	 */
+	@Override
+	public boolean loggingEnabled() {
+		return loggingEnabled;
+	}
+	
+	/**
+	 * Indicates if logging is enabled
+	 * @return true if logging is enabled, false otherwise
+	 */
+	public boolean isLoggingEnabled() {
+		return loggingEnabled;
+	}
+
+
+
+	/**
+	 * Sets logging enablement
+	 * @param loggingEnabled true to enable logging, false otherwise
+	 */
+	public void setLoggingEnabled(final boolean loggingEnabled) {
+		this.loggingEnabled = loggingEnabled;
+	}
+	
 
 }

@@ -206,4 +206,16 @@ public class TestKeyValueStore<K, V> implements KeyValueStore<K, V> {
 		return null;
 	}
 
+	@Override
+	public boolean isOpen() {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public long approximateNumEntries() {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
 }

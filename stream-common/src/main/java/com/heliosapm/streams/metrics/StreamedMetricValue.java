@@ -241,6 +241,14 @@ public class StreamedMetricValue extends StreamedMetric {
 		return this;
 	}
 	
+	public StreamedMetricValue increment(final long timestamp, final double newValue) {
+		if(!isDoubleValue) throw new IllegalArgumentException("This is a long valued StreamedMetric. Cannot update with a double value");
+		this.timestamp = timestamp;
+		this.longValue += newValue;
+		return this;
+	}
+	
+	
 	/**
 	 * Updates the timestamp for this metric
 	 * @param timestamp The new timestamp in ms
@@ -284,6 +292,9 @@ public class StreamedMetricValue extends StreamedMetric {
 		return increment(timestamp, newValue);
 	}
 	
+	public StreamedMetricValue increment(final double newValue) {
+		return increment(timestamp, newValue);
+	}
 	
 	/**
 	 * Updates this metric with a new timestamp and value

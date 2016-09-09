@@ -100,16 +100,8 @@ public class WordCountLambdaExample {
             // We will subsequently invoke `countByKey` to count the occurrences of words, so we use
             // `map` to ensure the key of each record contains the respective word.
             .map((key, word) -> new KeyValue<>(word, word))
-            
-            
-            
-            // Count the occurrences of each word (record key).
-            //
-            // This will change the stream type from `KStream<String, String>` to
-            // `KTable<String, Long>` (word -> count).  We must provide a name for
-            // the resulting KTable, which will be used to name e.g. its associated
-            // state store and changelog topic.
-            .countByKey("Counts")
+            .groupByKey()                      
+            .count("Counts")
             
             // Convert the `KTable<String, Long>` into a `KStream<String, Long>`.
             .toStream();

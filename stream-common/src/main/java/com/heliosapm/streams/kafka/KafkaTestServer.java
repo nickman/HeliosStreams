@@ -56,7 +56,7 @@ import com.heliosapm.utils.reflect.PrivateAccessor;
 
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
-import kafka.common.TopicExistsException;
+
 //import kafka.server.BrokerState;
 import kafka.server.KafkaServer;
 //import kafka.utils.TestUtils;
@@ -413,7 +413,7 @@ public class KafkaTestServer {
 	 * @param topicProperties The optional topic properties
 	 * @throws TopicExistsException thrown if the requested topic already exists
 	 */
-	public void createTopic(final String topicName, final int partitionCount, final int replicaCount, final Properties topicProperties) throws TopicExistsException {
+	public void createTopic(final String topicName, final int partitionCount, final int replicaCount, final Properties topicProperties) {
 		if(!running.get()) throw new IllegalStateException("The KafkaTestServer is not running");
 		if(topicName==null || topicName.trim().isEmpty()) throw new IllegalArgumentException("The passed topic name was null or empty");
 		if(partitionCount < 1) throw new IllegalArgumentException("Invalid topic partition count: " + partitionCount);
