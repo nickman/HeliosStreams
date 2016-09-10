@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
-  <classpathentry kind="src" path="src/test/java" output="target/test-classes" including="**/*.java"/>
-  <classpathentry kind="src" path="src/test/resources" output="target/test-classes" excluding="**/*.java"/>
-  <classpathentry kind="src" path="src/main/java" including="**/*.java"/>
-  <classpathentry kind="src" path="src/main/resources" excluding="**/*.java"/>
   <classpathentry kind="output" path="target/classes"/>
   <classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8"/>
   <classpathentry kind="var" path="M2_REPO/junit/junit/4.11/junit-4.11.jar" sourcepath="M2_REPO/junit/junit/4.11/junit-4.11-sources.jar">
@@ -233,5 +229,9 @@
       <attribute value="jar:file:/home/nwhitehead/.m2/repository/com/typesafe/netty/netty-reactive-streams/1.0.6/netty-reactive-streams-1.0.6-javadoc.jar!/" name="javadoc_location"/>
     </attributes>
   </classpathentry>
-  <classpathentry kind="var" path="M2_REPO/org/javassist/javassist/3.20.0-GA/javassist-3.20.0-GA.jar"/>
+  <classpathentry kind="var" path="M2_REPO/org/javassist/javassist/3.20.0-GA/javassist-3.20.0-GA.jar" sourcepath="M2_REPO/org/javassist/javassist/3.20.0-GA/javassist-3.20.0-GA-sources.jar">
+    <attributes>
+      <attribute value="jar:file:/home/nwhitehead/.m2/repository/org/javassist/javassist/3.20.0-GA/javassist-3.20.0-GA-javadoc.jar!/" name="javadoc_location"/>
+    </attributes>
+  </classpathentry>
 </classpath>

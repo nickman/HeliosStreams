@@ -141,7 +141,7 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 	
 	protected final NonBlockingHashMap<ObjectName, DropWizardMetrics> objectNameMetrics = new NonBlockingHashMap<ObjectName, DropWizardMetrics>(); 
 	
-	protected void installMXBean(final ObjectName objectName, final String name, String description, final Metric metric) {
+	protected synchronized void installMXBean(final ObjectName objectName, final String name, String description, final Metric metric) {
 		if(objectName==null) throw new IllegalArgumentException("The passed ObjectName was null");
 		if(name==null || name.trim().isEmpty()) throw new IllegalArgumentException("The passed name was null or empty");
 		if(metric==null) throw new IllegalArgumentException("The passed Metric was null");
