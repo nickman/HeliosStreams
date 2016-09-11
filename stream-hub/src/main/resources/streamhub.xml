@@ -71,7 +71,7 @@
     
     -->
     
-    <bean id="metricMeteringNode" class="com.heliosapm.streams.metrics.router.nodes.KMetricAggreagator">
+    <bean id="metricMeteringNode" class="com.heliosapm.streams.metrics.router.nodes.MeteredMetricAggregatorNode">
 		<property name="sinkTopic" value="${streamhub.meter.sink:tsdb.metrics.binary}"/>
 		<property name="sourceTopics" value="${streamhub.meter.sources:tsdb.metrics.meter}"/>
 		<property name="windowDuration" value="5000"/>    

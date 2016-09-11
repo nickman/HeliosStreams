@@ -47,8 +47,6 @@ import org.apache.kafka.streams.kstream.KeyValueMapper;
 import org.apache.kafka.streams.kstream.TimeWindows;
 import org.apache.kafka.streams.kstream.Window;
 import org.apache.kafka.streams.kstream.Windowed;
-import org.apache.kafka.streams.kstream.internals.TimeWindow;
-import org.apache.kafka.streams.state.WindowStoreIterator;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 import org.springframework.jmx.export.annotation.ManagedAttribute;
@@ -66,10 +64,9 @@ import com.heliosapm.utils.jmx.JMXHelper;
  * <p>Title: KMetricAggreagator2</p>
  * <p>Description: Aggregates metered metrics into windows of a defined period</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.metrics.router.nodes.KMetricAggreagator2</code></p>
+ * <p><code>com.heliosapm.streams.metrics.router.nodes.MeteredMetricAggregatorNode</code></p>
  */
-
-public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runnable   {
+public class MeteredMetricAggregatorNode extends AbstractMetricStreamNode implements Runnable   {
 	
 	/** The aggregation window duration */
 	protected long windowDuration = 1000 * 5;
@@ -135,7 +132,7 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 	    streamsConfiguration.put(StreamsConfig.TIMESTAMP_EXTRACTOR_CLASS_CONFIG, "com.heliosapm.streams.metrics.StreamedMetricTimestampExtractor");
 	    //streamsConfiguration.put("auto.offset.reset", "earliest");
 	    KStreamBuilder builder = new KStreamBuilder();
-	    KMetricAggregator2 aggregator = new KMetricAggregator2();
+	    MeteredMetricAggregatorNode aggregator = new MeteredMetricAggregatorNode();
 	    aggregator.sinkTopic = "tsdb.metrics.binary";
 	    aggregator.sourceTopics = new String[]{"tsdb.metrics.meter"};
 		builder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STRING_SERDE, "tsdb.metrics.text.meter")
@@ -179,6 +176,7 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
     class SMAgg implements org.apache.kafka.streams.kstream.Aggregator<String, StreamedMetric, StreamedMetricValue> {
 		@Override
 		public StreamedMetricValue apply(final String aggKey, final StreamedMetric value, final StreamedMetricValue aggregate) {
+			inboundCount.increment();
 			if(aggregate==null) {
 				return value.forValue(1L);
 			}
@@ -268,6 +266,8 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 		final long now = System.currentTimeMillis();
 		// trace zero for these metric names
 		final Set<String> zeroTraces = new HashSet<String>();
+		// unless the key is present here
+		final Set<String> activeTraces = new HashSet<String>();
 		for(NonBlockingHashMap<String, NonBlockingHashMap<Window, StreamedMetricValue>> lastEntry: lastEntries.values()) {
 			try {
 				
@@ -281,24 +281,30 @@ public class KMetricAggregator2 extends AbstractMetricStreamNode implements Runn
 						if(diff > windowDuration) {
 							if(smv.getValueNumber().doubleValue() > 0D) {
 								producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, key, adjust(smv, win)));
+								outboundCount.increment();
 								windows.setValue(StreamedMetricValue.fromKey(now, smv.metricKey(), 0D));
-								log.info("Sent closing value for [{}]: {}", smv.metricKey(), smv.getValueNumber());
+								log.debug("Sent closing value for [{}]: {}", smv.metricKey(), smv.getValueNumber());
+								activeTraces.add(smv.metricKey());
 								continue;
 							}							
 							if(diff > idleDuration) {
 								lastEntry.remove(key);
-								log.info("Removed expired key [{}]", key);
-							} else {
+								log.info("Removed expired key [{}], idle:[{}], diff:[{}]", key, idleDuration, diff);
+							} else {								
 								zeroTraces.add(smv.metricKey());
 							}
-						}						
+						} else {
+							activeTraces.add(smv.metricKey());
+						}
 					}
 				}
 			} catch (Exception ex) {
 				log.error("Background task failure", ex);
 			}
+			zeroTraces.removeAll(activeTraces);
 			for(String metricKey: zeroTraces) {
 				producer.send(new ProducerRecord<String, StreamedMetricValue>(sinkTopic, metricKey, StreamedMetricValue.fromKey(now, metricKey, 0L)));
+				outboundCount.increment();
 				log.debug("Filling in for key [{}]", metricKey);				
 			}
 		}
