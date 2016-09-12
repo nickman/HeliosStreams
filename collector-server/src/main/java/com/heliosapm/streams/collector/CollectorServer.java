@@ -153,10 +153,13 @@ public class CollectorServer extends  SpringBootServletInitializer {
 		try {
 			final Properties p = URLHelper.readProperties(URLHelper.toURL(config));
 			final int size = p.size();
-			System.err.println("Setting [" + size + "] properties from [" + config + "]");
+			System.out.println("Setting [" + size + "] properties from [" + config + "]");
 			if(size > 0) {
 				for(final String key: p.stringPropertyNames()) {
-					System.setProperty(key, p.getProperty(key));
+					final String value = p.getProperty(key);
+					System.setProperty(key, value);
+					System.out.println("\t[" + key + "] : [" + value + "]");
+					
 				}
 			}
 			
