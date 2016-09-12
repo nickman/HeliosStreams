@@ -37,12 +37,12 @@ import org.springframework.cloud.netflix.hystrix.EnableHystrix;
 import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
 import org.springframework.cloud.netflix.turbine.EnableTurbine;
 import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
+import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -202,7 +202,8 @@ public class CollectorServer extends  SpringBootServletInitializer {
 				}
 			}
 			final File initDir = new File(dirName==null ? "." : dirName.trim());
-//			initDir(initDir);
+			initDir(initDir);
+			System.exit(0);
 		}
 		
 		final String jmxmpIface = findArg("--jmxmp=", "0.0.0.0:3456", args);
@@ -268,12 +269,12 @@ public class CollectorServer extends  SpringBootServletInitializer {
 		
 	}
 	
-//	private static void initDir(final File rootDirectory) {
-//		ManagedScriptFactory.initSubDirs(rootDirectory);
-//		System.out.println("Initialized directory [" + rootDirectory + "]");
-//		System.exit(0);
-//	}
+	private static void initDir(final File rootDirectory) {
+		ManagedScriptFactory.initSubDirs(rootDirectory);
+		System.out.println("Initialized directory [" + rootDirectory + "]");
+	}
 	
+
 	public static final boolean isSpringMode() {
 		return noSpringMode;
 	}
