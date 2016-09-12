@@ -460,7 +460,7 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 					chronicleReads.inc();
 					reads++;
 					final ByteBuf sm = smm.getAndNullByteBuf();
-					log.info("MessageQueue Read Buffer, size: {} bytes", sm.readableBytes());
+					log.debug("MessageQueue Read Buffer, size: {} bytes", sm.readableBytes());
 					if(sm!=null) {
 						listener.onMetric(sm);
 //						sm.release();

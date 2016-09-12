@@ -9,8 +9,8 @@ import java.lang.management.*;
 TO_TOPIC = "tsdb.metrics.text.meter"
 scheduler = Executors.newScheduledThreadPool(4);
 Properties props = new Properties();
-props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-//props.put("bootstrap.servers", "localhost:9092");
+//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+props.put("bootstrap.servers", "localhost:9092");
 //props.put("bootstrap.servers", "10.22.114.37:9092");
 //props.put("bootstrap.servers", "localhost:9092,localhost:9093,localhost:9094");
 
@@ -44,7 +44,15 @@ nextWindowMs = { size ->
 
 
 METRIC_TEMPLATES = [
-    "%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms" : 30    // UNIX TIME !!
+    "%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms, type=A" : 30    // UNIX TIME !!
+    ,"%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms, type=B" : 30
+    ,"%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms, type=C" : 30
+    ,"%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms, type=XYZ" : 30
+    ,"%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms, type=BAR" : 30
+    ,"%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms, type=FOO" : 30
+    ,"%s,%s,ptms.ibs, pdk-pt-cepas-01, ptms, type=SNAFU" : 30
+
+
     // ,"%s,%s,ptms.xyz, pdk-pt-cepas-01, ptms" : 1
     // ,"%s,%s,ptms.abc, pdk-pt-cepas-01, ptms" : 1
     // ,"%s,%s,ptms.foo, pdk-pt-cepas-01, ptms" : 1
