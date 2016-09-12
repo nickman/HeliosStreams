@@ -174,6 +174,7 @@ public class EndpointListener extends NotificationBroadcasterSupport implements 
 			instance.addEndpointListener(listener);
 		}		
 		CloseableService.getInstance().register(this);
+		log.info("ZK_CONNECT_CONF: [{}]", System.getProperty(ZK_CONNECT_CONF, "undefined"));
 		zkConnect = ConfigurationHelper.getSystemThenEnvProperty(ZK_CONNECT_CONF, ZK_CONNECT_DEFAULT);
 		log.info("EndpointListener ZooKeep Connect: [{}]", zkConnect);
 		serviceType = ConfigurationHelper.getSystemThenEnvProperty(SERVICE_TYPE_CONF, SERVICE_TYPE_DEFAULT);

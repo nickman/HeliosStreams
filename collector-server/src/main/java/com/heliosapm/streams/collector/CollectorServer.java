@@ -154,7 +154,12 @@ public class CollectorServer extends  SpringBootServletInitializer {
 			final Properties p = URLHelper.readProperties(URLHelper.toURL(config));
 			final int size = p.size();
 			System.err.println("Setting [" + size + "] properties from [" + config + "]");
-			System.getProperties().putAll(p);
+			if(size > 0) {
+				for(final String key: p.stringPropertyNames()) {
+					System.setProperty(key, p.getProperty(key));
+				}
+			}
+			
 		} catch (Exception ex) {
 			System.err.println("No config properties set");
 		}
