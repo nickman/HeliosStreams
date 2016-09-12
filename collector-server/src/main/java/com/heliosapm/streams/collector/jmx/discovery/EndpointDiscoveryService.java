@@ -71,7 +71,9 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 	/** The script factory reference */
 	protected ManagedScriptFactory scriptFactory = null;
 	/** NVPs of the endpoint instance and a set of the deployed scripts keyed by the endpoint id */
-	protected final NonBlockingHashMap<String, NVP<AdvertisedEndpoint, Set<File>>> deployments = new NonBlockingHashMap<String, NVP<AdvertisedEndpoint, Set<File>>>(); 
+	protected final NonBlockingHashMap<String, NVP<AdvertisedEndpoint, Set<File>>> deployments = new NonBlockingHashMap<String, NVP<AdvertisedEndpoint, Set<File>>>();
+	/** The deployed file keyed by endpoint id */
+	protected final NonBlockingHashMap<String, File> deployedFiles = new NonBlockingHashMap<String, File>();
 	
 	/**
 	 * Creates a new EndpointDiscoveryService
@@ -142,6 +144,20 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 		return appDirectory;
 	}
 	
+	protected void undeployEndpointMonitors(final AdvertisedEndpoint endpoint) {		
+		deployments.remove(endpoint.getId());
+		for(String endpointType: endpoint.getEndPoints()) {
+			final File script = this.deployedFiles.remove(endpoint.getId() + endpointType);
+			if(script!=null) {
+				try {
+					scriptFactory.onDelete(script);
+				} catch (Exception ex) {
+					log.warn("Failed to undeploy [{}]", script, ex);
+				}
+			}
+		}
+	}
+	
 	/**
 	 * @param endpoint
 	 * TODO: add execution schedule configuration options
@@ -182,6 +198,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 			log.info("Activating [{}].....", deployedScript);
 			scriptFactory.compileScript(deployedScript, bindings);
 			deployedFiles.add(deployedScript);
+			this.deployedFiles.put(endpoint.getId() + endpointType, deployedScript);
 		}
 		final NVP<AdvertisedEndpoint, Set<File>> deploys = new NVP<AdvertisedEndpoint, Set<File>>(endpoint, deployedFiles);
 		this.deployments.put(endpoint.getId(), deploys);
@@ -194,6 +211,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 	@Override
 	public void onOfflineAdvertisedEndpoint(final AdvertisedEndpoint endpoint) {
 		log.info("Endpoint DOWN [{}]", endpoint);
+		undeployEndpointMonitors(endpoint);		
 	}
 
 	/**
@@ -202,8 +220,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 	 */
 	@Override
 	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
-		this.appCtx = appCtx;
-		
+		this.appCtx = appCtx;		
 	}
 
 

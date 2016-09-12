@@ -350,11 +350,11 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
             	try {
 	                final ConsumerRecords<String, ByteBuf> records;
 	                try {
-	                	records = consumer.poll(pollTimeout);
-	                	log.info("Polled {} messages:", records.count());
+	                	records = consumer.poll(pollTimeout);	                	
 	                	final Context ctx = perMessageTimer.time();
 	                	final int recordCount = records.count();	                	
 	                	if(recordCount > 0) {
+	                		log.info("Polled {} messages:", records.count());
 	                		int i = 0;
 	                		
 	                		for(final Iterator<ConsumerRecord<String, ByteBuf>> iter = records.iterator(); iter.hasNext();) {
