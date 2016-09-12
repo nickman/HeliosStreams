@@ -149,6 +149,15 @@ public class CollectorServer extends  SpringBootServletInitializer {
 			}
 		}
 		System.setProperty(CONFIG_ROOT_DIR, rootDir);
+		final File config = new File(rootDirectory, "config.properties");
+		try {
+			final Properties p = URLHelper.readProperties(URLHelper.toURL(config));
+			final int size = p.size();
+			System.err.println("Setting [" + size + "] properties from [" + config + "]");
+			System.getProperties().putAll(p);
+		} catch (Exception ex) {
+			System.err.println("No config properties set");
+		}
 		final File confDir = new File(rootDir, "conf");
 		final File sysprops = new File(confDir, "sys.properties");
 		final File appprops = new File(confDir, "app.properties");
