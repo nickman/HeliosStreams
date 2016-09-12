@@ -603,7 +603,7 @@
 	     <artifactId>maven-surefire-plugin</artifactId>
 	     <version>${surefire.version}</version>
 	</plugin>
-	<!--
+	
 	<plugin>
 	  <groupId>org.apache.maven.plugins</groupId>
 	  <artifactId>maven-shade-plugin</artifactId>
@@ -615,18 +615,21 @@
                 <goal>shade</goal>
               </goals>
               <configuration>
-              
-                <artifactSet>
-                  <excludes>
-					  <exclude>META-INF/*.SF</exclude>
-	                  <exclude>META-INF/*.DSA</exclude>
-	                  <exclude>META-INF/*.RSA</exclude>                      	
-                  </excludes>
-                  <includes>
-                    
-                  </includes>
-                </artifactSet>
-              
+              	<filters>
+              		<filter>
+              		  <artifact>*:*</artifact>
+	                  <excludes>
+						  <exclude>META-INF/*.SF</exclude>
+		                  <exclude>META-INF/*.DSA</exclude>
+		                  <exclude>META-INF/*.RSA</exclude>                      	
+						  <exclude>*.SF</exclude>
+		                  <exclude>*.DSA</exclude>
+		                  <exclude>*.RSA</exclude>                      	
+
+	                  </excludes>
+
+              		</filter>
+              	</filters>
           		<addDefaultImplementationEntries>true</addDefaultImplementationEntries>
           		<addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
           		<includePluginDependencies>false</includePluginDependencies>
@@ -650,7 +653,8 @@
               </configuration>
             </execution>
           </executions>	  
-	</plugin>  -->
+	</plugin>
+	<!--
 	    <plugin>
 	      <groupId>org.springframework.boot</groupId>
 	      <artifactId>spring-boot-maven-plugin</artifactId>
@@ -663,7 +667,7 @@
 	        </execution>
 	      </executions>
 	    </plugin>        	
-	    
+	    -->
    </plugins>
  </build>
     
