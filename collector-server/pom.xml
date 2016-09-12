@@ -165,6 +165,24 @@
 			  <scope>provided</scope>
 			</dependency>
 
+		<!--  Curator -->
+		
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-client</artifactId>
+		</dependency>
+		
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-framework</artifactId>
+		</dependency>
+
+		<dependency>
+		  <groupId>org.apache.curator</groupId>
+		  <artifactId>curator-recipes</artifactId>
+		</dependency>
+			
+
 			<!-- 
 			<dependency>
 			  <groupId>org.apache.curator</groupId>
@@ -560,7 +578,7 @@
 	     <artifactId>maven-surefire-plugin</artifactId>
 	     <version>${surefire.version}</version>
 	</plugin>
-
+	<!--
 	<plugin>
 	  <groupId>org.apache.maven.plugins</groupId>
 	  <artifactId>maven-shade-plugin</artifactId>
@@ -575,11 +593,6 @@
               
                 <artifactSet>
                   <excludes>
-                  <!-- 
-                  	<exclude>log4j:log4j:jar:</exclude>
-                  	<exclude>org.slf4j:*:jar:</exclude>
-                  	<exclude>org.codehaus.groovy:*:jar:</exclude>
-                  -->
 					  <exclude>META-INF/*.SF</exclude>
 	                  <exclude>META-INF/*.DSA</exclude>
 	                  <exclude>META-INF/*.RSA</exclude>                      	
@@ -612,7 +625,19 @@
               </configuration>
             </execution>
           </executions>	  
-	</plugin>
+	</plugin>  -->
+	    <plugin>
+	      <groupId>org.springframework.boot</groupId>
+	      <artifactId>spring-boot-maven-plugin</artifactId>
+	      <version>${spring-boot.version}</version>
+	      <executions>
+	        <execution>
+	          <goals>
+	            <goal>repackage</goal>
+	          </goals>
+	        </execution>
+	      </executions>
+	    </plugin>        	
 	    
    </plugins>
  </build>
