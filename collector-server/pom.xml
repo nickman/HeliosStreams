@@ -336,11 +336,14 @@
         	<artifactId>spring-boot-starter-web</artifactId>		
         </dependency>
 
-		<dependency>
+	<!-- 
+	
+			<dependency>
 		    <groupId>org.springframework.boot</groupId>
 		    <artifactId>spring-boot-starter-undertow</artifactId>
 		</dependency>
-
+	
+	 -->
 
 		<dependency>
 		    <groupId>de.codecentric</groupId>
@@ -530,6 +533,10 @@
 
 
 -->
+		<dependency>
+		  <groupId>org.springframework.boot</groupId>
+		  <artifactId>spring-boot</artifactId>
+  		</dependency>
 		
     
     </dependencies>
@@ -648,7 +655,7 @@
 	                </transformer>
 	                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
 	                  <resource>META-INF/spring.schemas</resource>
-	                </transformer>        			
+	                </transformer>       
                 	<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"/>
                 	<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                 	<transformer implementation="org.apache.maven.plugins.shade.resource.ComponentsXmlResourceTransformer"/>
@@ -673,7 +680,7 @@
 	          </goals>
 	        </execution>
 	      </executions>
-	    </plugin>        	
+	    </plugin>
    </plugins>
  </build>
     

@@ -32,17 +32,12 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.web.SpringBootServletInitializer;
-import org.springframework.cloud.client.circuitbreaker.EnableCircuitBreaker;
-import org.springframework.cloud.netflix.hystrix.EnableHystrix;
-import org.springframework.cloud.netflix.hystrix.dashboard.EnableHystrixDashboard;
-import org.springframework.cloud.netflix.turbine.EnableTurbine;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RequestMapping;
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
-import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -61,7 +56,7 @@ import com.heliosapm.utils.url.URLHelper;
  */
 @Configuration
 @EnableAutoConfiguration
-@Controller
+//@Controller
 @SpringBootApplication
 //@EnableHystrix
 //@EnableCircuitBreaker
@@ -265,6 +260,7 @@ public class CollectorServer extends  SpringBootServletInitializer {
 				}
 			}
 			appCtx = SpringApplication.run(CollectorServer.class, springArgs.toArray(new String[0]));
+			Thread.currentThread().setContextClassLoader(appCtx.getClassLoader());
 			GlobalCacheService.getInstance().put("spring/ApplicationContext", appCtx);
 			//appCtx.getAutowireCapableBeanFactory().configureBean(ManagedScriptFactory.getInstance(), "ManagedScriptFactory");
 		} else {
@@ -287,7 +283,8 @@ public class CollectorServer extends  SpringBootServletInitializer {
 	}
 	
 	private static void initDir(final File rootDirectory) {
-		ManagedScriptFactory.initSubDirs(rootDirectory);
+		PrivateAccessor.invokeStatic(BOOT_CLASS, "initSubDirs", rootDirectory); 
+//		ManagedScriptFactory.initSubDirs(rootDirectory);
 		System.out.println("Initialized directory [" + rootDirectory + "]");
 	}
 	

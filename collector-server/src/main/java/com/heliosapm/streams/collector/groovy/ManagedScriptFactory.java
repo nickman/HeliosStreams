@@ -65,14 +65,13 @@ import org.codehaus.groovy.control.messages.WarningMessage;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.beans.factory.NamedBean;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.beans.factory.config.BeanDefinition;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.annotation.Bean;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Import;
-import org.springframework.context.annotation.Scope;
+import org.springframework.context.event.ApplicationContextEvent;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.ContextStoppedEvent;
 import org.springframework.stereotype.Component;
 
 import com.google.common.cache.Cache;
@@ -121,13 +120,13 @@ import jsr166e.LongAdder;
  * 	finish impl for linked files for windows platforms
  */
 @Component
-public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener, ApplicationContextAware, NamedBean, InitializingBean {
+public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener, ApplicationContextAware, NamedBean, ApplicationListener<ApplicationContextEvent> {
 	/** The singleton instance */
 	private static volatile ManagedScriptFactory instance;
 	/** The singleton instance ctor lock */
 	private static final Object lock = new Object();
 	/** Static class logger */
-	private final Logger log = LogManager.getLogger(ManagedScriptFactory.class);
+	private static final Logger log = LogManager.getLogger(ManagedScriptFactory.class);
 	
 	/** The configuration key for the collector service root directory */
 	public static final String CONFIG_ROOT_DIR = CollectorServer.CONFIG_ROOT_DIR;
@@ -248,7 +247,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		.initialCapacity(2048)
 		.weakValues()
 		.build();
-	
+	protected final Instrumentation instrumentation = LocalAgentInstaller.getInstrumentation();
 	
 	private static final MBeanNotificationInfo[] NOTIF_INFO = new MBeanNotificationInfo[]{
 		new MBeanNotificationInfo(new String[]{NOTIF_TYPE_REPLACEMENT_FAILED}, Notification.class.getName(), "Notification emitted when a script was re-compiled but failed compilation"),
@@ -402,8 +401,19 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		}				
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
+	 */
 	@Override
-	public void afterPropertiesSet() throws Exception {
+	public void onApplicationEvent(final ApplicationContextEvent event) {
+		if(event instanceof ContextRefreshedEvent) {
+			start();
+		}		
+	}
+	
+	
+	public void start()  {
 		startScriptDeployer();		
 	}
 	
@@ -505,14 +515,25 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 */
 	public GroovyClassLoader newGroovyClassLoader(final CompilerConfiguration altConfig) {	
 		
-		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, (altConfig==null ? compilerConfig : altConfig), false);
-		groovyClassLoader.addURL(URLHelper.toURL(fixtureDirectory));
+		
+		final GroovyClassLoader groovyClassLoader = new GroovyClassLoader(libDirClassLoader, (altConfig==null ? compilerConfig : altConfig), true);
+//		groovyClassLoader.addURL(URLHelper.toURL(fixtureDirectory));
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "fixtures").getAbsolutePath());
 //		groovyClassLoader.addClasspath(new File(rootDirectory, "conf").getAbsolutePath());
 		final long gclId = groovyClassLoaderSerial.incrementAndGet();
 		ReferenceService.getInstance().newWeakReference(groovyClassLoader, groovyClassLoaderUnloader(gclId)); 
 //		groovyClassLoaders.put(gclId, groovyClassLoader);		
 		return groovyClassLoader;
+	}
+	
+	
+	protected void printClassLoadersFor(final String className) {
+		final Class<?>[] classes = instrumentation.getAllLoadedClasses();
+		for(Class<?> clazz: classes) {
+			if(clazz.getName().equals(className)) {
+				log.info("Class: [{}] : [{}]", className, clazz.getClassLoader());
+			}
+		}
 	}
 	
 	private static Runnable groovyClassLoaderUnloader(final long gclId) {
@@ -542,77 +563,88 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 */
 	@Override
 	public ManagedScript compileScript(final File source, final Map<String, Object> bindings) {
-		if(source==null) throw new IllegalArgumentException("The passed source file was null");
-		if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
-		final long startTime = System.currentTimeMillis();
-		final String sourceName = source.getAbsolutePath().replace(rootDirectory.getAbsolutePath(), "");
-		final GroovyClassLoader gcl = newGroovyClassLoader();
-		boolean success = false;
-		String errMsg = null;
-		ByteBufReaderSource bSource = null;
+		final ClassLoader currentClassLoader = Thread.currentThread().getContextClassLoader();
 		try {
-			log.info("Compiling script [{}]...", sourceName);
-			bSource = new ByteBufReaderSource(source, scriptPath); 
-			final GroovyCodeSource gcs = new GroovyCodeSource(bSource.getReader(), bSource.getClassName(), bSource.getURI().toString());
-			gcs.setCachable(false);
-			final Class<ManagedScript> msClazz = gcl.parseClass(gcs);
-			ReferenceService.getInstance().newWeakReference(msClazz, null);
-//			final ManagedScript ms;
-//			if(bindings!=null) {
-//				for(Constructor<?> ctor: msClazz.getDeclaredConstructors()) {
-//					System.err.println("MSCLASS DCTOR:" + ctor.toGenericString());
-//				}
-//				for(Constructor<?> ctor: msClazz.getConstructors()) {
-//					System.err.println("MSCLASS CTOR:" + ctor.toGenericString());
-//				}
-//				
-//				final Constructor<ManagedScript> ctor = msClazz.getDeclaredConstructor(Map.class);
-//				ms = ctor.newInstance(bindings);
-////				ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{bindings}, Map.class); 
-//			} else {
-//				ms = msClazz.newInstance();
-//			}
-//			
-			final ManagedScript ms = ManagedScript.instantiate(msClazz, bindings);
-			final long elapsedTime = System.currentTimeMillis() - startTime;			
-			ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
-			if(bindings!=null) {
-				ms.bindingMap.putAll(bindings);
-			}			
-			sendCompilationEvent(ms);
-			success = true;
-			managedScripts.put(source, ms);
-			successfulCompiles.increment();
-			compiledScripts.add(sourceName);
-			failedScripts.remove(sourceName);
-			log.info("Successfully Compiled script [{}] --> [{}].[{}] in [{}] ms.", sourceName, msClazz.getPackage().getName(), msClazz.getSimpleName(), elapsedTime);
-			return ms;
-		} catch (CompilationFailedException cex) {
-			errMsg = "Failed to compile source ["+ source + "]\n\t!!!!!!!!!!!!!!!!!!\n" + bSource.getPrejectedSource() + "\n!!!!!!!!!";
 			
-			cex.printStackTrace(System.err);
-			throw new RuntimeException(errMsg, cex);
-		} catch (IOException iex) {
-			errMsg = "Failed to read source ["+ source + "]";
-			throw new RuntimeException(errMsg, iex);
-		} catch (Exception ex) {
-			errMsg = "Failed to instantiate script for source ["+ source + "]";
-			log.error(errMsg, ex);
-			throw new RuntimeException(errMsg, ex);
-		} catch (Throwable t) {
-			errMsg = "Failed to instantiate script for source ["+ source + "]";
-			log.error(errMsg, t);
-			throw new RuntimeException(errMsg, t);			
-		} finally {
-			if(!success) {
-				sendCompilationEvent(source.getAbsolutePath().replace(scriptDirectory.getAbsolutePath(), ""), errMsg, null);
-				failedCompiles.increment();
-				if(!compiledScripts.contains(sourceName)) {
-					failedScripts.add(sourceName);
-				}
-				log.warn("Script [{}] compilation failed: [{}]", sourceName, errMsg);
+			if(source==null) throw new IllegalArgumentException("The passed source file was null");
+			if(!source.canRead()) throw new IllegalArgumentException("The passed source file [" + source + "] could not be read");
+			final long startTime = System.currentTimeMillis();
+			final String sourceName = source.getAbsolutePath().replace(rootDirectory.getAbsolutePath(), "");
+			final GroovyClassLoader gcl = newGroovyClassLoader();
+			Thread.currentThread().setContextClassLoader(appCtx.getClassLoader());
+			boolean success = false;
+			String errMsg = null;
+			ByteBufReaderSource bSource = null;
+			try {
+				log.info("Compiling script [{}]...", sourceName);
+				bSource = new ByteBufReaderSource(source, scriptPath); 
+				final GroovyCodeSource gcs = new GroovyCodeSource(bSource.getReader(), bSource.getClassName(), bSource.getURI().toString());
+				gcs.setCachable(false);
+				final Class<ManagedScript> msClazz = gcl.parseClass(gcs);
+				log.info("Compiled class: [{}]", msClazz.getName());
+				ReferenceService.getInstance().newWeakReference(msClazz, null);
+	//			final ManagedScript ms;
+	//			if(bindings!=null) {
+	//				for(Constructor<?> ctor: msClazz.getDeclaredConstructors()) {
+	//					System.err.println("MSCLASS DCTOR:" + ctor.toGenericString());
+	//				}
+	//				for(Constructor<?> ctor: msClazz.getConstructors()) {
+	//					System.err.println("MSCLASS CTOR:" + ctor.toGenericString());
+	//				}
+	//				
+	//				final Constructor<ManagedScript> ctor = msClazz.getDeclaredConstructor(Map.class);
+	//				ms = ctor.newInstance(bindings);
+	////				ms = PrivateAccessor.createNewInstance(msClazz, new Object[]{bindings}, Map.class); 
+	//			} else {
+	//				ms = msClazz.newInstance();
+	//			}
+	//			
+				final ManagedScript ms = ManagedScript.instantiate(msClazz, bindings);
+				final long elapsedTime = System.currentTimeMillis() - startTime;			
+				ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
+				if(bindings!=null) {
+					ms.bindingMap.putAll(bindings);
+				}			
+				sendCompilationEvent(ms);
+				success = true;
+				managedScripts.put(source, ms);
+				successfulCompiles.increment();
+				compiledScripts.add(sourceName);
+				failedScripts.remove(sourceName);
+				log.info("Successfully Compiled script [{}] --> [{}].[{}] in [{}] ms.", sourceName, msClazz.getPackage().getName(), msClazz.getSimpleName(), elapsedTime);
+				return ms;
+			} catch (CompilationFailedException cex) {
+				errMsg = "Failed to compile source ["+ source + "]\n\t!!!!!!!!!!!!!!!!!!\n" + bSource.getPrejectedSource() + "\n!!!!!!!!!";
 				
+				cex.printStackTrace(System.err);
+				printClassLoadersFor("org.codehaus.groovy.transform.BaseScriptASTTransformation");
+				printClassLoadersFor("org.codehaus.groovy.transform.GroovyASTTransformation");
+				printClassLoadersFor("com.heliosapm.streams.collector.CollectorServer");
+				throw new RuntimeException(errMsg, cex);
+			} catch (IOException iex) {
+				errMsg = "Failed to read source ["+ source + "]";
+				throw new RuntimeException(errMsg, iex);
+			} catch (Exception ex) {
+				errMsg = "Failed to instantiate script for source ["+ source + "]";
+				log.error(errMsg, ex);
+				throw new RuntimeException(errMsg, ex);
+			} catch (Throwable t) {
+				errMsg = "Failed to instantiate script for source ["+ source + "]";
+				log.error(errMsg, t);
+				throw new RuntimeException(errMsg, t);			
+			} finally {
+				if(!success) {
+					sendCompilationEvent(source.getAbsolutePath().replace(scriptDirectory.getAbsolutePath(), ""), errMsg, null);
+					failedCompiles.increment();
+					if(!compiledScripts.contains(sourceName)) {
+						failedScripts.add(sourceName);
+					}
+					log.warn("Script [{}] compilation failed: [{}]", sourceName, errMsg);
+					
+				}
 			}
+		} finally {
+			Thread.currentThread().setContextClassLoader(currentClassLoader);
 		}
 	}
 	
@@ -729,7 +761,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			compilerConfig.setDebug(true);
 			compilerConfig.setMinimumRecompilationInterval(5);
 			compilerConfig.setRecompileGroovySource(false);
-			compilerConfig.setOptimizationOptions(Collections.singletonMap("indy", true));
+//			compilerConfig.setOptimizationOptions(Collections.singletonMap("indy", true));
 			compilerConfig.setTolerance(100);
 			compilerConfig.setVerbose(true);
 			compilerConfig.setWarningLevel(WarningMessage.NONE);
@@ -737,6 +769,9 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		}
 		compilerConfig.setScriptBaseClass(ManagedScript.class.getName());
 		compilerConfig.setTargetDirectory(tmpDirectory);
+		compilerConfig.setDisabledGlobalASTTransformations(new HashSet<String>(Arrays.asList(
+				"groovy.grape.GrabAnnotationTransformation" //, "org.codehaus.groovy.ast.builder.AstBuilderTransformation"
+		)));
 
 		final String[] imports = ConfigurationHelper.getArraySystemThenEnvProperty(CONFIG_AUTO_IMPORTS, DEFAULT_AUTO_IMPORTS);
 		Collections.addAll(autoImports, DEFAULT_AUTO_IMPORTS);
