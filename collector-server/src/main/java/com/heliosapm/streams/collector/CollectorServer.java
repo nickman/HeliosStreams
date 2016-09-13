@@ -63,10 +63,10 @@ import com.heliosapm.utils.url.URLHelper;
 @EnableAutoConfiguration
 @Controller
 @SpringBootApplication
-@EnableHystrix
-@EnableCircuitBreaker
-@EnableHystrixDashboard
-@EnableTurbine
+//@EnableHystrix
+//@EnableCircuitBreaker
+//@EnableHystrixDashboard
+//@EnableTurbine
 //@ComponentScan({"com.heliosapm.streams.collector.jmx.discovery.*"})
 public class CollectorServer extends  SpringBootServletInitializer {
 	
