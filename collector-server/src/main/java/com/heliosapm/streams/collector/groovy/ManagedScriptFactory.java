@@ -62,17 +62,17 @@ import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.control.CompilerConfiguration;
 import org.codehaus.groovy.control.customizers.ImportCustomizer;
 import org.codehaus.groovy.control.messages.WarningMessage;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.beans.factory.NamedBean;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.ApplicationListener;
-import org.springframework.context.annotation.Import;
-import org.springframework.context.event.ApplicationContextEvent;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.context.event.ContextStoppedEvent;
-import org.springframework.stereotype.Component;
+//import org.springframework.beans.BeansException;
+//import org.springframework.beans.factory.InitializingBean;
+//import org.springframework.beans.factory.NamedBean;
+//import org.springframework.context.ApplicationContext;
+//import org.springframework.context.ApplicationContextAware;
+//import org.springframework.context.ApplicationListener;
+//import org.springframework.context.annotation.Import;
+//import org.springframework.context.event.ApplicationContextEvent;
+//import org.springframework.context.event.ContextRefreshedEvent;
+//import org.springframework.context.event.ContextStoppedEvent;
+//import org.springframework.stereotype.Component;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -81,6 +81,7 @@ import com.heliosapm.streams.collector.CollectorServer;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.ds.JDBCDataSourceManager;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
+import com.heliosapm.streams.collector.jmx.discovery.EndpointDiscoveryService;
 import com.heliosapm.streams.collector.ssh.SSHConnection;
 import com.heliosapm.streams.collector.ssh.SSHTunnelManager;
 import com.heliosapm.streams.tracing.TracerFactory;
@@ -119,8 +120,8 @@ import jsr166e.LongAdder;
  * TODO:
  * 	finish impl for linked files for windows platforms
  */
-@Component
-public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener, ApplicationContextAware, NamedBean, ApplicationListener<ApplicationContextEvent> {
+//@Component
+public class ManagedScriptFactory extends NotificationBroadcasterSupport implements ManagedScriptFactoryMBean, NotificationEmitter ,FileChangeEventListener, MetaClassRegistryChangeEventListener { //, ApplicationContextAware, NamedBean, ApplicationListener<ApplicationContextEvent> {
 	/** The singleton instance */
 	private static volatile ManagedScriptFactory instance;
 	/** The singleton instance ctor lock */
@@ -186,8 +187,8 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	protected final File dataSourceDirectory;
 	/** Indicates if we're in spring mode */
 	protected final boolean springMode;
-	/** The spring app context if we're running in spring boot */
-	protected ApplicationContext appCtx = null;
+//	/** The spring app context if we're running in spring boot */
+//	protected ApplicationContext appCtx = null;
 	/** The script factory bean name if we're running in spring boot */
 	protected String beanName = null;
 	/** The Spring exported interface of this instance */
@@ -224,7 +225,8 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	protected final CollectorExecutionService collectorExecutionService;
 	/** The base bindings to supply to all compiled scripts */
 	protected final Map<String, Object> globalBindings = new ConcurrentHashMap<String, Object>();
-	
+	/** The endpoint discovery service */
+	protected EndpointDiscoveryService discoveryService = null;
 	/** A counter of successful compilations */
 	protected final LongAdder successfulCompiles = new LongAdder();
 	/** A counter of failed compilations */
@@ -268,6 +270,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 					GroovySystem.stopThreadedReferenceManager();
 					GroovySystem.setKeepJavaMetaClasses(false);
 					instance = new ManagedScriptFactory();
+					instance.discoveryService.start();
 				}
 			}
 		}
@@ -398,19 +401,20 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 				.fileFinder();
 		if(!springMode) {
 			startScriptDeployer();
+			discoveryService = new EndpointDiscoveryService();			
 		}				
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
-	 */
-	@Override
-	public void onApplicationEvent(final ApplicationContextEvent event) {
-		if(event instanceof ContextRefreshedEvent) {
-			start();
-		}		
-	}
+//	/**
+//	 * {@inheritDoc}
+//	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
+//	 */
+//	@Override
+//	public void onApplicationEvent(final ApplicationContextEvent event) {
+//		if(event instanceof ContextRefreshedEvent) {
+//			start();
+//		}		
+//	}
 	
 	
 	public void start()  {
@@ -563,7 +567,6 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 */
 	@Override
 	public ManagedScript compileScript(final File source, final Map<String, Object> bindings) {
-		final ClassLoader currentClassLoader = Thread.currentThread().getContextClassLoader();
 		try {
 			
 			if(source==null) throw new IllegalArgumentException("The passed source file was null");
@@ -571,7 +574,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			final long startTime = System.currentTimeMillis();
 			final String sourceName = source.getAbsolutePath().replace(rootDirectory.getAbsolutePath(), "");
 			final GroovyClassLoader gcl = newGroovyClassLoader();
-			Thread.currentThread().setContextClassLoader(appCtx.getClassLoader());
+//			Thread.currentThread().setContextClassLoader(appCtx.getClassLoader());
 			boolean success = false;
 			String errMsg = null;
 			ByteBufReaderSource bSource = null;
@@ -599,7 +602,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	//				ms = msClazz.newInstance();
 	//			}
 	//			
-				final ManagedScript ms = ManagedScript.instantiate(msClazz, bindings);
+				final ManagedScript ms = ManagedScript.instantiate(msClazz, bindings==null ? getGlobalBindings() : bindings);
 				final long elapsedTime = System.currentTimeMillis() - startTime;			
 				ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
 				if(bindings!=null) {
@@ -644,7 +647,6 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 				}
 			}
 		} finally {
-			Thread.currentThread().setContextClassLoader(currentClassLoader);
 		}
 	}
 	
@@ -800,9 +802,9 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 */
 	@SuppressWarnings("unchecked")
 	private synchronized void applyImports(final boolean reset) {	
-		if(reset) {
-			((List<Import>)PrivateAccessor.getFieldValue(importCustomizer, "imports")).clear();
-		}
+//		if(reset) {
+//			((List<Import>)PrivateAccessor.getFieldValue(importCustomizer, "imports")).clear();
+//		}
 		for(String imp: autoImports) {
 			String _imp = imp.trim().replaceAll("\\s+", " ");
 			if(!_imp.startsWith("import")) {
@@ -1279,25 +1281,25 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		return compilerConfig.getOptimizationOptions();
 	}
 
-	/**
-	 * {@inheritDoc}
-	 * @see org.springframework.beans.factory.NamedBean#getBeanName()
-	 */
-	@Override
-	public String getBeanName() {
-		return getClass().getSimpleName();	
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
-	 */
-	@Override
-	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
-		this.appCtx = appCtx;		
-		//springInstance = appCtx.getBean("ManagedScriptFactory", ManagedScriptFactoryMBean.class);
-		springInstance = appCtx.getBean(ManagedScriptFactoryMBean.class);
-	}
+//	/**
+//	 * {@inheritDoc}
+//	 * @see org.springframework.beans.factory.NamedBean#getBeanName()
+//	 */
+//	@Override
+//	public String getBeanName() {
+//		return getClass().getSimpleName();	
+//	}
+//
+//	/**
+//	 * {@inheritDoc}
+//	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+//	 */
+//	@Override
+//	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+//		this.appCtx = appCtx;		
+//		//springInstance = appCtx.getBean("ManagedScriptFactory", ManagedScriptFactoryMBean.class);
+//		springInstance = appCtx.getBean(ManagedScriptFactoryMBean.class);
+//	}
 
 	/**
 	 * Returns the dynamic discovery script directory

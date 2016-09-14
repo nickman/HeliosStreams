@@ -161,8 +161,7 @@
 
 			<dependency>
 			  <groupId>org.apache.zookeeper</groupId>
-			  <artifactId>zookeeper</artifactId>
-			  <scope>provided</scope>
+			  <artifactId>zookeeper</artifactId>			  
 			</dependency>
 
 		<!--  Curator -->
@@ -211,13 +210,11 @@
 			<dependency>
 			  <groupId>org.apache.kafka</groupId>
 			  <artifactId>kafka-clients</artifactId>
-			  <scope>provided</scope>
 			</dependency>
 
 			<dependency>
 			  <groupId>org.apache.kafka</groupId>
 			  <artifactId>kafka-streams</artifactId>
-			  <scope>provided</scope>
 			</dependency>
 
 
@@ -225,11 +222,6 @@
 		    Misc Dependencies
 		    ========================================================== -->
 
-			<dependency>				
-				<groupId>com.heliosapm.utils</groupId>
-				<artifactId>heliosutils</artifactId>
-				<scope>provided</scope>
-			</dependency>
 			
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
@@ -279,6 +271,7 @@
 		    Spring Boot Dependencies
 		    ========================================================== -->
 		
+		<!-- 
 		<dependency>
 		  <groupId>org.springframework.boot</groupId>
 		  <artifactId>spring-boot</artifactId>
@@ -305,30 +298,6 @@
 		  <artifactId>spring-boot-loader</artifactId>
 		</dependency>
 		
-      	<dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-            <version>${spring-boot.version}</version>
-			  <exclusions>
-               	<exclusion>
-		          <groupId>ch.qos.logback</groupId>
-		          <artifactId>logback-classic</artifactId>
-		        </exclusion>
-			  	<exclusion>
-		          <groupId>org.slf4j</groupId>
-		          <artifactId>slf4j-log4j12</artifactId>
-		        </exclusion>
-			  	<exclusion>
-		          <groupId>org.slf4j</groupId>
-		          <artifactId>slf4j-api</artifactId>
-		        </exclusion>		        		        
-			  	<exclusion>
-		          <groupId>log4j</groupId>
-		          <artifactId>log4j</artifactId>
-		        </exclusion>		        		        
-			  </exclusions>			  		    			  			              
-        </dependency>
-		
 	
 		
 		<dependency>
@@ -336,24 +305,25 @@
         	<artifactId>spring-boot-starter-web</artifactId>		
         </dependency>
 
-	<!-- 
 	
 			<dependency>
 		    <groupId>org.springframework.boot</groupId>
 		    <artifactId>spring-boot-starter-undertow</artifactId>
 		</dependency>
 	
-	 -->
 
 		<dependency>
 		    <groupId>de.codecentric</groupId>
 		    <artifactId>spring-boot-admin-starter-client</artifactId>
 		</dependency>
 		
+		-->
+		
 		<!-- ==========================================================
 		    Hystrix/Turbine Dependencies
 		    ========================================================== -->		
 
+<!-- 
 		<dependency>
 		  <groupId>org.springframework.cloud</groupId>
 		  <artifactId>spring-cloud-starter-hystrix</artifactId>
@@ -382,7 +352,7 @@
 		</dependency>
 
 
-		<!--
+		
 		<dependency>
 		  <groupId>org.springframework.cloud</groupId>
 		  <artifactId>spring-cloud-netflix-hystrix-stream</artifactId>
@@ -392,7 +362,7 @@
 		  <groupId>org.springframework.cloud</groupId>
 		  <artifactId>spring-cloud-netflix-turbine-stream</artifactId>
 		</dependency>
-	-->
+
 
 		
       <dependency>
@@ -421,7 +391,7 @@
 				<artifactId>spring-jmx</artifactId>
       </dependency>
 
-
+-->
 
 		<!-- ==========================================================
 		    Collector Dependencies
@@ -533,11 +503,6 @@
 
 
 -->
-		<dependency>
-		  <groupId>org.springframework.boot</groupId>
-		  <artifactId>spring-boot</artifactId>
-  		</dependency>
-		
     
     </dependencies>
     
@@ -669,6 +634,7 @@
             </execution>
           </executions>	  
 	</plugin> 
+		<!-- 
 	    <plugin>
 	      <groupId>org.springframework.boot</groupId>
 	      <artifactId>spring-boot-maven-plugin</artifactId>
@@ -681,6 +647,7 @@
 	        </execution>
 	      </executions>
 	    </plugin>
+	    -->
    </plugins>
  </build>
     

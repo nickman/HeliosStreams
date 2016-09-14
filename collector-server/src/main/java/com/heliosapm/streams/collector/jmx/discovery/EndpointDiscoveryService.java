@@ -29,14 +29,14 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
-import org.springframework.beans.BeansException;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
-import org.springframework.context.ApplicationListener;
-import org.springframework.context.event.ApplicationContextEvent;
-import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.context.event.ContextStoppedEvent;
-import org.springframework.stereotype.Component;
+//import org.springframework.beans.BeansException;
+//import org.springframework.context.ApplicationContext;
+//import org.springframework.context.ApplicationContextAware;
+//import org.springframework.context.ApplicationListener;
+//import org.springframework.context.event.ApplicationContextEvent;
+//import org.springframework.context.event.ContextRefreshedEvent;
+//import org.springframework.context.event.ContextStoppedEvent;
+//import org.springframework.stereotype.Component;
 
 import com.google.common.io.Files;
 import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
@@ -53,15 +53,15 @@ import com.heliosapm.utils.tuples.NVP;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.jmx.discovery.EndpointDiscoveryService</code></p>
  */
-@Component
-public class EndpointDiscoveryService implements AdvertisedEndpointListener, ApplicationContextAware, ApplicationListener<ApplicationContextEvent> {
+//@Component
+public class EndpointDiscoveryService implements AdvertisedEndpointListener { //, ApplicationContextAware, ApplicationListener<ApplicationContextEvent> {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	/** The endpoint listener */
 	protected EndpointListener endpointListener = null;
 	
-	/** The injected application context */
-	protected ApplicationContext appCtx = null;
+//	/** The injected application context */
+//	protected ApplicationContext appCtx = null;
 	/** Indicates if service is started */
 	protected final AtomicBoolean started = new AtomicBoolean(false);
 	/** The discovery dynamic script directory where we will deploy scripts for dynamically discovered endpoints */
@@ -85,13 +85,13 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 	/**
 	 * Starts the listener
 	 */
-	protected void start() {
+	public void start() {
 		// TODO: clear the dynamic dir
 		if(started.compareAndSet(false, true)) {
 			log.info(">>>>> Starting EndpointDiscoveryService...");
 			endpointListener = EndpointListener.getInstance();
 			endpointListener.addEndpointListener(this);			
-			scriptFactory = appCtx.getBean(ManagedScriptFactory.class);
+			scriptFactory = ManagedScriptFactory.getInstance(); //appCtx.getBean(ManagedScriptFactory.class);
 			dynamicDirectory = scriptFactory.getDynamicDirectory();
 			endpointTemplateDirectory = new File(scriptFactory.getTemplateDirectory(), "endpoints");
 			log.info("<<<<< EndpointDiscoveryService Started.");
@@ -214,28 +214,28 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener, App
 		undeployEndpointMonitors(endpoint);		
 	}
 
-	/**
-	 * @param appCtx
-	 * @throws BeansException
-	 */
-	@Override
-	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
-		this.appCtx = appCtx;		
-	}
-
-
-	/**
-	 * {@inheritDoc}
-	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
-	 */
-	@Override
-	public void onApplicationEvent(final ApplicationContextEvent event) {
-		if(event instanceof ContextRefreshedEvent) {
-			start();
-		} else if(event instanceof ContextStoppedEvent) {
-			stop();
-		}		
-	}
+//	/**
+//	 * @param appCtx
+//	 * @throws BeansException
+//	 */
+//	@Override
+//	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+//		this.appCtx = appCtx;		
+//	}
+//
+//
+//	/**
+//	 * {@inheritDoc}
+//	 * @see org.springframework.context.ApplicationListener#onApplicationEvent(org.springframework.context.ApplicationEvent)
+//	 */
+//	@Override
+//	public void onApplicationEvent(final ApplicationContextEvent event) {
+//		if(event instanceof ContextRefreshedEvent) {
+//			start();
+//		} else if(event instanceof ContextStoppedEvent) {
+//			stop();
+//		}		
+//	}
 
 	
 

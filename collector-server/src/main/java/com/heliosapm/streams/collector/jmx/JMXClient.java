@@ -307,17 +307,17 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 								log.warn("JMXConnector interrupted after timeout");
 							}
 						});
-						if(hystrixEnabled.get()) {
-							commandBuilder.commandFor(new Callable<Object>(){
-								@Override
-								public Void call() throws Exception {
-									jmxConnector.connect();
-									return null;
-								}
-							}).execute();
-						} else {
+//						if(hystrixEnabled.get()) {
+//							commandBuilder.commandFor(new Callable<Object>(){
+//								@Override
+//								public Void call() throws Exception {
+//									jmxConnector.connect();
+//									return null;
+//								}
+//							}).execute();
+//						} else {
 							jmxConnector.connect();
-						}
+//						}
 						
 //						server = jmxConnector.getMBeanServerConnection();
 						final MBeanServerConnection conn = jmxConnector.getMBeanServerConnection();

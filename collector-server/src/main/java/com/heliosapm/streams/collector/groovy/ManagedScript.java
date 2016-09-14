@@ -62,9 +62,9 @@ import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.codehaus.groovy.control.CompilationFailedException;
 import org.codehaus.groovy.reflection.ClassInfo;
 import org.codehaus.groovy.runtime.NullObject;
-import org.springframework.beans.BeansException;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
+//import org.springframework.beans.BeansException;
+//import org.springframework.context.ApplicationContext;
+//import org.springframework.context.ApplicationContextAware;
 
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
@@ -107,7 +107,7 @@ import jsr166e.LongAdder;
  * 	Race condition on dependency management when datasource is redeployed. 
  */
 
-public abstract class ManagedScript extends Script implements NotificationEmitter, MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler, ApplicationContextAware {
+public abstract class ManagedScript extends Script implements NotificationEmitter, MBeanRegistration, ManagedScriptMBean, Closeable, Callable<Void>, UncaughtExceptionHandler { //, ApplicationContextAware {
 	/** The JMX notification handler */
 	protected final NotificationBroadcasterSupport broadcaster;
 	/** Instance logger */
@@ -142,8 +142,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** The linked source file */
 	protected File linkedSourceFile = null; 
 	
-	/** The spring app context if we're running in spring boot */
-	protected ApplicationContext appCtx = null;
+//	/** The spring app context if we're running in spring boot */
+//	protected ApplicationContext appCtx = null;
 	/** The Spring exported interface of this instance */
 	protected ManagedScriptMBean springInstance = null;
 	
@@ -237,6 +237,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	
 	static ManagedScript instantiate(final Class<ManagedScript> clazz, final Map<String, Object> initialBindings) throws Exception {
 		ctorBindings.set(initialBindings);
+		if(initialBindings!=null) System.out.println(":::  Initial Bindings: " + initialBindings.keySet());
 		try {
 			return clazz.newInstance();
 		} finally {
@@ -258,7 +259,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 */
 	@SuppressWarnings("unchecked")
 	public ManagedScript(final Map<String, Object> initialBindings) {
-		super(new Binding(initialBindings));
+		super(new Binding(initialBindings==null ? new HashMap<String, Object>() : initialBindings));
 		springMode = CollectorServer.isSpringMode();
 		cache = GlobalCacheService.getInstance();
 		dependencyManager = new DependencyManager<ManagedScript>(this, (Class<ManagedScript>) this.getClass());
@@ -552,11 +553,11 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			try {
 				log.info("Starting collect");
 				final long start = System.currentTimeMillis();
-				if(hystrixEnabled.get()) {
-					runInCircuitBreaker();
-				} else {
+//				if(hystrixEnabled.get()) {
+//					runInCircuitBreaker();
+//				} else {
 					run();
-				}
+//				}
 				return System.currentTimeMillis() - start;
 			} finally {
 				tracer.flush();
@@ -568,23 +569,23 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	
 	
 	
-	
-	/**
-	 * Executes this script through the hystrix circuit breaker
-	 */
-	protected void runInCircuitBreaker() {
-		try {
-			commandBuilder.commandFor(new Callable<Object>(){
-				@Override
-				public Object call() throws Exception {					
-					return ManagedScript.this.run();
-				}
-			}).execute();
-		} catch (Exception ex) {
-			log.error("Failed to execute ScriptCommand", ex);
-			throw new RuntimeException("Failed to execute ScriptCommand", ex);
-		}
-	}
+//	
+//	/**
+//	 * Executes this script through the hystrix circuit breaker
+//	 */
+//	protected void runInCircuitBreaker() {
+//		try {
+//			commandBuilder.commandFor(new Callable<Object>(){
+//				@Override
+//				public Object call() throws Exception {					
+//					return ManagedScript.this.run();
+//				}
+//			}).execute();
+//		} catch (Exception ex) {
+//			log.error("Failed to execute ScriptCommand", ex);
+//			throw new RuntimeException("Failed to execute ScriptCommand", ex);
+//		}
+//	}
 	
 //	@Override
 //	//@HystrixCommand(fallbackMethod="pause",  commandKey="getBeanName", groupKey="Foo", threadPoolKey="CollectorThreadPool")
@@ -1429,14 +1430,14 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		return getClass().getName();
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
-	 */
-	@Override
-	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
-		this.appCtx = appCtx;				
-	}
+//	/**
+//	 * {@inheritDoc}
+//	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+//	 */
+//	@Override
+//	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+//		this.appCtx = appCtx;				
+//	}
 	
 	@Override
 	public boolean isHystrixEnabled() {

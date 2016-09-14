@@ -28,14 +28,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.boot.context.web.SpringBootServletInitializer;
-import org.springframework.context.ConfigurableApplicationContext;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.RequestMapping;
+//import org.springframework.boot.SpringApplication;
+//import org.springframework.boot.context.web.SpringBootServletInitializer;
+//import org.springframework.context.ConfigurableApplicationContext;
+//import org.springframework.context.annotation.Configuration;
+//import org.springframework.stereotype.Controller;
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.utils.collections.Props;
@@ -54,16 +51,16 @@ import com.heliosapm.utils.url.URLHelper;
  * <p><code>com.heliosapm.streams.collector.CollectorServer</code></p>
  * FIXME:  replace this ugly stuff with args4j
  */
-@Configuration
-@EnableAutoConfiguration
+//@Configuration
+//@EnableAutoConfiguration
 //@Controller
-@SpringBootApplication
+//@SpringBootApplication
 //@EnableHystrix
 //@EnableCircuitBreaker
 //@EnableHystrixDashboard
 //@EnableTurbine
 //@ComponentScan({"com.heliosapm.streams.collector.jmx.discovery.*"})
-public class CollectorServer extends  SpringBootServletInitializer {
+public class CollectorServer { //extends  SpringBootServletInitializer {
 	
 	/** The command help text */
 	public static final String COMMAND_HELP = "Helios CollectionServer: Command Line Options: \n" +
@@ -88,10 +85,10 @@ public class CollectorServer extends  SpringBootServletInitializer {
 	/** The configuration key for the collector service root directory */
 	public static final String CONFIG_ROOT_DIR = "collector.service.rootdir";
 
-	/** The current booted app context */
-	private static ConfigurableApplicationContext appCtx = null;
-	/** The current booted spring app */
-	private static SpringApplication springApp = null;
+//	/** The current booted app context */
+//	private static ConfigurableApplicationContext appCtx = null;
+//	/** The current booted spring app */
+//	private static SpringApplication springApp = null;
 	/** The spring boot launch thread */
 	private static Thread springBootLaunchThread = null;
 	
@@ -249,24 +246,24 @@ public class CollectorServer extends  SpringBootServletInitializer {
 		LogManager.getRootLogger();
 		ExtendedThreadManager.install();
 		JMXHelper.fireUpJMXMPServer(jmxmpIface);
-		noSpringMode = findArg("--nospring", null, args) == null;
-		if(noSpringMode) {
-			System.out.println("Booting in Spring Mode");
-			final List<String> springArgs = new ArrayList<String>(args.length);
-			for(String cmd: args) {
-				final Matcher m = NON_SPRING_CMD_PATTERN.matcher(cmd);
-				if(!m.matches() || !NON_SPRING_CMDS.contains(m.group(1).toLowerCase())) {
-					springArgs.add(cmd);
-				}
-			}
-			appCtx = SpringApplication.run(CollectorServer.class, springArgs.toArray(new String[0]));
-			Thread.currentThread().setContextClassLoader(appCtx.getClassLoader());
-			GlobalCacheService.getInstance().put("spring/ApplicationContext", appCtx);
-			//appCtx.getAutowireCapableBeanFactory().configureBean(ManagedScriptFactory.getInstance(), "ManagedScriptFactory");
-		} else {
+		noSpringMode = false; //findArg("--nospring", null, args) == null;
+//		if(noSpringMode) {
+//			System.out.println("Booting in Spring Mode");
+//			final List<String> springArgs = new ArrayList<String>(args.length);
+//			for(String cmd: args) {
+//				final Matcher m = NON_SPRING_CMD_PATTERN.matcher(cmd);
+//				if(!m.matches() || !NON_SPRING_CMDS.contains(m.group(1).toLowerCase())) {
+//					springArgs.add(cmd);
+//				}
+//			}
+//			appCtx = SpringApplication.run(CollectorServer.class, springArgs.toArray(new String[0]));
+//			Thread.currentThread().setContextClassLoader(appCtx.getClassLoader());
+//			GlobalCacheService.getInstance().put("spring/ApplicationContext", appCtx);
+//			//appCtx.getAutowireCapableBeanFactory().configureBean(ManagedScriptFactory.getInstance(), "ManagedScriptFactory");
+//		} else {
 			System.out.println("Booting in Standalone Mode");
 			PrivateAccessor.invokeStatic(BOOT_CLASS, "getInstance");			
-		}
+//		}
 		
 		final Thread stopThread = Thread.currentThread();
 		Runtime.getRuntime().addShutdownHook(new Thread("CollectorServerShutdownHook"){
@@ -401,10 +398,10 @@ public class CollectorServer extends  SpringBootServletInitializer {
 //		return new String[] {defaultValue};
 //	}
 	
-    @RequestMapping("/foo")
-    public String home() {
-        return "forward:/hystrix";
-    }
+//    @RequestMapping("/foo")
+//    public String home() {
+//        return "forward:/hystrix";
+//    }
 
 //    @Override
 //    protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {

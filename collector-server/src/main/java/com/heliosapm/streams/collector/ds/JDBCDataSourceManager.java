@@ -28,10 +28,10 @@ import java.util.concurrent.Future;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
+//import org.springframework.beans.BeansException;
+//import org.springframework.beans.factory.support.DefaultListableBeanFactory;
+//import org.springframework.context.ApplicationContext;
+//import org.springframework.context.ApplicationContextAware;
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
@@ -54,7 +54,7 @@ import jsr166e.LongAdder;
  * <p><code>com.heliosapm.streams.collector.ds.JDBCDataSourceManager</code></p>
  */
 
-public class JDBCDataSourceManager implements FileChangeEventListener, ApplicationContextAware {
+public class JDBCDataSourceManager implements FileChangeEventListener { //, ApplicationContextAware {
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -74,8 +74,8 @@ public class JDBCDataSourceManager implements FileChangeEventListener, Applicati
 	protected final LongAdder successfulDeploys = new LongAdder();
 	/** A counter of failed deployments */
 	protected final LongAdder failedDeploys = new LongAdder();
-	/** The spring app context */
-	protected ApplicationContext appCtx = null;
+//	/** The spring app context */
+//	protected ApplicationContext appCtx = null;
 
 
 	/**
@@ -198,12 +198,12 @@ public class JDBCDataSourceManager implements FileChangeEventListener, Applicati
 				try { ds.close(); } catch (Exception x) {/* No Op */}
 				try { GlobalCacheService.getInstance().remove(ds.dsCacheKey); } catch (Exception x) {/* No Op */}
 				try { GlobalCacheService.getInstance().remove(ds.groovydsCacheKey); } catch (Exception x) {/* No Op */}
-				if(appCtx!=null) {
-					try {
-						((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).destroySingleton("ds/" + ds.getPoolName());
-					} catch (Exception x) {/* No Op */}
-					
-				}
+//				if(appCtx!=null) {
+//					try {
+//						((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).destroySingleton("ds/" + ds.getPoolName());
+//					} catch (Exception x) {/* No Op */}
+//					
+//				}
 				log.info("<<< DataSource [{}] stopped", dsDef);
 			}
 		}
@@ -286,16 +286,16 @@ public class JDBCDataSourceManager implements FileChangeEventListener, Applicati
 	}
 
 
-	/**
-	 * {@inheritDoc}
-	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
-	 */
-	@Override
-	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
-		this.appCtx = appCtx;
-		for(HikariDataSource ds: dataSources.values()) {
-			appCtx.getAutowireCapableBeanFactory().initializeBean(ds, "ds/" + ds.getPoolName());
-		}
-	}
+//	/**
+//	 * {@inheritDoc}
+//	 * @see org.springframework.context.ApplicationContextAware#setApplicationContext(org.springframework.context.ApplicationContext)
+//	 */
+//	@Override
+//	public void setApplicationContext(final ApplicationContext appCtx) throws BeansException {
+//		this.appCtx = appCtx;
+//		for(HikariDataSource ds: dataSources.values()) {
+//			appCtx.getAutowireCapableBeanFactory().initializeBean(ds, "ds/" + ds.getPoolName());
+//		}
+//	}
 
 }

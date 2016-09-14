@@ -26,7 +26,7 @@ import java.util.Set;
 
 import javax.management.ObjectName;
 
-import org.springframework.beans.factory.NamedBean;
+//import org.springframework.beans.factory.NamedBean;
 
 /**
  * <p>Title: ManagedScriptMBean</p>
@@ -35,7 +35,7 @@ import org.springframework.beans.factory.NamedBean;
  * <p><code>com.heliosapm.streams.collector.groovy.ManagedScriptMBean</code></p>
  */
 
-public interface ManagedScriptMBean extends NamedBean {
+public interface ManagedScriptMBean { //extends NamedBean {
 	
 	/**
 	 * Indicates if the hystrix circuit-breaker is enabled for this script
