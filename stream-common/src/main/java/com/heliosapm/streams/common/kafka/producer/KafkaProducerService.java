@@ -146,7 +146,9 @@ public class KafkaProducerService<K, V> implements Producer<K, V> {
 	
 	
 	private KafkaProducerService(final Properties config) {
-		producerProperties = Props.extract("kafka.producer.", config, true, true);
+		log.info("configProperties:" + config);
+		producerProperties = Props.extract("kafka.producer.", config, true, false);
+		log.info("producerProperties:" + producerProperties);
 		producer = new KafkaProducer<K, V>(producerProperties);
 	}
 	

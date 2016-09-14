@@ -123,7 +123,6 @@ public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMar
 	public void writeMarshallable(final BytesOut bytes) {
 		bytes.writeByte(useGzip ? COMPRESSED : NOT_COMPRESSED);		
 		bytes.writeInt(byteBuf.readableBytes());
-		System.err.println("*** writeMarshallable size:" + byteBuf.readableBytes());
 		OutputStream os = null;
 		try {
 			os = useGzip ? wrap(bytes.outputStream(), 1024) : bytes.outputStream();
@@ -136,7 +135,6 @@ public class ByteBufMarshallable implements WriteBytesMarshallable, ReadBytesMar
 //			bytes.outputStream().flush();
 			os.flush();
 			final long total = bytes.writePosition() - pre;
-			System.err.println("*** writeMarshallable complete size:" + total);
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to write buffer bytes", ex);
 		} finally {

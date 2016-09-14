@@ -28,5 +28,10 @@ import io.netty.buffer.ByteBuf;
  */
 
 public interface MessageListener {
-	public void onMetric(ByteBuf buf);
+	/**
+	 * Handles a buffer of messages
+	 * @param buf the buffer
+	 * @return the number of messages extracted and processed from the buffer
+	 */
+	public int onMetric(ByteBuf buf);
 }

@@ -367,18 +367,21 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		cr.start(5, TimeUnit.SECONDS);
 		final MessageListener listener = new MessageListener() {
 			@Override
-			public void onMetric(final ByteBuf buf) {
-				listenerEvents.mark();				
+			public int onMetric(final ByteBuf buf) {
+				listenerEvents.mark();
+				int cnt = 0;
 				try {
 					while(buf.isReadable(20)) {
 						StreamedMetric.read(buf);
 						listenerEvents.mark();
+						cnt++;
 					}
 				} catch (Exception ex) {
 					deserErrors.inc();
 				} finally {
 					buf.release();
 				}				
+				return cnt;
 			}
 		};
 		final MessageQueue mq = MessageQueue.getInstance("Test", listener, System.getProperties());
@@ -456,13 +459,15 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 			try {
 				long processed = 0L;
 				long reads = 0L;
+				int listenerProcessed = 0;
+				final long startTime = System.currentTimeMillis();
 				while(tailer.readBytes(smm)) {
 					chronicleReads.inc();
 					reads++;
 					final ByteBuf sm = smm.getAndNullByteBuf();
 					log.debug("MessageQueue Read Buffer, size: {} bytes", sm.readableBytes());
 					if(sm!=null) {
-						listener.onMetric(sm);
+						listenerProcessed += listener.onMetric(sm);
 //						sm.release();
 						processed++;
 						if(processed==stopCheckCount) {
@@ -473,7 +478,10 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 				}
 				if(reads==0) {
 					Jvm.pause(idlePauseTime);
-				}
+				} else {
+					final long elapsedTime = System.currentTimeMillis() - startTime;
+					log.info("Processed [{}] in [{}] ms.", listenerProcessed, elapsedTime);
+				}			
 				reads = 0;
 			} catch (Exception ex) {
 				if(ex instanceof InterruptedException) {

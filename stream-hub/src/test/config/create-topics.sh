@@ -27,6 +27,8 @@ cd $KAFKA_HOME
 ./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.directed --partitions $PARTS --replication-factor $REPL  --config retention.ms=$RETENTION
 # Reads in JSON docs published by filebeat, extracts the message and routes (or drops) accordingly
 ./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.beats --partitions $PARTS --replication-factor $REPL --config retention.ms=$RETENTION
+# Outbound metrics from OpenTSDB
+./bin/kafka-topics.sh --zookeeper $ZOOKEEP_URI --create --topic tsdb.metrics.out --partitions $PARTS --replication-factor $REPL --config retention.ms=$RETENTION
 
 popd
 

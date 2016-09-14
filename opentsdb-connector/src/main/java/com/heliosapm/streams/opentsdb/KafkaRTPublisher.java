@@ -21,10 +21,10 @@ package com.heliosapm.streams.opentsdb;
 import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.nio.ByteBuffer;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.slf4j.Logger;
@@ -33,13 +33,13 @@ import org.slf4j.LoggerFactory;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Timer;
-import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.streams.chronicle.MessageListener;
+import com.heliosapm.streams.chronicle.MessageQueue;
 import com.heliosapm.streams.common.kafka.producer.KafkaProducerService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.metrics.ValueType;
-import com.heliosapm.streams.opentsdb.ringbuffer.RingBufferService;
 import com.heliosapm.utils.collections.Props;
 import com.stumbleupon.async.Deferred;
 import com.sun.management.ThreadMXBean;
@@ -50,13 +50,7 @@ import net.openhft.chronicle.bytes.BytesIn;
 import net.openhft.chronicle.bytes.BytesRingBufferStats;
 import net.openhft.chronicle.bytes.ReadBytesMarshallable;
 import net.openhft.chronicle.core.io.IORuntimeException;
-import net.openhft.chronicle.queue.ChronicleQueue;
-import net.openhft.chronicle.queue.ChronicleQueueBuilder;
 import net.openhft.chronicle.queue.ExcerptAppender;
-import net.openhft.chronicle.queue.ExcerptTailer;
-import net.openhft.chronicle.queue.RollCycles;
-import net.openhft.chronicle.queue.impl.StoreFileListener;
-import net.openhft.chronicle.wire.DocumentContext;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.stats.StatsCollector;
@@ -69,17 +63,14 @@ import net.opentsdb.tsd.RTPublisher;
  * <p><code>com.heliosapm.streams.opentsdb.KafkaRTPublisher</code></p>
  */
 
-public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingBufferStats>, StoreFileListener {
+public class KafkaRTPublisher extends RTPublisher implements MessageListener  {
 	/** Instance logger */
 	protected final Logger log = LoggerFactory.getLogger(getClass());	
-	/** The publication dispatch */
-	protected RingBufferService ringBufferService = null;
-	/** The chronicle queue */
-	protected ChronicleQueue chronicle;
-	/** The chronicle directory */
-	protected String chronicleDir = System.getProperty("java.io.tmpdir") + File.separator + "opentsdb-chronicle" + File.separator + "kafka-publisher";
 	/** The kafka message sender */
-	protected KafkaProducerService<String, ByteBuf> kafkaSender;
+	protected KafkaProducerService<String, StreamedMetricValue> kafkaSender;
+	/** The chronicle message queue */
+	protected MessageQueue messageQueue;
+
 	
 	/** The platform ThreadMXBean */
 	public static final ThreadMXBean TMX = (ThreadMXBean)ManagementFactory.getThreadMXBean();
@@ -126,19 +117,43 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 		final Properties p = new Properties();		
 		p.putAll(config);
 		final Properties rtpConfig = Props.extract(CONFIG_PREFIX, p, true, true);
-		ringBufferService = RingBufferService.getInstance(p);
-		kafkaSender = KafkaProducerService.getInstance(p);
-		topicName = rtpConfig.getProperty("topic.name");
-		chronicle = ChronicleQueueBuilder
-				.single(chronicleDir)
-				.buffered(true)
-				.rollCycle(RollCycles.HOURLY)
-				.onRingBufferStats(this)
-				.storeFileListener(this)
-				.build();
-		
+		for(final String key: rtpConfig.stringPropertyNames()) {
+			rtpConfig.setProperty("kafka.producer." + key , rtpConfig.getProperty(key));
+//			rtpConfig.remove(key);
+		}
+		log.info("EXTRACTED Config:" + rtpConfig);
+		kafkaSender = KafkaProducerService.getInstance(rtpConfig);
+		messageQueue = MessageQueue.getInstance(getClass().getSimpleName(), this, rtpConfig);
+		topicName = rtpConfig.getProperty("kafka.producer.topic.name");
+				
 		log.info("<<<<< KafkaRTPublisher initialized.");
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.chronicle.MessageListener#onMetric(io.netty.buffer.ByteBuf)
+	 */
+	@Override
+	public int onMetric(final ByteBuf buf) {
+		log.debug("OnMetric Buffer: {} bytes", buf.readableBytes());
+		try {			
+			int totalCount = 0;
+			try {
+				final Iterator<StreamedMetricValue> iter = StreamedMetricValue.streamedMetricValues(true, buf, true).iterator();
+				while(iter.hasNext()) {
+					final StreamedMetricValue smv = iter.next();
+					kafkaSender.send(new ProducerRecord<String, StreamedMetricValue>(topicName, smv.metricKey(), smv));
+					totalCount++;
+				}
+			} catch (Exception ex) {
+				log.error("OnMetric Error", ex);
+			}
+			return totalCount;
+		} finally {
+			try { buf.release(); } catch (Exception ex) {/* No Op */}
+		}
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -146,7 +161,7 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 	 */
 	@Override
 	public Deferred<Object> shutdown() {
-		return null;
+		return Deferred.fromResult(null);
 	}
 
 	/**
@@ -154,9 +169,8 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 	 * @see net.opentsdb.tsd.RTPublisher#version()
 	 */
 	@Override
-	public String version() {
-		// TODO Auto-generated method stub
-		return null;
+	public String version() {		
+		return "2.1";
 	}
 
 	/**
@@ -170,42 +184,6 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 	
 	
 	
-	/**
-	 * Reads from the chronicle and send on kafka topic
-	 */
-	@SuppressWarnings("restriction")
-	public void run() {
-		final ExcerptTailer tailer = chronicle.createTailer();
-		final ByteByfReadBytesMarshallable reader = ByteByfReadBytesMarshallable.get();
-		ByteBuf buf = null;
-		try {
-			final long threadId = Thread.currentThread().getId();
-			while(keepRunning.get()) {
-				try {
-					final DocumentContext dc = tailer.readingDocument();
-					if(dc.isPresent() && dc.isData()) {
-						final long bytesAllocated = TMX.getThreadAllocatedBytes(threadId);
-						final Context ctx = chronicleReadKafkaWrite.time();
-						tailer.readBytes(reader);
-						buf = reader.getBuffer();
-						kafkaSender.send(new ProducerRecord<String, ByteBuf>(topicName, StreamedMetricValue.metricName(buf), buf));
-						ctx.stop();
-						writerBytesAllocated.mark(TMX.getThreadAllocatedBytes(threadId) - bytesAllocated);
-					}
-				} catch (Exception ex) {
-					log.error("ChronicleQueue Read / Kafka Write Error", ex);
-					if(buf!=null) {
-						while(buf.refCnt()!=0) {
-							buf.release(buf.refCnt());
-						}
-						buf = null;
-					}					
-				}
-			}
-		} finally {
-			// 
-		}
-	}
 	
 	static class ByteByfReadBytesMarshallable implements ReadBytesMarshallable {
 		static final ThreadLocal<ByteByfReadBytesMarshallable> threadReader = new ThreadLocal<ByteByfReadBytesMarshallable>() {
@@ -243,8 +221,7 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 	 */
 	@Override
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final long value, final Map<String, String> tags, final byte[] tsuid) {
-		ExcerptAppender appender = chronicle.acquireAppender();
-		appender.writeBytes(write(value, ValueType.STRAIGHTTHROUGH, metric, timestamp, tags));
+		messageQueue.writeEntry(new StreamedMetricValue(timestamp, value, metric, tags));
 		return Deferred.fromResult(null);
 	}
 
@@ -254,8 +231,7 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 	 */
 	@Override
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final double value, final Map<String, String> tags, final byte[] tsuid) {
-		ExcerptAppender appender = chronicle.acquireAppender();
-		appender.writeBytes(write(value, ValueType.STRAIGHTTHROUGH, metric, timestamp, tags));
+		messageQueue.writeEntry(new StreamedMetricValue(timestamp, value, metric, tags));
 		return Deferred.fromResult(null);
 	}
 	
@@ -270,84 +246,6 @@ public class KafkaRTPublisher extends RTPublisher implements Consumer<BytesRingB
 		return Deferred.fromResult(null);
 	}
 
-	/**
-	 * {@inheritDoc}
-	 * @see java.util.function.Consumer#accept(java.lang.Object)
-	 */
-	@Override
-	public void accept(final BytesRingBufferStats t) {
-		chronicleReads.inc(t.getAndClearReadCount());
-		chronicleWrites.inc(t.getAndClearWriteCount());
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see net.openhft.chronicle.queue.impl.StoreFileListener#onReleased(int, java.io.File)
-	 */
-	@Override
-	public void onReleased(final int cycle, final File file) {
-		final long size = file.length();
-		final String name = file.getAbsolutePath();
-		if(file.delete()) {
-			deletedRollFiles.inc();
-			log.info("Deleted RollFile [{}], size:[{}] bytes", name, size);
-		} else {
-			log.warn("Failed to Delete RollFile [{}], size:[{}] bytes", name, size);
-		}		
-	}
-	
-	/**
-	 * Writes a metric definition to the passed Bytes
-	 * @param value the metric value
-	 * @param valueType The value type
-	 * @param metricName The metric name
-	 * @param timestamp The metric timestamp
-	 * @param tags The metric tags
-	 * @return the bytes to write to the chronicle queue
-	 */
-	public static Bytes<ByteBuffer> write(final long value, final ValueType valueType, final String metricName, final long timestamp, final Map<String, String> tags) {
-		final Bytes<ByteBuffer> buff = Bytes.elasticByteBuffer(128);
-		buff.writeInt(Integer.MAX_VALUE);
-		buff.writeByte(StreamedMetricValue.TYPE_CODE);
-		buff.writeByte((byte) (valueType==null ? 0 : valueType.ordinal()+1));
-		buff.writeLong(timestamp);
-		buff.writeUtf8(metricName);
-		buff.writeByte((byte)tags.size());
-		for(Map.Entry<String, String> entry: tags.entrySet()) {
-			buff.writeUtf8(entry.getKey());
-			buff.writeUtf8(entry.getValue());
-		}		
-		buff.writeByte(ONE_BYTE);
-		buff.writeLong(value);		
-		buff.writeInt(0, buff.length()-4);
-		return buff;
-	}
-	
-	/**
-	 * Writes a metric definition to the passed Bytes
-	 * @param value the metric value
-	 * @param valueType The value type
-	 * @param metricName The metric name
-	 * @param timestamp The metric timestamp
-	 * @param tags The metric tags
-	 * @return the bytes to write to the chronicle queue
-	 */
-	public static Bytes<ByteBuffer> write(final double value, final ValueType valueType, final String metricName, final long timestamp, final Map<String, String> tags) {
-		final Bytes<ByteBuffer> buff = Bytes.elasticByteBuffer(128);
-		buff.writeInt(Integer.MAX_VALUE);
-		buff.writeByte(StreamedMetricValue.TYPE_CODE);
-		buff.writeByte((byte) (valueType==null ? 0 : valueType.ordinal()+1));
-		buff.writeLong(timestamp);
-		buff.writeUtf8(metricName);
-		buff.writeByte((byte)tags.size());
-		for(Map.Entry<String, String> entry: tags.entrySet()) {
-			buff.writeUtf8(entry.getKey());
-			buff.writeUtf8(entry.getValue());
-		}		
-		buff.writeByte(ZERO_BYTE);
-		buff.writeDouble(value);	
-		buff.writeInt(0, buff.length()-4);
-		return buff;
-	}
+		
 
 }

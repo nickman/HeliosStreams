@@ -36,9 +36,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.hbase.async.jsr166e.LongAdder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Counter;
@@ -124,7 +124,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	protected final BufferManager bufferManager;
 	
 	/** Instance logger */
-	protected final Logger log = LoggerFactory.getLogger(getClass());
+	protected final Logger log = LogManager.getLogger(getClass());
 	/** The kafka consumer client configuration */
 	protected final Properties consumerConfig = new Properties();
 	/** The kafka consumer */
@@ -393,7 +393,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	 * @see com.heliosapm.streams.chronicle.MessageListener#onMetric(io.netty.buffer.ByteBuf)
 	 */
 	@Override
-	public void onMetric(final ByteBuf buf) {
+	public int onMetric(final ByteBuf buf) {
 		log.debug("OnMetric Buffer: {} bytes", buf.readableBytes());
 		try {			
 			final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>();
@@ -412,8 +412,10 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 							totalBlacklisted++;
 							continue;
 						}
-						Deferred<Object> thisDeferred = null;
+						Deferred<Object> thisDeferred = null;						
 						if(smv.isDoubleValue()) {
+							final double d = smv.getDoubleValue();
+							if(d==Double.NaN || d==Double.NEGATIVE_INFINITY || d==Double.POSITIVE_INFINITY) continue;
 							thisDeferred = tsdb.addPoint(smv.getMetricName(), smv.getTimestamp(), smv.getDoubleValue(), smv.getTags());
 						} else {
 							thisDeferred = tsdb.addPoint(smv.getMetricName(), smv.getTimestamp(), smv.getLongValue(), smv.getTags());
@@ -434,7 +436,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 				log.error("BufferIteration Failure on read #" + totalCount, ex);
 			}
 			final long readAndWriteTime = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - startTimeNanos);					
-			log.info("Read [{}] total metrics and wrote [{}] to OpenTSDB in [{}] ms.", totalCount, recordCount, readAndWriteTime);
+			log.debug("Read [{}] total metrics and wrote [{}] to OpenTSDB in [{}] ms.", totalCount, recordCount, readAndWriteTime);
 			Deferred<ArrayList<Object>> d = Deferred.group(addPointDeferreds);
 			final int rcount = recordCount;
 			d.addCallback(new Callback<Void, ArrayList<Object>>() {
@@ -461,7 +463,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 				pointsAddedMeter.mark(recordCount);
 				log.debug("Async Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
 			}
-			
+			return recordCount;
 		} finally {
 			try { buf.release(); } catch (Exception ex) {/* No Op */}
 		}

@@ -102,7 +102,7 @@ public class StreamHub implements Watcher {
 	
 	public StreamHub(final String[] args, final Properties p) {
 		try {			
-			System.setProperty("jmx.jmxmp.discovery.advertised", "jvm,kafka-consumer,kafka-producer");
+			System.setProperty("jmx.jmxmp.discovery.advertised", "jvm,kafka-consumer,kafka-producer,bytebufs");
 			System.setProperty("spring.boot.admin.client.enabled", "true");
 			System.setProperty("info.version", "1.0.1");
 			System.setProperty("spring.boot.admin.client.name", "StreamHubNode");
