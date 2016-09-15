@@ -394,7 +394,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	 */
 	@Override
 	public int onMetric(final ByteBuf buf) {
-		log.debug("OnMetric Buffer: {} bytes", buf.readableBytes());
+		log.info("OnMetric Buffer: {} bytes", buf.readableBytes());
 		try {			
 			final List<Deferred<Object>> addPointDeferreds = new ArrayList<Deferred<Object>>();
 			int recordCount = 0;
@@ -431,7 +431,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 						log.error("Failed to process StreamedMetricValue", adpe);
 					}
 				}
-				log.debug("Async Writes Complete. total-reads: {}, total-writes: {}, blacklisted: {}", totalCount, recordCount, totalBlacklisted);
+				log.info("Async Writes Complete. total-reads: {}, total-writes: {}, blacklisted: {}", totalCount, recordCount, totalBlacklisted);
 			} catch (Exception ex) {
 				log.error("BufferIteration Failure on read #" + totalCount, ex);
 			}
@@ -461,7 +461,7 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 				final long elapsed = System.nanoTime() - startTimeNanos; 
 				perMessageTimer.update(nanosPerMessage(elapsed, recordCount), TimeUnit.NANOSECONDS);
 				pointsAddedMeter.mark(recordCount);
-				log.debug("Async Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
+				log.info("Async Processed {} records in {} ms. Pending: {}", recordCount, TimeUnit.NANOSECONDS.toMillis(elapsed), pendingDataPointAdds.longValue());							
 			}
 			return recordCount;
 		} finally {

@@ -26,12 +26,12 @@
         <Logger name="com.heliosapm" level="info" additivity="false">
             <AppenderRef ref="Console-Appender" level="info"/>               
         </Logger>
-        <Logger name="org.I0Itec" level="debug" additivity="false">
-            <AppenderRef ref="Console-Appender" level="debug"/>               
+        <Logger name="org.I0Itec" level="info" additivity="false">
+            <AppenderRef ref="Console-Appender" level="info"/>               
         </Logger>
            
-        <Root level="debug">
-            <AppenderRef ref="Console-Appender" level="debug"/>
+        <Root level="info">
+            <AppenderRef ref="Console-Appender" level="info"/>
         </Root>
     </Loggers>
 </Configuration>

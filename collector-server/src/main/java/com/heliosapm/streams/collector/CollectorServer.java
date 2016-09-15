@@ -17,15 +17,14 @@ package com.heliosapm.streams.collector;
 
 import java.io.File;
 import java.net.URL;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Properties;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.management.remote.JMXConnectorServer;
 
 import org.apache.logging.log4j.LogManager;
 //import org.springframework.boot.SpringApplication;
@@ -34,7 +33,7 @@ import org.apache.logging.log4j.LogManager;
 //import org.springframework.context.annotation.Configuration;
 //import org.springframework.stereotype.Controller;
 
-import com.heliosapm.streams.collector.cache.GlobalCacheService;
+import com.heliosapm.streams.discovery.EndpointPublisher;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -245,7 +244,7 @@ public class CollectorServer { //extends  SpringBootServletInitializer {
 		}
 		LogManager.getRootLogger();
 		ExtendedThreadManager.install();
-		JMXHelper.fireUpJMXMPServer(jmxmpIface);
+		final JMXConnectorServer jmxServer = JMXHelper.fireUpJMXMPServer(jmxmpIface);
 		noSpringMode = false; //findArg("--nospring", null, args) == null;
 //		if(noSpringMode) {
 //			System.out.println("Booting in Spring Mode");
@@ -266,6 +265,8 @@ public class CollectorServer { //extends  SpringBootServletInitializer {
 //		}
 		
 		final Thread stopThread = Thread.currentThread();
+		final String[] endpoints = ConfigurationHelper.getArraySystemThenEnvProperty("jmx.jmxmp.discovery.advertised", new String[]{"jvm"});
+		EndpointPublisher.getInstance().register(jmxServer.getAddress().toString(), endpoints);
 		Runtime.getRuntime().addShutdownHook(new Thread("CollectorServerShutdownHook"){
 			public void run() {
 				stopThread.interrupt();
