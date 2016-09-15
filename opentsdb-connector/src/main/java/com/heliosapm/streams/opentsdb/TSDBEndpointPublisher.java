@@ -23,6 +23,9 @@ import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.discovery.EndpointPublisher;
 import com.heliosapm.utils.config.ConfigurationHelper;
@@ -45,15 +48,22 @@ public class TSDBEndpointPublisher extends RpcPlugin {
 	/** The template for the JMX service URL */
 	public static final String DEFAULT_JMX_URLS  = "service:jmx:jmxmp://%s:4245";
 	
+	/** Instance logger */
+	protected final Logger log = LogManager.getLogger(getClass());
+
+	
 	/**
 	 * {@inheritDoc}
 	 * @see net.opentsdb.tsd.RpcPlugin#initialize(net.opentsdb.core.TSDB)
 	 */
 	@Override
 	public void initialize(final TSDB tsdb) {
-		
+		log.info(">>>>> Initializing TSDBEndpointPublisher...");
 		final Properties properties = new Properties();
 		properties.putAll(tsdb.getConfig().getMap());
+		final String zkConnect = properties.getProperty("tsd.storage.hbase.zk_quorum", "localhost:2181");
+		log.info("ZK Connect: [{}]", zkConnect);
+		System.setProperty("streamhub.discovery.zookeeper.connect", zkConnect);
 		final String[] rpcPlugins = ConfigurationHelper.getArraySystemThenEnvProperty("tsd.rpc.plugins", new String[]{}, properties);
 		Arrays.sort(rpcPlugins);
 		if(Arrays.binarySearch(rpcPlugins, "com.heliosapm.opentsdb.jmx.JMXRPC") >= 0) {
@@ -61,6 +71,7 @@ public class TSDBEndpointPublisher extends RpcPlugin {
 			String jmxmpUri = String.format(DEFAULT_JMX_URLS, host);
 			Set<String> endpoints = new HashSet<String>();
 			endpoints.add("jvm");
+			endpoints.add("tsd");
 			if(Arrays.binarySearch(rpcPlugins, "com.heliosapm.streams.opentsdb.KafkaRPC") >= 0) {
 				endpoints.add("kafka-consumer");
 			}
@@ -69,6 +80,7 @@ public class TSDBEndpointPublisher extends RpcPlugin {
 			}			
 			EndpointPublisher.getInstance().register(jmxmpUri, endpoints.toArray(new String[endpoints.size()]));
 		}
+		log.info(">>>>> TSDBEndpointPublisher initialized.");
 	}
 
 	/**
