@@ -50,6 +50,7 @@ public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 				outboundCount.increment();
 				return new KeyValue<String, StreamedMetric>(fullKey ? sm.metricKey() : sm.getMetricName(), sm);
 			} catch (Throwable t) {
+				failedCount.increment();
 				return null;
 			}
 		}

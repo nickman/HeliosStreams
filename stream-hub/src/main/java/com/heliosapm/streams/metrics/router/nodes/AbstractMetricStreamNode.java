@@ -60,6 +60,9 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	protected final LongAdder inboundCount = new LongAdder();
 	/** A count of outbound messages */
 	protected final LongAdder outboundCount = new LongAdder();
+	/** A count of failed messages */
+	protected final LongAdder failedCount = new LongAdder();
+	
 	/** The timestamp of the last metric reset */
 	protected final AtomicLong lastMetricReset = new AtomicLong(-1);
 	/** The source topics */
@@ -114,6 +117,7 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	public void resetMetrics() {
 		inboundCount.reset();
 		outboundCount.reset();
+		failedCount.reset();
 		lastMetricReset.set(System.currentTimeMillis());
 	}
 	
@@ -184,6 +188,15 @@ public abstract  class AbstractMetricStreamNode implements MetricStreamNode, Bea
 	@ManagedMetric(description="The total number of outbound messages", metricType=MetricType.COUNTER, category="MetricStreamNode", displayName="OutboundMessages")
 	public long getOutboundCount() {
 		return outboundCount.longValue();
+	}
+	
+	/**
+	 * Returns the number of failed messages since startup or the last reset.
+	 * @return the total number of failed messages
+	 */
+	@ManagedMetric(description="The total number of failed messages", metricType=MetricType.COUNTER, category="MetricStreamNode", displayName="FailedMessages")
+	public long getFailedCount() {
+		return failedCount.longValue();
 	}
 	
 	/**
