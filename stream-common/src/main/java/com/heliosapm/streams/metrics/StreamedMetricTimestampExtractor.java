@@ -33,21 +33,25 @@ public class StreamedMetricTimestampExtractor implements TimestampExtractor {
 
 	@Override
 	public long extract(final ConsumerRecord<Object, Object> record) {
-		final Object v = record.value();
-		if(v==null) return System.currentTimeMillis();
-		if(v instanceof StreamedMetric) {
-			final StreamedMetric sm = (StreamedMetric)v;
-			//System.err.println("[" + Thread.currentThread().getName() + "] ----EX TS:" + sm.getTimestamp());
-			return sm.getTimestamp();
-		} else if(v instanceof CharSequence) {
-			return StreamedMetric.fromString(((CharSequence)v).toString().trim()).getTimestamp();
-		} else if(v instanceof long[]) {
-			final long[] arr = (long[])v;			
-			return arr.length==2 ? arr[0] : arr[1];
+		try {
+			final Object v = record.value();
+			if(v==null) return System.currentTimeMillis();
+			if(v instanceof StreamedMetric) {
+				final StreamedMetric sm = (StreamedMetric)v;
+				//System.err.println("[" + Thread.currentThread().getName() + "] ----EX TS:" + sm.getTimestamp());
+				return sm.getTimestamp();
+			} else if(v instanceof CharSequence) {
+				return StreamedMetric.fromString(((CharSequence)v).toString().trim()).getTimestamp();
+			} else if(v instanceof long[]) {
+				final long[] arr = (long[])v;			
+				return arr.length==2 ? arr[0] : arr[1];
+			}
+			throw new Exception("Unexpected Type: [" + 
+				v.getClass().getName() + "]");
+		} catch (Throwable t) {
+			return System.currentTimeMillis();
 		}
-		System.err.println("Unexpected Type: [" + 
-			v.getClass().getName() + "]");
-		return System.currentTimeMillis();
+		
 	}
 
 }

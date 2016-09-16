@@ -13,25 +13,41 @@
             </pattern>>
         </PatternLayout>
     </Console>
-    <File name="File-Appender" fileName="${log-path}/xmlfilelog.log" >
-        <PatternLayout>
-            <pattern>
-                [%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{1} - %msg%n
-            </pattern>
-        </PatternLayout>
-    </File>        
+	    <RollingRandomAccessFile 
+	    	name="RollingRandomAccessFile" 
+	    	fileName="${log-path}/streamhub.log"
+	        filePattern="${archive}/$${date:yyyy-MM}/app-%d{yyyy-MM-dd-HH}-%i.log.gz"
+	        append="true"
+	        immediateFlush="true"
+	        bufferSize="10240"	        
+	      	>
+	      
+	      <PatternLayout>
+	        <Pattern>
+	        	[%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{3} - %msg%n
+	        </Pattern>
+	      </PatternLayout>
+	      <Policies>
+	        <TimeBasedTriggeringPolicy interval="1" modulate="true" />
+	        <SizeBasedTriggeringPolicy size="250 MB"/>
+	      </Policies>
+	    </RollingRandomAccessFile>	    
+    
 </Appenders>
 
 	<Loggers>
         <Logger name="com.heliosapm" level="info" additivity="false">
-            <AppenderRef ref="Console-Appender" level="info"/>               
+            <AppenderRef ref="Console-Appender" level="info"/>
+            <AppenderRef ref="RollingRandomAccessFile" level="info"/>               
         </Logger>
         <Logger name="org.I0Itec" level="info" additivity="false">
-            <AppenderRef ref="Console-Appender" level="info"/>               
+            <AppenderRef ref="Console-Appender" level="info"/>       
+            <AppenderRef ref="RollingRandomAccessFile" level="info"/>        
         </Logger>
            
         <Root level="info">
             <AppenderRef ref="Console-Appender" level="info"/>
+            <AppenderRef ref="RollingRandomAccessFile" level="info"/>
         </Root>
     </Loggers>
 </Configuration>

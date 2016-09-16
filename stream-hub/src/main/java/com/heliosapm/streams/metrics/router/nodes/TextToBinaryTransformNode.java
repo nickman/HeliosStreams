@@ -44,10 +44,14 @@ public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 	 = new KeyValueMapper<String, String, KeyValue<String, StreamedMetric>>() {
 		@Override
 		public KeyValue<String, StreamedMetric> apply(final String key, final String value) {
-			final StreamedMetric sm = StreamedMetric.fromString(value);
-			inboundCount.increment();
-			outboundCount.increment();
-			return new KeyValue<String, StreamedMetric>(fullKey ? sm.metricKey() : sm.getMetricName(), sm);
+			try {
+				final StreamedMetric sm = StreamedMetric.fromString(value);
+				inboundCount.increment();
+				outboundCount.increment();
+				return new KeyValue<String, StreamedMetric>(fullKey ? sm.metricKey() : sm.getMetricName(), sm);
+			} catch (Throwable t) {
+				return null;
+			}
 		}
 	};
 	
