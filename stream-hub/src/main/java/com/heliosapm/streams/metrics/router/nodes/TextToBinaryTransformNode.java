@@ -39,19 +39,21 @@ import com.heliosapm.streams.serialization.HeliosSerdes;
 
 public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 	
+	private static final KeyValue<String, StreamedMetric> NULL_KV = new KeyValue<String, StreamedMetric>(null, null);
+	
 	/** The mapper to transform the text message to a binary StreamedMetric */
 	protected final KeyValueMapper<String, String, KeyValue<String, StreamedMetric>> mapper
 	 = new KeyValueMapper<String, String, KeyValue<String, StreamedMetric>>() {
 		@Override
 		public KeyValue<String, StreamedMetric> apply(final String key, final String value) {
 			try {
-				final StreamedMetric sm = StreamedMetric.fromString(value);
 				inboundCount.increment();
+				final StreamedMetric sm = StreamedMetric.fromString(value);				
 				outboundCount.increment();
 				return new KeyValue<String, StreamedMetric>(fullKey ? sm.metricKey() : sm.getMetricName(), sm);
 			} catch (Throwable t) {
 				failedCount.increment();
-				return null;
+				return NULL_KV;
 			}
 		}
 	};
@@ -66,7 +68,8 @@ public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 		log.info("Sink Topic: [{}]", sinkTopic);
 
 		streamBuilder.stream(HeliosSerdes.STRING_SERDE, HeliosSerdes.STRING_SERDE, sourceTopics)
-		.map(mapper)		
+		.map(mapper)	
+		.filter((k,v) -> (k!=null && v!=null))
 		.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic);
 //		.foreach((a,b) -> outboundCount.increment());
 	}
