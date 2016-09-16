@@ -20,14 +20,12 @@ package com.heliosapm.streams.collector.ds;
 
 import java.util.regex.Pattern;
 
-import javax.management.ObjectName;
-
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
 import com.codahale.metrics.ObjectNameFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 
-import scala.util.parsing.json.JSONObject;
+
 
 /**
  * <p>Title: AbstractDataSourceFactory</p>

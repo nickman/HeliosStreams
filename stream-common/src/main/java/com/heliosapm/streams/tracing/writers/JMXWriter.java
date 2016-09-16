@@ -26,13 +26,15 @@ import java.util.Map;
 import java.util.Properties;
 
 import javax.management.MBeanServer;
+import javax.management.MBeanServerFactory;
 import javax.management.ObjectName;
+import javax.management.remote.JMXServiceURL;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.tracing.AbstractMetricWriter;
-import com.heliosapm.streams.tracing.TagKeySorter;
+import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.tuples.NVP;
 
@@ -45,25 +47,32 @@ import com.heliosapm.utils.tuples.NVP;
 
 public class JMXWriter extends AbstractMetricWriter {
 	/** The MBeanServer hosting the metrics */
-	protected final MBeanServer server;
+	protected MBeanServer server = null;
+	/** The target MBeanServer jmx default domain */
+	protected String jmxDomain = "helios-metrics";
+	/** The jmx connector server URI */
+	protected String jmxServiceUrl = "jmxmp://0.0.0.0:1423";
 	
 	/** A map of updating JMXStreamedMetrics keyed by their ObjectName */
 	protected final NonBlockingHashMap<String, NVP<ObjectName, JMXStreamedMetric>> metricRegistry = new NonBlockingHashMap<String, NVP<ObjectName, JMXStreamedMetric>>(512); 
 
 	/** A placeholder NVP */
 	protected static final NVP<ObjectName, JMXStreamedMetric> PLACEHOLDER = new NVP<ObjectName, JMXStreamedMetric>(null, null);
-	
-	protected String serverJmxDomain = null;
-	protected String jmxmpUri = null;
+
+	/** The config key for the MBeanServer default domain */
+	public static final String CONF_JMX_DOMAIN = "jmxwriter.domain";
+	/** The default MBeanServer default domain */
+	public static final String DEFAULT_JMX_DOMAIN = "helios-metrics";
+	/** The config key for the MBeanServer JMXConnector server URL */
+	public static final String CONF_JMX_CONNECTOR_URL = "jmxwriter.connector.url";
+	/** The default BeanServer JMXConnector server URL */
+	public static final String DEFAULT_JMX_CONNECTOR_URL = "service:jmx:jmxmp://0.0.0.0:1423";
 	
 	/**
 	 * Creates a new JMXWriter
 	 */
 	public JMXWriter() {
 		super(false, true);
-		// TODO:  these need config
-		server = JMXHelper.createMBeanServer("helios-metrics", false);
-		JMXHelper.fireUpJMXMPServer("0.0.0.0", 1422, server);
 	}
 	
 	/**
@@ -72,8 +81,26 @@ public class JMXWriter extends AbstractMetricWriter {
 	 */
 	@Override
 	public void configure(final Properties config) {
-		
+		log.info(">>>>> Starting JMXWriter...");
 		super.configure(config);
+		jmxDomain = ConfigurationHelper.getSystemThenEnvProperty(CONF_JMX_DOMAIN, DEFAULT_JMX_DOMAIN, config);
+		jmxServiceUrl = ConfigurationHelper.getSystemThenEnvProperty(CONF_JMX_CONNECTOR_URL, DEFAULT_JMX_CONNECTOR_URL, config);
+		log.info("JMXWriter Domain: [{}]", jmxDomain);
+		log.info("JMXWriter Connector URL: [{}]", jmxServiceUrl);
+		for(MBeanServer server: MBeanServerFactory.findMBeanServer(null)) {
+			final String dname = server.getDefaultDomain();
+			final String actualName = (dname==null || dname.trim().isEmpty()) ? "DefaultDomain" : dname;
+			if(jmxDomain.equals(actualName)) {
+				this.server = server;
+				break;
+			}
+		}
+		if(server==null) {			
+			server = JMXHelper.createMBeanServer(jmxDomain, false);
+		}
+		final JMXServiceURL surl = JMXHelper.serviceUrl(jmxServiceUrl);
+		JMXHelper.fireUpJMXMPServer(surl.getHost(), surl.getPort(), server);
+		log.info("<<<<< JMXWriter started.");
 	}
 
 	/**

@@ -172,8 +172,15 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	
 	/** The collector service script directory */
 	protected final File scriptDirectory;
+	/** The collector service script path */
+	protected final Path scriptDirectoryPath;
+	/** The collector service script path size */
+	protected final int scriptDirectoryPathSize;
+	
 	/** The template script directory */
 	protected final File templateDirectory;
+	/** The template script directory path */
+	protected final Path templateDirectoryPath;
 	
 	/** The collector service fixture directory */
 	protected final File fixtureDirectory;
@@ -349,7 +356,10 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		jdbcLibDirectory = new File(libDirectory, "jdbc");
 		jdbcLibDirectory.mkdir();
 		scriptDirectory = new File(rootDirectory, "collectors").getAbsoluteFile();
+		scriptDirectoryPath = scriptDirectory.toPath().toAbsolutePath();
+		scriptDirectoryPathSize = scriptDirectoryPath.getNameCount();
 		templateDirectory = new File(rootDirectory, "templates").getAbsoluteFile();
+		templateDirectoryPath = templateDirectory.toPath().toAbsolutePath();
 		dataSourceDirectory = new File(rootDirectory, "datasources").getAbsoluteFile();
 		fixtureDirectory = new File(rootDirectory, "fixtures").getAbsoluteFile();
 		confDirectory = new File(rootDirectory, "conf").getAbsoluteFile();
@@ -602,7 +612,19 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	//				ms = msClazz.newInstance();
 	//			}
 	//			
-				final ManagedScript ms = ManagedScript.instantiate(msClazz, bindings==null ? getGlobalBindings() : bindings);
+				final Map<String, Object> _binds = new HashMap<String, Object>(getGlobalBindings());
+				if(bindings!=null) _binds.putAll(bindings);
+				final Path sourcePath = source.toPath();
+				
+				if(sourcePath.startsWith(scriptDirectoryPath)) {
+					final String[] navMap = navMap(sourcePath);
+					_binds.put("navmap", navMap);
+					for(int i = 0; i < navMap.length; i++) {
+						_binds.put("navmap_" + i, navMap[i]);
+					}
+					log.info("NAVMAP: {}", Arrays.toString(navMap));
+				}
+				final ManagedScript ms = ManagedScript.instantiate(msClazz, _binds);
 				final long elapsedTime = System.currentTimeMillis() - startTime;			
 				ms.initialize(gcl, getGlobalBindings(), bSource, rootDirectory.getAbsolutePath(), elapsedTime);
 				if(bindings!=null) {
@@ -649,6 +671,25 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		} finally {
 		}
 	}
+	
+	
+	/**
+	 * Computes a navmap for the passed script.
+	 * This will usually be appName/hostName/env
+	 * @param sourcePath The script path
+	 * @return the navmap
+	 */
+	protected String[] navMap(final Path sourcePath) {
+		final int size = sourcePath.getNameCount();
+		final int index = size - scriptDirectoryPathSize -1;
+		final String[] arr = new String[index];
+		final int top = index;
+		for(int i = 0; i < top; i++) {
+			arr[top-(1+i)] = sourcePath.getName(i + scriptDirectoryPathSize).toString();
+		}		
+		return arr;
+	}
+	
 	
 
 

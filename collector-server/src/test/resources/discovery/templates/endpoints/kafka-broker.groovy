@@ -1,3 +1,4 @@
+
 /*
 	Kafka Broker JMX Collection Script
 	Whitehead, 2016
@@ -7,9 +8,9 @@
 	Populate one timers
    ========================================================================= */	
 @Field
-hostTag = host;
+hostTag = navmap_1;
 @Field
-appTag = app;
+appTag = navmap_0;
 @Field
 controllerPattern = jmxHelper.objectName("kafka.controller:type=KafkaController,name=*");
 @Field
@@ -26,7 +27,10 @@ groupMetaManagerPattern = jmxHelper.objectName("kafka.coordinator:type=GroupMeta
 @Field
 logCleanerPattern = jmxHelper.objectName("kafka.log:type=LogCleaner,name=*");
 
+log.info("Collecting for ${appTag}@${hostTag}");
+log.info("JMX: service:jmx:rmi:///jndi/rmi://$navmap_1:$port/jmxrmi");
 
+jmxClient = JMXClient.newInstance(this, "service:jmx:rmi:///jndi/rmi://$navmap_1:$port/jmxrmi");
 
 tracer.reset().tags([host : hostTag, app : appTag]);
 
