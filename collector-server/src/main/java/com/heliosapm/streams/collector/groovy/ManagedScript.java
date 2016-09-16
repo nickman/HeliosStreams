@@ -764,7 +764,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			if(JMXHelper.isRegistered(objectName)) {
 				try { JMXHelper.unregisterMBean(objectName); } catch (Exception x) {/* No Op */}
 			}
-			System.gc();
+//			System.gc();
 		}
 	}
 	
