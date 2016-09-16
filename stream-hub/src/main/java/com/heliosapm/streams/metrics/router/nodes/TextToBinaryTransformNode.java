@@ -71,7 +71,6 @@ public class TextToBinaryTransformNode extends AbstractMetricStreamNode {
 		.map(mapper)	
 		.filter((k,v) -> (k!=null && v!=null))
 		.to(HeliosSerdes.STRING_SERDE, HeliosSerdes.STREAMED_METRIC_SERDE, sinkTopic);
-//		.foreach((a,b) -> outboundCount.increment());
 	}
 
 

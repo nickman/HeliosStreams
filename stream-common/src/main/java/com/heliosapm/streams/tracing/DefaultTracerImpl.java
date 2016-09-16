@@ -55,6 +55,15 @@ import io.netty.buffer.ByteBufAllocator;
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.tracing.DefaultTracerImpl</code></p>
+
+
+FIXME: Caused by: io.netty.util.IllegalReferenceCountException: refCnt: 0
+        at io.netty.buffer.AbstractByteBuf.ensureAccessible(AbstractByteBuf.java:1425) ~[cserver.jar:0.0.1-SNAPSHOT]
+        at io.netty.buffer.AbstractByteBuf.writeByte(AbstractByteBuf.java:937) ~[cserver.jar:0.0.1-SNAPSHOT]
+        at com.heliosapm.streams.metrics.StreamedMetricValue.write(StreamedMetricValue.java:343) ~[cserver.jar:0.0.1-SNAPSHOT]
+        at com.heliosapm.streams.metrics.StreamedMetricValue.write(StreamedMetricValue.java:496) ~[cserver.jar:0.0.1-SNAPSHOT]
+        at com.heliosapm.streams.tracing.DefaultTracerImpl.traceOut(DefaultTracerImpl.java:696) ~[cserver.jar:0.0.1-SNAPSHOT]
+
  */
 
 public class DefaultTracerImpl implements ITracer {
