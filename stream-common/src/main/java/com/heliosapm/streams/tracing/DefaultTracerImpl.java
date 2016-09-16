@@ -714,7 +714,7 @@ public class DefaultTracerImpl implements ITracer {
 		}
 	}
 
-	private void traceOut(final double value, final long timestamp, final String...tagValues) {
+	private synchronized void traceOut(final double value, final long timestamp, final String...tagValues) {
 		final int pos = outBuffer.writerIndex();
 		try {			
 			modified = false;
