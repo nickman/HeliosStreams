@@ -18,8 +18,10 @@ under the License.
  */
 package com.heliosapm.streams.collector.groovy;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.Map;
 
 import javax.management.AttributeChangeNotification;
@@ -39,6 +41,8 @@ public enum ScriptState {
 	PAUSED("The script is scheduled but paused"),
 	/** Script is in a scheduled steady state */
 	SCHEDULED("The script is in scheduled steady state"),
+	/** Script is in collecting */
+	EXECUTING("The script is executing"),
 	/** Script is compiled but has no schedule */
 	PASSIVE("The script is compiled but has no schedule"),
 	/** Script is waiting for dependency injection */
@@ -46,11 +50,15 @@ public enum ScriptState {
 	/** Script is steady state but throwing some errors */
 	ERRORS("The script is steady state but throwing errors"),
 	/** Script is steady state but cannot connect to a resource */
-	DISCONNECT("The script is steady state but cannot connect to a resource");
+	DISCONNECT("The script is steady state but cannot connect to a resource"),
+	/** Script is being destroyed */
+	DESTROY("The script is being destroyed");
+	
 	
 	private ScriptState(final String description) {
 		this.description = description;
 		this.notifType = "collector.script.state." + name().toLowerCase();
+		
 	}
 	
 	/** A map of script state jmx notification infos keyed by the associated script state */
@@ -61,13 +69,33 @@ public enum ScriptState {
 	public final String description;
 	/** The jmx notification type */
 	public final String notifType;
+	/** States that this state can transition to */
+	private static final EnumMap<ScriptState, EnumSet<ScriptState>> transitionTo = new EnumMap<ScriptState, EnumSet<ScriptState>>(ScriptState.class);
 	
 	static {
 		Map<ScriptState, MBeanNotificationInfo> tmpNotifs = new EnumMap<ScriptState, MBeanNotificationInfo>(ScriptState.class);
 		for(ScriptState st: values) {
+			st.transitionTo(values);
 			tmpNotifs.put(st, new MBeanNotificationInfo(new String[]{st.notifType}, AttributeChangeNotification.class.getName(), st.description));
 		}
 		NOTIF_INFOS = Collections.unmodifiableMap(tmpNotifs);
+	}
+	
+	private ScriptState transitionTo(final ScriptState...states) {
+		final EnumSet<ScriptState> set = EnumSet.noneOf(ScriptState.class);
+		set.remove(this);
+		transitionTo.put(this, set);
+		return this;
+	}
+	
+	public boolean canTransitionTo(final ScriptState state) {
+		return transitionTo.get(state).contains(state);
+	}
+	
+	public static void main(String[] args) {
+		for(ScriptState s: ScriptState.values()) {
+			System.out.println(s.name() + ".transitionTo(values);");
+		}
 	}
 	
 	

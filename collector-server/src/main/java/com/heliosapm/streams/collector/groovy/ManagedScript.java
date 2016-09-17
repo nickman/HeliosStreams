@@ -503,12 +503,38 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		
 	}
 	
-	private class CollectionRunnerCallable implements Callable<Void> {
+	protected boolean setState(final ScriptState stateToSet, final ScriptState ifState) {
+		for(;;) {			
+			if(ifState!=null && state.get()!=ifState) return false;
+			final ScriptState current = state.get();
+			if(current.canTransitionTo(stateToSet)) {
+				if(state.compareAndSet(current, stateToSet)) return true;
+			} else {
+				return false;
+			}
+		}
+	}
+	
+	private class CollectionRunnerCallable implements Callable<Void> {		
 		final TimeoutService timeoutService = TimeoutService.getInstance();
-		
 		
 		@Override
 		public Void call() throws Exception {
+			if(state.get()==ScriptState.EXECUTING) {
+				log.info("Script version [{}] is alreayd executing. Skipping execution", deploymentId);
+				return null;
+			}
+			if(!setState(ScriptState.EXECUTING, ScriptState.SCHEDULED)) {
+				if(state.get()!=ScriptState.SCHEDULED) {
+					log.info("Script version [{}] is [{}] not SCHEDULED. Stopping schedule.", deploymentId, state.get());
+					if(scheduleHandle!=null) {
+						if(!scheduleHandle.isCancelled()) {
+							scheduleHandle.cancel(true);
+						}
+					}
+					return null;
+				}				
+			}
 			try {
 				final long timeout = JMXHelper.isDebugAgentLoaded() ? 10000 : scheduledPeriod;
 				final Timeout txout = timeoutService.timeout(timeout, TimeUnit.SECONDS, new Runnable(){
@@ -536,12 +562,16 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 					log.error("Task Execution Failed", iex);
 				}
 			} finally {
-				if(pendingDependencies.isEmpty()) {
-					canReschedule.set(true);
-					updateProps();  // FIXME: too heavyweight
-					scheduleHandle = SharedScheduler.getInstance().schedule(ManagedScript.this, scheduledPeriod, scheduledPeriodUnit);					
+				if(setState(ScriptState.SCHEDULED, ScriptState.EXECUTING)) {
+					if(pendingDependencies.isEmpty()) {
+						canReschedule.set(true);
+						updateProps();  // FIXME: too heavyweight
+						scheduleHandle = SharedScheduler.getInstance().schedule(ManagedScript.this, scheduledPeriod, scheduledPeriodUnit);					
+					} else {
+						log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
+					}
 				} else {
-					log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
+					log.debug("State not EXECUTING on return from execution");
 				}
 			}
 			return null;
