@@ -248,7 +248,7 @@ public class MeteredMetricAggregatorNode extends AbstractMetricStreamNode implem
 	}
 	
 	private StreamedMetricValue adjust(final StreamedMetricValue smv, final Window window) {
-		return StreamedMetricValue.fromKey(window.end(), smv.metricKey(), calcTps(smv.getValueNumber().doubleValue(), rateDivisor));
+		return StreamedMetricValue.fromKey(window.start(), smv.metricKey(), calcTps(smv.getValueNumber().doubleValue(), rateDivisor));
 	}
 	
 	private static double calcTps(final double count, final double time) {
