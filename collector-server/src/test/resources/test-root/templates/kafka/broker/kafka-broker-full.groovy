@@ -1,4 +1,3 @@
-//!STOP  
 
 @Field
 hostTag = navmap_1;
@@ -499,6 +498,27 @@ jmxClient = null;
 	aggr : false
 ];
 @Field names = [serverUnderReplicatedPartitions,serverPartitionCount,serverIsrShrinksPerSec,networkIdlePercent,serverNumDelayedOperations,serverZooKeeperExpiresPerSec,logmax_clean_time_secs,serverRequestHandlerAvgIdlePercent,networkThrottleTimeMs,clusterUnderReplicated,coordinatorNumOffsets,serverBytesOutPerSec,serverPurgatorySize,serverFailedFetchRequestsPerSec,serverZooKeeperSyncConnectsPerSec,controllerLeaderElectionRateAndTimeMs,serverBrokerState,networkResponseQueueSize,logmax_dirty_percent,serverRequestsPerSec,networkLocalTimeMs,networkRequestQueueSize,serverZooKeeperDisconnectsPerSec,controllerActiveControllerCount,serverZooKeeperAuthFailuresPerSec,serverTotalFetchRequestsPerSec,serverZooKeeperReadOnlyConnectsPerSec,networkResponseSendTimeMs,networkRequestsPerSec,serverConsumerLag,logLogFlushRateAndTimeMs,networkResponseQueueTimeMs,serverMaxLag,controllerPreferredReplicaImbalanceCount,serverTotalProduceRequestsPerSec,logLogEndOffset,logSize,logLogStartOffset,serverBytesRejectedPerSec,networkRemoteTimeMs,coordinatorNumGroups,utilscleaner_io,logcleaner_recopy_percent,controllerUncleanLeaderElectionsPerSec,serverMinFetchRate,server,serverZooKeeperSaslAuthenticationsPerSec,serverMessagesInPerSec,serverBytesPerSec,serverFailedProduceRequestsPerSec,serverLeaderCount,serverBytesInPerSec,networkRequestQueueTimeMs,networkTotalTimeMs,networkNetworkProcessorAvgIdlePercent,serverExpiresPerSec,logmax_buffer_utilization_percent,controllerOfflinePartitionsCount,serverIsrExpandsPerSec,logNumLogSegments,];
+@Field mapAttrs = [
+	"MeanRate" : 			"ratemean",
+	"OneMinuteRate" : 		"rate1m",
+	"FiveMinuteRate" : 		"rate5m",
+	"FifteenMinuteRate" : 	"rate15m",
+	"50thPercentile" : 		"pct50",
+	"75thPercentile" : 		"pct75",
+	"95thPercentile" : 		"pct95",
+	"98thPercentile" : 		"pct98",
+	"99thPercentile" : 		"pct99",
+	"999thPercentile" : 	"pct999"
+]
+
+remapAttr = {attr -> 
+	String name = mapAttrs.get(attr);
+	return name==null ? attr : name;
+}
+
+clean = {s ->
+	return s.replace("-", "_");
+}
 
 if(jmxClient==null) jmxClient = JMXClient.newInstance(this, "service:jmx:rmi:///jndi/rmi://$navmap_1:$port/jmxrmi");
 tracer.reset().tags([host : hostTag, app : appTag]);
@@ -518,7 +538,7 @@ trace = { f, on ->
 				tracer.pushTag(k, on.getKeyProperty(k));
 			}
 	        attrMap.each() { k,v ->
-	        	tracer.pushSeg(k).trace(v, ts).popSeg();
+	        	tracer.pushSeg(remapAttr(k)).trace(v, ts).popSeg();
 	        }
 		} catch (x) {
 			log.error("Failed to collect on [{}]", on, x);					
@@ -536,10 +556,46 @@ trace = { f, on ->
 	}
 }
 
+mtrace = { f, on ->
+	tracer {
+		attrMap = jmxHelper.getAttributes(on, jmxClient, f.attrs);
+		ts = System.currentTimeMillis();
+		try {
+			tracer.pushSeg(on.getDomain());
+			f.segs.each() { seg ->
+				tracer.pushSeg(on.getKeyProperty(seq));
+			}
+			f.keys.each() { k ->
+				tracer.pushTag(clean(k), on.getKeyProperty(k));
+			}
+			f.aggrkeys.each() {k ->
+				tracer.pushTag(clean(k), on.getKeyProperty(k));
+			}
+	        attrMap.each() { k,v ->
+	        	tracer.pushSeg(remapAttr(k)).trace(v, ts).popSeg();
+	        }
+		} catch (x) {
+			log.error("Failed to collect on [{}]", on, x);					
+		} finally {
+			/*
+			tracer.popSeg();
+			f.segs.each() { seg ->
+				tracer.popSeg();
+			}
+			keys.each() { k ->
+				tracer.popTag();
+			}
+			*/
+		}
+	}
+}
 
 names.each() { f -> 
 	ons = f.pattern ? jmxClient.queryNames(f.on, null).toArray(new ObjectName[0]) : [f.on] as ObjectName[];
 	if(f.aggr) {
+		ons.each() {
+			mtrace(f, it);
+		}
 
 	} else {
 		ons.each() {
