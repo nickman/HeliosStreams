@@ -253,6 +253,17 @@ public interface ManagedScriptMBean { //extends NamedBean {
 	 */
 	public void resume();
 	
+	/**
+	 * Returns the number of traces issued in the last execution
+	 * @return the number of traces issued in the last execution
+	 */
+	public long getLastTraceCount();
+
+	/**
+	 * Returns the number of metrics flushed in the last execution
+	 * @return the number of metrics flushed in the last execution
+	 */
+	public long getLastFlushCount();
 	
 	
 }

@@ -499,5 +499,19 @@ public interface ITracer extends Closeable {
 	 */
 	public ITracer clearSuppressPredicate();
 	
+	/**
+	 * Returns the number of flushed metrics since the last call.
+	 * Resets the count to zero when called
+	 * @return the number of flushed metrics 
+	 */
+	public long getFlushedCount();
+
+	/**
+	 * Returns the number of traced metrics since the last call.
+	 * Resets the count to zero when called
+	 * @return the number of traced metrics 
+	 */
+	public long getTracedCount();
+	
 
 }

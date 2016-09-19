@@ -261,6 +261,22 @@ public class TracerFactory {
 		}
 	}
 	
+	/**
+	 * Returns a new [non-cached] tracer
+	 * @return a new tracer
+	 */
+	public ITracer getNewTracer() {
+		try {
+			if(groovyCtor!=null) {
+				return groovyCtor.newInstance(writer);
+			} 
+			return new DefaultTracerImpl(writer);
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to create an ITracer", ex);
+		}
+	}
+	
+	
 	public static void main(String[] args) {
 		log("Tracer Test");
 		JMXHelper.fireUpJMXMPServer(2553);

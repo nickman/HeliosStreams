@@ -42,6 +42,7 @@ import org.hbase.async.jsr166e.LongAdder;
 
 import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Counter;
+import com.codahale.metrics.Histogram;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
@@ -157,6 +158,9 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	/** The chronicle message queue */
 	protected MessageQueue messageQueue;
 	
+
+
+
 	/** The currently assigned topic partitions */
 	protected final Set<String> assignedPartitions = new CopyOnWriteArraySet<String>();
 	
@@ -182,6 +186,8 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	protected final Counter putTimeouts = metricManager.counter("putTimeouts");
 	/** A counter of metric deserialization errors */
 	protected final Counter deserErrors = metricManager.counter("deserErrors");
+	/** A histogram of metric delivery latency */
+	protected final Histogram metricLatency = metricManager.histogram("metricLatency");
 	
 	
 	/** The per message timer snapshot */
@@ -403,9 +409,11 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 			final long startTimeNanos = System.nanoTime();
 			try {
 				final Iterator<StreamedMetricValue> iter = StreamedMetricValue.streamedMetricValues(true, buf, true).iterator();
+				final long now = System.currentTimeMillis();
 				while(iter.hasNext()) {
 					final StreamedMetricValue smv = iter.next();
-					
+					final long elapsed = now - smv.getTimestamp();
+					if(elapsed > 0) metricLatency.update(now - smv.getTimestamp());
 					totalCount++;
 					try {
 						if(blacklist.isBlackListed(smv.metricKey())) {
@@ -693,8 +701,28 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	public void collectStats(final StatsCollector collector) {
 		metricManager.collectStats(collector);
 	}
+	
+	
 
-
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getMetricLatencyMedian()
+	 */
+	@Override
+	public double getMetricLatencyMedian() {
+		return metricLatency.getSnapshot().getMedian();
+	}
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getMetricLatency99pct()
+	 */
+	@Override
+	public double getMetricLatency99pct() {
+		return metricLatency.getSnapshot().get99thPercentile();
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -767,8 +795,8 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	 * @return the cummulative number of TSDB put timeout errors
 	 */
 	@Override
-	public Counter getPutTimeouts() {
-		return putTimeouts;
+	public long getPutTimeouts() {
+		return putTimeouts.getCount();
 	}
 
 
@@ -778,8 +806,8 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 	 * @return the cummulative number of metric deserialization errors
 	 */
 	@Override
-	public Counter getDeserErrors() {
-		return deserErrors;
+	public long getDeserErrors() {
+		return deserErrors.getCount();
 	}
 
 
@@ -793,6 +821,58 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		return kafkaStartupTimeout;
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getDeletedRollFiles()
+	 */
+	@Override
+	public long getDeletedRollFiles() {
+		return messageQueue.getDeletedRollFiles();
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getChronicleReads()
+	 */
+	@Override
+	public long getChronicleReads() {
+		return messageQueue.getChronicleReads();
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getChronicleWrites()
+	 */
+	@Override
+	public long getChronicleWrites() {
+		return messageQueue.getChronicleWrites();
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getChronicleReadErrs()
+	 */
+	@Override
+	public long getChronicleReadErrs() {
+		return messageQueue.getChronicleReadErrs();
+	}
+
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.KafkaRPCMBean#getQueueBacklog()
+	 */
+	@Override
+	public long getQueueBacklog() {
+		return messageQueue.getQueueBacklog();
+	}
 
 
 

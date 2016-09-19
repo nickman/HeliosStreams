@@ -927,6 +927,9 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			public Boolean call() throws Exception {
 				try {
 					if(isDisabled(file)) {
+						final ManagedScript ms = managedScripts.getIfPresent(file);  						
+						managedScripts.invalidate(file);
+						if(ms!=null) try { ms.close(); } catch (Exception x) {/* No Op */}
 						log.info("Source file [{}] is disabled", file);
 						return false;
 					}		
