@@ -163,7 +163,7 @@ public interface KafkaRPCMBean {
 	 * Returns the cummulative number of TSDB put timeout errors
 	 * @return the cummulative number of TSDB put timeout errors
 	 */
-	public Counter getPutTimeouts();
+	public long getPutTimeouts();
 
 
 
@@ -171,7 +171,7 @@ public interface KafkaRPCMBean {
 	 * Returns the cummulative number of metric deserialization errors
 	 * @return the cummulative number of metric deserialization errors
 	 */
-	public Counter getDeserErrors();
+	public long getDeserErrors();
 	
 	/**
 	 * Returns the timeout on waiting for Kafka partition info on startup in secs.
@@ -179,6 +179,52 @@ public interface KafkaRPCMBean {
 	 */
 	public int getKafkaStartupTimeout();
 	
+	/**
+	 * Returns the median metric delivery latency, 
+	 * i.e. the elapsed time between metric creation and ingestion 
+	 * @return the median metric delivery latency,
+	 */
+	public double getMetricLatencyMedian();
+	
+	/**
+	 * Returns the 99th percentile metric delivery latency, 
+	 * i.e. the elapsed time between metric creation and ingestion 
+	 * @return the 99th percentile metric delivery latency,
+	 */
+	public double getMetricLatency99pct();
+	
+	/**
+	 * Returns the number of deleted roll files
+	 * @return the number of deleted roll files
+	 */
+	public long getDeletedRollFiles();
+
+	/**
+	 * Returns the total number of chronicle queue reads
+	 * @return the total number of chronicle queue reads
+	 */
+	public long getChronicleReads();
+
+	/**
+	 * Returns the total number of chronicle queue writes
+	 * @return the total number of chronicle queue writes
+	 */
+	public long getChronicleWrites();
+
+	/**
+	 * Returns the total number of chronicle queue read errors
+	 * @return the total number of chronicle queue read errors
+	 */
+	public long getChronicleReadErrs();
+
+	/**
+	 * Returns the processing queue backlog
+	 * @return the processing queue backlog
+	 */
+	public long getQueueBacklog();
+
+
+
 
 }
 

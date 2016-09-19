@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 import javax.management.ObjectName;
 
@@ -103,6 +104,10 @@ public class DefaultTracerImpl implements ITracer {
 	public final char metricSegDelim;
 	/** Flag indicating if tag keys, values and metric names should be forced to lower case */
 	public final boolean forceLower; 
+	/** Counter for tracking total trace out events */
+	protected final LongAdder traceOutEvents = new LongAdder();
+	/** Counter for tracking total flushed out events */
+	protected final LongAdder flushOutEvents = new LongAdder();
 	
 	/** The configured max number of tags in a trace */
 	public final int maxTags; 
@@ -703,6 +708,7 @@ public class DefaultTracerImpl implements ITracer {
 				}
 			}
 			StreamedMetricValue.write(outBuffer, null, mn, timestamp, value, outTags);
+			traceOutEvents.increment();
 		} catch (Exception ex) {
 			outBuffer.writerIndex(pos);
 			decr();
@@ -736,6 +742,7 @@ public class DefaultTracerImpl implements ITracer {
 				}
 			}
 			StreamedMetricValue.write(outBuffer, null, mn, timestamp, value, outTags);
+			traceOutEvents.increment();
 		} catch (Exception ex) {
 			outBuffer.writerIndex(pos);
 			decr();
@@ -1028,6 +1035,7 @@ public class DefaultTracerImpl implements ITracer {
 				@Override
 				public void run() {
 					writer.onMetrics(bufferCopy);
+					flushOutEvents.add(finalCount);
 					log.info(et.printAvg("Metrics flushed", finalCount));
 				}
 			});
@@ -1245,6 +1253,24 @@ public class DefaultTracerImpl implements ITracer {
 	public ITracer clearSuppressPredicate() {
 		this.suppressPredicate = null;
 		return this;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.ITracer#getFlushedCount()
+	 */
+	@Override
+	public long getFlushedCount() {
+		return flushOutEvents.sumThenReset();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.ITracer#getTracedCount()
+	 */
+	@Override
+	public long getTracedCount() {
+		return traceOutEvents.sumThenReset();
 	}
 
 }

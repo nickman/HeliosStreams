@@ -38,7 +38,6 @@ tracer {
 		ts = System.currentTimeMillis();
 		attributeValues.each() { k, v ->
 			tracer.pushSeg(k).trace(v, ts).popSeg();
-			log.info("ByteBuff Stat: [{}]: {}", k, v);
 		}
 	} catch (x) {
 		log.error("Failed to collect on [{}]", on, x);					

@@ -136,6 +136,12 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected final CollectionRunnerCallable runCallable = new CollectionRunnerCallable();
 	/** The dependency manager for this script */
 	protected final DependencyManager<? extends ManagedScript> dependencyManager;
+	/** The number of traces issued in the last execution */
+	protected final AtomicLong lastTraceCount = new AtomicLong(0L);
+	
+
+	/** The number of metrics flushed in the last execution */
+	protected final AtomicLong lastFlushCount = new AtomicLong(0L);
 	
 	/** The source file */
 	protected File sourceFile = null;
@@ -359,6 +365,9 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		};
 		bindingMap.putAll(super.getBinding().getVariables());		
 		bindingMap.putAll(baseBindings);
+		final ITracer tracer = TracerFactory.getInstance().getNewTracer();			
+		bindingMap.put("tracer", tracer);
+
 		super.setBinding(this.binding);
 		final Matcher m = PERIOD_PATTERN.matcher(this.sourceReader.getSourceFile().getAbsolutePath());
 		if(m.matches()) {
@@ -406,30 +415,55 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		if(scheduledPeriod!=null) {
 			if(pendingDependencies.isEmpty()) {
 				canReschedule.set(true);
-				scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);			
-				log.info("Collection Script scheduled");
 				setState(ScriptState.SCHEDULED);
+				scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);			
+				log.info("Collection Script scheduled");				
 			} else {
-				setState(ScriptState.PASSIVE);
+				setState(ScriptState.WAITING);
 				log.info("\n ================================ \n Script [{}} not scheduled. \nWaiting on {}", this.sourceFile, pendingDependencies);
 			}
+		} else {
+			setState(ScriptState.PASSIVE);
 		}
+	}
+	
+	
+	
+	/**
+	 * Sets the state of this script.
+	 * If the state has changed, an attribute change notification will be emitted.
+	 * @param stateToSet The state to set the script to
+	 * @return true if state was changed as directed, false otherwise
+	 */
+	protected boolean setState(final ScriptState stateToSet) {
+		return setState(stateToSet, null);
 	}
 	
 	
 	/**
-	 * Sets the script state.
+	 * Sets the state of this script.
 	 * If the state has changed, an attribute change notification will be emitted.
-	 * @param newState The new script state
+	 * @param stateToSet The state to set the script to
+	 * @param ifState Optional conditional that the script must be in in order to change states 
+	 * @return true if state was changed as directed, false otherwise
 	 */
-	protected void setState(final ScriptState newState) {
-		if(newState==null) throw new IllegalArgumentException("The passed ScriptState was null");
-		final ScriptState priorState = state.getAndSet(newState);
-		if(priorState!=newState) {
-			final AttributeChangeNotification acn = new AttributeChangeNotification(objectName, notifSerial.incrementAndGet(), System.currentTimeMillis(), "State change: [" + priorState + "] to [" + newState + "]", "State", String.class.getName(), priorState.name(), newState.name());
-			broadcaster.sendNotification(acn);
+	protected boolean setState(final ScriptState stateToSet, final ScriptState ifState) {
+		if(stateToSet==null) throw new IllegalArgumentException("The passed ScriptState to set was null");
+		if(state.get()==stateToSet) return true;
+		for(;;) {			
+			if(ifState!=null && state.get()!=ifState) return false;
+			final ScriptState current = state.get();
+			if(current.canTransitionTo(stateToSet)) {
+				if(state.compareAndSet(current, stateToSet)) {
+					final AttributeChangeNotification acn = new AttributeChangeNotification(objectName, notifSerial.incrementAndGet(), System.currentTimeMillis(), "State change: [" + current + "] to [" + stateToSet + "]", "State", String.class.getName(), current.name(), stateToSet.name());
+					broadcaster.sendNotification(acn);					
+					return true;
+				}
+			} else {
+				return false;
+			}
 		}
-	}
+	}	
 	
 	/**
 	 * {@inheritDoc}
@@ -503,17 +537,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		
 	}
 	
-	protected boolean setState(final ScriptState stateToSet, final ScriptState ifState) {
-		for(;;) {			
-			if(ifState!=null && state.get()!=ifState) return false;
-			final ScriptState current = state.get();
-			if(current.canTransitionTo(stateToSet)) {
-				if(state.compareAndSet(current, stateToSet)) return true;
-			} else {
-				return false;
-			}
-		}
-	}
+
 	
 	private class CollectionRunnerCallable implements Callable<Void> {		
 		final TimeoutService timeoutService = TimeoutService.getInstance();
@@ -578,10 +602,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		}
 		
 		protected long scriptExec() {
-			final ITracer tracer = TracerFactory.getInstance().getTracer();			
-			bindingMap.put("tracer", tracer);
 			try {
-				log.info("Starting collect");
+				log.debug("Starting collect");
 				final long start = System.currentTimeMillis();
 //				if(hystrixEnabled.get()) {
 //					runInCircuitBreaker();
@@ -590,7 +612,15 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 //				}
 				return System.currentTimeMillis() - start;
 			} finally {
-				tracer.flush();
+				final ITracer itracer = (ITracer)bindingMap.get("tracer");
+				if(itracer!=null) {
+					try { itracer.flush(); } catch (Exception x) {/* No Op */}
+					lastTraceCount.set(itracer.getTracedCount());
+					lastFlushCount.set(itracer.getFlushedCount());
+				} else {
+					log.warn("No tracer found in binding");
+				}
+				
 			}
 		}
 	}
@@ -742,6 +772,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 */
 	@Override
 	public void close() throws IOException {
+		setState(ScriptState.DESTROY);
 		if(scheduleHandle!=null) {
 			scheduleHandle.cancel(true);
 			scheduleHandle = null;
@@ -1482,5 +1513,24 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	public void setHystrixEnabled(final boolean enabled) {
 		hystrixEnabled.set(enabled);
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLastTraceCount()
+	 */
+	@Override
+	public long getLastTraceCount() {
+		return lastTraceCount.get();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLastFlushCount()
+	 */
+	@Override
+	public long getLastFlushCount() {
+		return lastFlushCount.get();
+	}
+	
 	
 }

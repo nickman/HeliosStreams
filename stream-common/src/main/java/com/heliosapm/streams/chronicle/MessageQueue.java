@@ -520,6 +520,45 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 	}
 
 
+	/**
+	 * Returns the number of deleted roll files
+	 * @return the number of deleted roll files
+	 */
+	public long getDeletedRollFiles() {
+		return deletedRollFiles.getCount();
+	}
+
+	/**
+	 * Returns the total number of chronicle queue reads
+	 * @return the total number of chronicle queue reads
+	 */
+	public long getChronicleReads() {
+		return chronicleReads.getCount();
+	}
+
+	/**
+	 * Returns the total number of chronicle queue writes
+	 * @return the total number of chronicle queue writes
+	 */
+	public long getChronicleWrites() {
+		return chronicleWrites.getCount();
+	}
+
+	/**
+	 * Returns the total number of chronicle queue read errors
+	 * @return the total number of chronicle queue read errors
+	 */
+	public long getChronicleReadErrs() {
+		return chronicleReadErrs.getCount();
+	}
+
+	/**
+	 * Returns the processing queue backlog
+	 * @return the processing queue backlog
+	 */
+	public long getQueueBacklog() {
+		return queueBacklog.getValue();
+	}
 	
 	
 
