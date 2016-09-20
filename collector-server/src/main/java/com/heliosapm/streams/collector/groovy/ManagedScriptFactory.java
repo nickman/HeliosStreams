@@ -991,6 +991,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			final Map<String, Object> bmap = getGlobalBindings();
 			bmap.put("log", LogManager.getLogger("groovy.ui.Console"));
 			final Binding binding = new Binding(bmap);
+			binding.setVariable("tracer", TracerFactory.getInstance().getNewTracer());
 			final Object console = ctor.newInstance(consoleClassLoader, binding);
 			final Method method = console.getClass()
 				.getDeclaredMethod("run");
@@ -1031,6 +1032,29 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			throw new RuntimeException("Failed to launch console", e);
 		}		
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#pauseAll()
+	 */
+	@Override
+	public void pauseAll() {
+		for(ManagedScript ms: managedScripts.asMap().values()) {
+			try { ms.pause(); } catch (Exception x) {/* No Op */}
+		}
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptFactoryMBean#resumeAll()
+	 */
+	@Override
+	public void resumeAll() {
+		for(ManagedScript ms: managedScripts.asMap().values()) {
+			try { ms.resume(); } catch (Exception x) {/* No Op */}
+		}
+	}
+	
 	
 	
 	/**

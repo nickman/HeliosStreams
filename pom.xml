@@ -19,9 +19,9 @@
 		<module>opentsdb-connector</module>
 		<module>stream-hub-admin</module>
 		<module>stream-hub-onramp</module>
-		<module>bosun-connector</module>
+		<!-- <module>bosun-connector</module> -->
 		<module>collector-server</module>
-		<module>tsdb-query</module>
+		<!-- <module>tsdb-query</module> -->
 	</modules>
 	
     <properties>    	 

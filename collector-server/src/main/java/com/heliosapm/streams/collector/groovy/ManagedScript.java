@@ -455,7 +455,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			final ScriptState current = state.get();
 			if(current.canTransitionTo(stateToSet)) {
 				if(state.compareAndSet(current, stateToSet)) {
-					final AttributeChangeNotification acn = new AttributeChangeNotification(objectName, notifSerial.incrementAndGet(), System.currentTimeMillis(), "State change: [" + current + "] to [" + stateToSet + "]", "State", String.class.getName(), current.name(), stateToSet.name());
+					final AttributeChangeNotification acn = new AttributeChangeNotification(objectName, notifSerial.incrementAndGet(), System.currentTimeMillis(), "State change to: [" + stateToSet + "] from [" + current + "]", "State", String.class.getName(), current.name(), stateToSet.name());
 					broadcaster.sendNotification(acn);					
 					return true;
 				}
@@ -1015,6 +1015,15 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	
 	/**
 	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getNavMap()
+	 */
+	@Override
+	public String[] getNavMap() {
+		return (String[])bindingMap.get("navmap");
+	}
+	
+	/**
+	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getConsecutiveCollectionErrors()
 	 */
 	@Override
@@ -1252,6 +1261,15 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 */
 	public <T> T get(final String key, final long expiryPeriod, final Closure<T> createIfNotFound) {
 		return cache.get(ck(key), expiryPeriod, createIfNotFound);
+	}
+	
+	/**
+	 * Removes and returns the named cache entry
+	 * @param key The cache key
+	 * @return the formerly bound object or null
+	 */
+	public <T> T remove(final String key) {
+		return cache.remove(key);
 	}
 
 	/**

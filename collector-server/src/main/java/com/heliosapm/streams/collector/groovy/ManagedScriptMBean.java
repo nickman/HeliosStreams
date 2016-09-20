@@ -147,6 +147,12 @@ public interface ManagedScriptMBean { //extends NamedBean {
 	public int getDeploymentId();
 	
 	/**
+	 * Returns the script's navmap
+	 * @return the script's navmap
+	 */
+	public String[] getNavMap();
+	
+	/**
 	 * Returns the date of the last completed collection, or null if one has not been collected yet
 	 * @return the date of the last completed collection
 	 */

@@ -243,4 +243,15 @@ public interface ManagedScriptFactoryMBean {
 	 */
 	public ObjectName sourceNameToObjectName(final String sourceName);
 
+	
+	/**
+	 * Pauses all installed scripts
+	 */
+	public void pauseAll();
+	
+	/**
+	 * Resumes all installed paused scripts
+	 */
+	public void resumeAll();
+	
 }
