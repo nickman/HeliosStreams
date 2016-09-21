@@ -56,15 +56,6 @@ import io.netty.buffer.ByteBufAllocator;
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.tracing.DefaultTracerImpl</code></p>
-
-
-FIXME: Caused by: io.netty.util.IllegalReferenceCountException: refCnt: 0
-        at io.netty.buffer.AbstractByteBuf.ensureAccessible(AbstractByteBuf.java:1425) ~[cserver.jar:0.0.1-SNAPSHOT]
-        at io.netty.buffer.AbstractByteBuf.writeByte(AbstractByteBuf.java:937) ~[cserver.jar:0.0.1-SNAPSHOT]
-        at com.heliosapm.streams.metrics.StreamedMetricValue.write(StreamedMetricValue.java:343) ~[cserver.jar:0.0.1-SNAPSHOT]
-        at com.heliosapm.streams.metrics.StreamedMetricValue.write(StreamedMetricValue.java:496) ~[cserver.jar:0.0.1-SNAPSHOT]
-        at com.heliosapm.streams.tracing.DefaultTracerImpl.traceOut(DefaultTracerImpl.java:696) ~[cserver.jar:0.0.1-SNAPSHOT]
-
  */
 
 public class DefaultTracerImpl implements ITracer {
@@ -257,6 +248,9 @@ public class DefaultTracerImpl implements ITracer {
 		reset();
 		checkpointStack.clear();		
 		outBuffer.clear();
+		outBuffer.setByte(COMPRESS_OFFSET, 0);
+		outBuffer.setInt(COUNT_OFFSET, 0);
+		outBuffer.writerIndex(START_DATA_OFFSET);		
 		return this;
 	}
 
@@ -454,6 +448,15 @@ public class DefaultTracerImpl implements ITracer {
 			}			
 		}
 		return this;
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.tracing.ITracer#pushTag(java.lang.String)
+	 */
+	@Override
+	public ITracer pushTag(final String tagPair) {
+		return pushTagPair(tagPair);
 	}
 
 	/**
@@ -686,7 +689,7 @@ public class DefaultTracerImpl implements ITracer {
 //		return _trace(value, msTime==null ? System.currentTimeMillis() : msTime, tagValues);
 //	}
 	
-	private void traceOut(final long value, final long timestamp, final String...tagValues) {
+	private synchronized void traceOut(final long value, final long timestamp, final String...tagValues) {
 		final int pos = outBuffer.writerIndex();
 		try {			
 			modified = false;
@@ -1023,6 +1026,7 @@ public class DefaultTracerImpl implements ITracer {
 	public ITracer flush() {
 		if(bufferedEvents > 0) {
 			final ElapsedTime et = SystemClock.startClock();
+			outBuffer.setInt(COMPRESS_OFFSET, 0);
 			outBuffer.setInt(COUNT_OFFSET, bufferedEvents);
 			final ByteBuf bufferCopy = bufferFactory.buffer(outBuffer.readableBytes());
 //			bufferCopy.writeByte(0);

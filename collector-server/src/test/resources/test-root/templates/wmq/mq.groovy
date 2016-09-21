@@ -1,10 +1,19 @@
-import groovy.transform.*;
+
+
 import com.ibm.mq.constants.MQConstants;
 import static com.ibm.mq.constants.MQConstants.*;
 import com.ibm.mq.pcf.*;
 import static com.ibm.mq.pcf.CMQC.*;
 import java.util.regex.*;
 import java.text.SimpleDateFormat;
+
+
+
+
+@Field qManager;
+@Field subPrefix;
+@Field appTag = navmap[0];
+@Field hostTag = navmap[1];
 
 //==================================================================================
 //      Constants
@@ -61,420 +70,340 @@ def OBJECT_TYPE = [
 def Q_TYPES = [(CMQC.MQQT_ALIAS) : "Alias", (CMQC.MQQT_CLUSTER) : "Cluster", (CMQC.MQQT_LOCAL) : "Local", (CMQC.MQQT_REMOTE) : "Remote", (CMQC.MQQT_MODEL) : "Model"];
 
 @Field
-def subPrefix = null;
-
-
-
-@Field
 def SKIP_QUEUE = Pattern.compile("SYSTEM\\..*||AMQ\\..*");
 @Field
 def SDF = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
 
+public Date formatDate(datePart, timePart) {
+    //"yyyy-MM-dd HH.mm.ss"
+    return SDF.parse("${datePart.toString().trim()} ${timePart.toString().trim()}");
+}
 
 
+testConn = {pcf ->
+    try {
+        return pcf.getQManagerName();
+    } catch (x) {
+        log.error("PCF Found Disconnected");
+        return null;
+    }
+}
 
-    //==================================================================================
-    //          Utility Methods
-    //==================================================================================
-    public int perc(part, total) {
-        if(part<1 || total <1) return 0;
-        return part/total*100;
+
+listToMap = { list ->
+    Map map = new HashMap();
+    list.each() {
+        map.putAll(it);
     }
-    public String channelType(int id){
-        return CHANNEL_TYPES.get(id);
-    }
-    public String channelStatus(int id){
-        return CHANNEL_STATUSES.get(id);
-    }
-    public String serviceStatus(int id){
-        return SERVICE_STATUSES.get(id);
-    }
-    public String mqStatus(int id){
-        return MQ_STATUSES.get(id);
-    }
-    xtractTimes = { map ->
-        def tkeys = new HashSet();
-        def dkeys = new HashSet();
-        map.each() { k, v ->
-            if(k!=null && k.endsWith("_TIME")) tkeys.add(k.replace("_TIME", ""));
-            if(k!=null && k.endsWith("_DATE")) dkeys.add(k.replace("_DATE", ""));
+    return map;
+}
+
+
+request = { byName, agent, type, parameters ->
+    def responses = [];
+    def PCFMessage request = new PCFMessage(type);
+    if(parameters.getClass().isArray()) {
+        parameters.each() { param ->
+            request.addParameter(param);
         }
-        tkeys.retainAll(dkeys);
-        dkeys.retainAll(tkeys);
-        def akeys = new HashSet(tkeys);
-        akeys.addAll(dkeys);
-        akeys.each() { 
-            d = "${it}_DATE".toString(); t = "${it}_TIME".toString();
-            dt = SDF.parse("${map.get(d).trim()} ${map.get(t).trim()}");
-            map.put("${it}_TS", dt);
+    } else {
+        parameters.each() { name, value ->
+            request.addParameter(name, value);
         }
-        return map;
     }
 
-
-    public List request(byName, agent, type, parameters) {
-        def responses = [];
-        def PCFMessage request = new PCFMessage(type);
-        if(parameters.getClass().isArray()) {
-            parameters.each() { param ->
-                request.addParameter(param);
-            }
-        } else {
-            parameters.each() { name, value ->
-                request.addParameter(name, value);
-            }
+    agent.send(request).each() {
+        def responseValues = [:];
+        it.getParameters().toList().each() { pcfParam ->
+            def value = pcfParam.getValue();
+            //if(value instanceof String) value = value.trim();
+            responseValues.put(byName ? pcfParam.getParameterName() : pcfParam.getParameter(), value);
         }
-
-        agent.send(request).each() {
-            def responseValues = [:];
-            it.getParameters().toList().each() { pcfParam ->
-                def value = pcfParam.getValue();
-                //if(value instanceof String) value = value.trim();
-                responseValues.put(byName ? pcfParam.getParameterName() : pcfParam.getParameter(), value);
-            }
-            responses.add(responseValues);
-        }        
-        return responses;
-    }
-
-    public Map listToMap(list) {
-        Map map = new HashMap();
-        list.each() {
-            map.putAll(it);
-        }
-        return map;
-    }
-
-    public Date formatDate(datePart, timePart) {
-        //"yyyy-MM-dd HH.mm.ss"
-        return SDF.parse("${datePart.toString().trim()} ${timePart.toString().trim()}");
-    }
-
-    public int[] getTopicPubSubCounts(topicString, agent) {
-        int[] pubSubCounts = new int[2];
-        request(false, agent, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString]).each() {
-            pubSubCounts[0] = it.get(CMQC.MQIA_PUB_COUNT);
-            pubSubCounts[1] = it.get(CMQC.MQIA_SUB_COUNT);
-        }
-        return pubSubCounts;
-    }
+        responses.add(responseValues);
+    }        
+    return responses;
+}
 
 
-    /**
-     * Returns the cached meta data for the primary (non-admin) queues
-     */
-    public Map qNames(agent) {
-        remove("QUEUES");
-        return get("QUEUES", (60000 * 15), {
-            log.info "Fetching Queue Meta";
-            Map<String, Map> qnames = new HashMap<String, Map>();
-            request(true, agent, CMQCFC.MQCMD_INQUIRE_Q_NAMES, [(CMQC.MQCA_Q_NAME):"*", (CMQC.MQIA_Q_TYPE) : CMQC.MQQT_LOCAL]).each() {
-                it.get("MQCACF_Q_NAMES").each() { qname ->
-                    if(!SKIP_QUEUE.matcher(qname).matches()) {
-                        def qAttrs = listToMap(request(true, agent, CMQCFC.MQCMD_INQUIRE_Q, [(CMQC.MQCA_Q_NAME):qname]));
-                        qnames.put(qname, qAttrs);
-                    }
+qNames = { agent ->
+    return get("QUEUES", 60000 * 5, {
+        log.info("Fetching Queue Meta");
+        Map<String, Map> qnames = new HashMap<String, Map>();
+        request(true, agent, CMQCFC.MQCMD_INQUIRE_Q_NAMES, [(CMQC.MQCA_Q_NAME):"*", (CMQC.MQIA_Q_TYPE) : CMQC.MQQT_LOCAL]).each() {
+            it.get("MQCACF_Q_NAMES").each() { qname ->
+                if(!SKIP_QUEUE.matcher(qname).matches()) {
+                    def qAttrs = listToMap(request(true, agent, CMQCFC.MQCMD_INQUIRE_Q, [(CMQC.MQCA_Q_NAME):qname]));
+                    qnames.put(qname, qAttrs);
                 }
             }
-            return qnames;
-        });
-    }
+        }
+        return qnames;
+    });
+}
 
-    /**
-     * Returns the cached meta data for the primary (non-admin) topics
-     */
-    public Map topicNames(agent) {
-        return get("TOPICS", (60000 * 15), {
-            log.info "Fetching Topic Names";
-            Map<String, Map> tnames = new HashMap<String, Map>();
-            request(true, agent, CMQCFC.MQCMD_INQUIRE_TOPIC_NAMES, [(CMQC.MQCA_TOPIC_NAME):"*"]).each() {
-                it.get("MQCACF_TOPIC_NAMES").each() { tname ->
-                    if(!SKIP_QUEUE.matcher(tname).matches()) {                        
-                        def topicAttrs = listToMap(request(true, agent, CMQCFC.MQCMD_INQUIRE_TOPIC, [(CMQC.MQCA_TOPIC_NAME):tname]));
-                        tnames.put(tname, topicAttrs)
-                    }
+/**
+ * Returns the cached meta data for the primary (non-admin) topics
+ */
+topicNames = { agent ->
+    return get("TOPICS", (60000 * 5), {
+        log.info("Fetching Topic Names");
+        Map<String, Map> tnames = new HashMap<String, Map>();
+        request(true, agent, CMQCFC.MQCMD_INQUIRE_TOPIC_NAMES, [(CMQC.MQCA_TOPIC_NAME):"*"]).each() {
+            it.get("MQCACF_TOPIC_NAMES").each() { tname ->
+                if(!SKIP_QUEUE.matcher(tname).matches()) {                        
+                    def topicAttrs = listToMap(request(true, agent, CMQCFC.MQCMD_INQUIRE_TOPIC, [(CMQC.MQCA_TOPIC_NAME):tname]));
+                    tnames.put(tname, topicAttrs)
                 }
             }
-            return tnames;
-        });
-    }
+        }
+        return tnames;
+    });
+}
 
-    /**
-     * Returns the cached meta data for the channels
-     */
-    public Map channelNames(agent) {
-        remove("CHANNELS");
-        return get("CHANNELS", (60000 * 15), {
-            log.info "Fetching Channel Names";
-            Map<String, Map> chnames = new HashMap<String, Map>();
-            request(true, agent, CMQCFC.MQCMD_INQUIRE_CHANNEL_NAMES, [(MQConstants.MQCACH_CHANNEL_NAME):"*"]).each() {
-                it.get("MQCACH_CHANNEL_NAMES").each() { chname ->
-                    def map = listToMap(request(true, agent, CMQCFC.MQCMD_INQUIRE_CHANNEL, [(MQConstants.MQCACH_CHANNEL_NAME):chname]));
-                    chnames.put(chname, map);
-                }
+/**
+ * Returns the cached meta data for the channels
+ */
+channelNames = { agent ->    
+    return get("CHANNELS", (60000 * 5), {
+        log.info "Fetching Channel Names";
+        Map<String, Map> chnames = new HashMap<String, Map>();
+        request(true, agent, CMQCFC.MQCMD_INQUIRE_CHANNEL_NAMES, [(MQConstants.MQCACH_CHANNEL_NAME):"*"]).each() {
+            it.get("MQCACH_CHANNEL_NAMES").each() { chname ->
+                def map = listToMap(request(true, agent, CMQCFC.MQCMD_INQUIRE_CHANNEL, [(MQConstants.MQCACH_CHANNEL_NAME):chname]));
+                chnames.put(chname, map);
             }
-            return chnames;
-        });
-    }
+        }
+        return chnames;
+    });
+}
 
-    public Map getSubName(agent, subId) {
-        rez = request(true, agent, CMQCFC.MQCMD_INQUIRE_SUBSCRIPTION, [(CMQCFC.MQBACF_SUB_ID):subId]).get(0);
-        if(rez == null || rez.isEmpty()) return null;
-        //printMap("ANON SUB", rez);
-        subName = rez.get("MQCACF_SUB_NAME");
-        if(subName==null || subName.trim().isEmpty()) {
-            rez.put("MQCACF_SUB_NAME", "ANONYMOUS");
-        } else {
-            rez.put(subName.replace(subPrefix, "").replace(":", "_"));
-        }        
-        return rez;
+getTopicPubSubCounts = {topicString, agent ->
+    int[] pubSubCounts = new int[2];
+    request(false, agent, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString]).each() {
+        pubSubCounts[0] = it.get(CMQC.MQIA_PUB_COUNT);
+        pubSubCounts[1] = it.get(CMQC.MQIA_SUB_COUNT);
     }
+    return pubSubCounts;
+}
 
-    /**
-     * Returns the cached meta data for the subscriptions
-     */
-    public Map subNames(agent) { 
-        remove("SUBSCRIPTIONS")       ;
-        return get("SUBSCRIPTIONS", (60000 * 15), {
-            log.info "Fetching Subscriptions";            
-            
-            Map<String, Map> subs = new HashMap<String, Map>();  
-            Map<String, Map> tnames = topicNames(agent);
-            tnames.each() { topic, meta ->
-                String topicString = meta.get('MQCA_TOPIC_STRING');
-                int[] counts = getTopicPubSubCounts(topicString, agent);
-                log.info "PubSub Counts for [${topicString}] : $counts"
-                if(counts[1] > 0) {
-                    Map topicSubs  = [:];
-                    subs.put(topic.trim(), topicSubs);
-                    try {
-                        request(false, agent, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString, (CMQCFC.MQIACF_TOPIC_STATUS_TYPE):CMQCFC.MQIACF_TOPIC_SUB]).each() { sub ->
-                            byte[] subId = sub.get(CMQCFC.MQBACF_SUB_ID);                            
-                            String subName = null;
-                            String destName = null;
-                            request(true, agent, CMQCFC.MQCMD_INQUIRE_SUBSCRIPTION, [(CMQCFC.MQBACF_SUB_ID):subId]).each() {
-                                subName = it.get("MQCACF_SUB_NAME");
+
+/**
+ * Returns the cached meta data for the subscriptions
+ */
+subscriptionNames = { agent ->
+    return get("SUBSCRIPTIONS", (60000 * 5), {
+        log.info "Fetching Subscriptions";            
+        
+        Map<String, Map> subs = new HashMap<String, Map>();  
+        Map<String, Map> tnames = topicNames(agent);
+        tnames.each() { topic, meta ->
+            String topicString = meta.get('MQCA_TOPIC_STRING');
+            int[] counts = getTopicPubSubCounts(topicString, agent);
+            log.info("PubSub Counts for [${topicString}] : $counts");
+            if(counts[1] > 0) {
+                Map topicSubs  = [:];
+                subs.put(topic.trim(), topicSubs);
+                try {
+                    request(false, agent, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString, (CMQCFC.MQIACF_TOPIC_STATUS_TYPE):CMQCFC.MQIACF_TOPIC_SUB]).each() { sub ->
+                        byte[] subId = sub.get(CMQCFC.MQBACF_SUB_ID);                            
+                        String subName = null;
+                        String destName = null;
+                        request(true, agent, CMQCFC.MQCMD_INQUIRE_SUBSCRIPTION, [(CMQCFC.MQBACF_SUB_ID):subId]).each() {
+                            subName = it.get("MQCACF_SUB_NAME");
+                            if(subName!=null) {
                                 topicSubs.put(subName, it);  
                                 strSubId = "$subId".toString();
                                 cleanSubName = subName.replace(subPrefix, "").replace(":", "_");
                                 topicSubs.put(strSubId, cleanSubName);  
                                 topicSubs.put(cleanSubName, it);                                
-
                             }
                         }
-                    } catch (ex) {
-                        log.info "PubSub Count ERR [${topicString}] : $ex"
-                        ex.printStackTrace(System.err);
-
-                    } finally {
-                        if(topicSubs.isEmpty()) {
-                            subs.remove(topic.trim());
-                        }
                     }
-                }                
-            }
-            return subs;
-        });
-    }
-
-    public void traceQueueStats(agent, queueName) {
-        try {
-            trace { tracer ->
-                ts = System.currentTimeMillis();
-                tracer.pushSeg("queue");       
-                q = queueName.trim();
-                it = request(false, agent, CMQCFC.MQCMD_INQUIRE_Q_STATUS, [(CMQC.MQCA_Q_NAME):queueName]).get(0);
-                qType = Q_TYPES.get(it.get(CMQC.MQCA_Q_NAME).trim());
-                try {
-                    tracer.pushTag("q=$q");
-                    tracer.pushSeg("depth").value(it.get(CMQC.MQIA_CURRENT_Q_DEPTH)).trace(ts).popSeg();
-                    tracer.pushSeg("openin").value(it.get(CMQC.MQIA_OPEN_INPUT_COUNT)).trace(ts).popSeg();
-                    tracer.pushSeg("openout").value(it.get(CMQC.MQIA_OPEN_OUTPUT_COUNT)).trace(ts).popSeg();
-                    tracer.pushSeg("uncommited").value(it.get(CMQCFC.MQIACF_UNCOMMITTED_MSGS)).trace(ts).popSeg();
-                    tracer.pushSeg("ageoom").value(it.get(CMQCFC.MQIACF_OLDEST_MSG_AGE)).trace(ts).popSeg();
-                    try {
-                        long[] onQTimes = it.get(1226);     
-                        if(onQTimes[0]>-1) {
-                            tracer.pushSeg("onqtime-recent").value(TimeUnit.MILLISECONDS.convert(onQTimes[0], TimeUnit.MICROSECONDS)).trace(ts).popSeg();
-                            tracer.pushSeg("onqtime-recent-mcr").value(onQTimes[0]).trace(ts).popSeg();
-                        }
-                        if(onQTimes[1]>-1) {
-                            tracer.pushSeg("onqtime").value(TimeUnit.MILLISECONDS.convert(onQTimes[1], TimeUnit.MICROSECONDS)).trace(ts).popSeg();                        
-                            tracer.pushSeg("onqtime-mcr").value(onQTimes[1]).trace(ts).popSeg();
-                        }
-                    } catch (x) {}
+                } catch (ex) {
+                    log.error("PubSub Count ERR [${topicString}]", ex);
                 } finally {
-                    tracer.popTag();
-                }                
-            }
-        } catch (x) {}
-    }
-
-    public void traceChannelStats(agent) {
-        try {
-            trace { tracer ->
-                ts = System.currentTimeMillis();
-                tracer.pushSeg("channel");                       
-    	            request(true, agent, CMQCFC.MQCMD_INQUIRE_CHANNEL_STATUS, [(CMQCFC.MQCACH_CHANNEL_NAME):"*"]).each() { ch ->                    
-                    try {
-                        chName = ch.get('MQCACH_CHANNEL_NAME').trim();
-                        chType = CHANNEL_TYPES.get(ch.get('MQIACH_CHANNEL_TYPE'));
-                        tracer.pushTag("channel=$chName").pushTag("type=$chType");
-                        // =====================================================================================================================================
-                        //   Channel Batches
-                        // =====================================================================================================================================
-                        if(ch.containsKey('MQIACH_BATCHES')) tracer.pushSeg("batches").value(ch.remove('MQIACH_BATCHES')).trace(ts).popSeg();
-                        if(ch.containsKey('MQIACH_BATCH_SIZE')) tracer.pushSeg("batchsize").value(ch.remove('MQIACH_BATCH_SIZE')).trace(ts).popSeg();
-
-                        // =====================================================================================================================================
-                        //   Channel Bytes/Buffers  Received/Sent
-                        // =====================================================================================================================================
-                        tracer.pushSeg("buffersreceived").value(ch.remove('MQIACH_BUFFERS_RCVD/MQIACH_BUFFERS_RECEIVED')).trace(ts).popSeg();
-                        tracer.pushSeg("bytessreceived").value(ch.remove('MQIACH_BYTES_RCVD/MQIACH_BYTES_RECEIVED')).trace(ts).popSeg();
-                        tracer.pushSeg("bufferssent").value(ch.remove('MQIACH_BUFFERS_SENT')).trace(ts).popSeg();
-                        tracer.pushSeg("bytessent").value(ch.remove('MQIACH_BYTES_SENT')).trace(ts).popSeg();
-
-                        // =====================================================================================================================================
-                        //   Channel Batches
-                        // =====================================================================================================================================
-                        if(ch.containsKey('MQIACH_CURRENT_MSGS')) tracer.pushSeg("indoubtmsgs").value(ch.get('MQIACH_CURRENT_MSGS')).trace(ts).popSeg();  
-                        if(ch.containsKey('MQIACH_CURRENT_SHARING_CONVS')) tracer.pushSeg("convs").value(ch.get('MQIACH_CURRENT_SHARING_CONVS')).trace(ts).popSeg();
-                        if(ch.containsKey('MQIACH_MSGS')) tracer.pushSeg("msgs").value(ch.get('MQIACH_MSGS')).trace(ts).popSeg();
-                        if(ch.containsKey('MQIACH_XMITQ_MSGS_AVAILABLE')) tracer.pushSeg("msgsavail").value(ch.get('MQIACH_XMITQ_MSGS_AVAILABLE')).trace(ts).popSeg();
-                        
-                    } finally {
-                        tracer.popTag().popTag();
-                    } 
+                    if(topicSubs.isEmpty()) {
+                        subs.remove(topic.trim());
+                    }
                 }
-            }
-        } catch (x) {
-            log.info "Channel Trace Error: $x";
-            x.printStackTrace(System.err);
-
+            }                
         }
-    }
+        return subs;
+    });
+}
 
-    public void printMap(name, map) {
-        if(map==null) {
-            log.info "$name was null";
-        } else {
-            if(!(map instanceof Map)) {
-                log.info "$name is not a map (${map.getClass().getName()})";
-            } else {
-                log.info "\tP:   $name";
-                map.each() { k, v ->
-                    log.info "\t\t[$k]  :  [$v]";
-                }
+ex = { map, id ->
+    def v = map.get(id);
+    log.info("v: $v, type: ${v.getClass().getName()}");
+    return v;
+}
+
+traceQueueStats = {agent, queueName ->    
+    try {
+        tracer { 
+            ts = System.currentTimeMillis();
+            tracer.pushSeg("queue");       
+            String qname = queueName.trim();
+            it = request(false, agent, CMQCFC.MQCMD_INQUIRE_Q_STATUS, [(CMQC.MQCA_Q_NAME):queueName]).get(0);
+            qType = Q_TYPES.get(it.get(CMQC.MQCA_Q_NAME).trim());
+            try {
+                tracer.pushTag("q", qname);
+                tracer.pushSeg("depth").trace(it.get(CMQC.MQIA_CURRENT_Q_DEPTH).longValue(), ts).popSeg();
+                tracer.pushSeg("openin").trace(it.get(CMQC.MQIA_OPEN_INPUT_COUNT).longValue(), ts).popSeg();
+                tracer.pushSeg("openout").trace(it.get(CMQC.MQIA_OPEN_OUTPUT_COUNT).longValue(), ts).popSeg();
+                tracer.pushSeg("uncommited").trace(it.get(CMQCFC.MQIACF_UNCOMMITTED_MSGS).longValue(), ts).popSeg();
+                tracer.pushSeg("ageoom").trace(it.get(CMQCFC.MQIACF_OLDEST_MSG_AGE).longValue(), ts).popSeg();
+                try {
+                    long[] onQTimes = it.get(1226);     
+                    if(onQTimes[0]>-1) {
+                        tracer.pushSeg("onqtime-recent").trace(TimeUnit.MILLISECONDS.convert(onQTimes[0], TimeUnit.MICROSECONDS), ts).popSeg();
+                        tracer.pushSeg("onqtime-recent-mcr").trace(onQTimes[0], ts).popSeg();
+                    }
+                    if(onQTimes[1]>-1) {
+                        tracer.pushSeg("onqtime").trace(TimeUnit.MILLISECONDS.convert(onQTimes[1], TimeUnit.MICROSECONDS), ts).popSeg();                        
+                        tracer.pushSeg("onqtime-mcr").trace(onQTimes[1], ts).popSeg();
+                    }
+                } catch (x) {}
+            } finally {
+                tracer.popTag();
+            }                
+        }
+    } catch (x) {
+        log.error("Queue Trace Error", x);
+    }
+}
+
+traceChannelStats = { agent ->
+    try {
+        tracer { 
+            ts = System.currentTimeMillis();
+            tracer.pushSeg("channel");                       
+            request(true, agent, CMQCFC.MQCMD_INQUIRE_CHANNEL_STATUS, [(CMQCFC.MQCACH_CHANNEL_NAME):"*"]).each() { ch ->                    
+                try {
+                    chName = ch.get('MQCACH_CHANNEL_NAME').trim();
+                    chType = CHANNEL_TYPES.get(ch.get('MQIACH_CHANNEL_TYPE'));
+                    tracer.pushTag("channel=$chName").pushTag("type=$chType");
+                    // =====================================================================================================================================
+                    //   Channel Batches
+                    // =====================================================================================================================================
+                    if(ch.containsKey('MQIACH_BATCHES')) tracer.pushSeg("batches").value(ch.remove('MQIACH_BATCHES')).trace(ts).popSeg();
+                    if(ch.containsKey('MQIACH_BATCH_SIZE')) tracer.pushSeg("batchsize").value(ch.remove('MQIACH_BATCH_SIZE')).trace(ts).popSeg();
+
+                    // =====================================================================================================================================
+                    //   Channel Bytes/Buffers  Received/Sent
+                    // =====================================================================================================================================
+                    tracer.pushSeg("buffersreceived").value(ch.remove('MQIACH_BUFFERS_RCVD/MQIACH_BUFFERS_RECEIVED')).trace(ts).popSeg();
+                    tracer.pushSeg("bytessreceived").value(ch.remove('MQIACH_BYTES_RCVD/MQIACH_BYTES_RECEIVED')).trace(ts).popSeg();
+                    tracer.pushSeg("bufferssent").value(ch.remove('MQIACH_BUFFERS_SENT')).trace(ts).popSeg();
+                    tracer.pushSeg("bytessent").value(ch.remove('MQIACH_BYTES_SENT')).trace(ts).popSeg();
+
+                    // =====================================================================================================================================
+                    //   Channel Batches
+                    // =====================================================================================================================================
+                    if(ch.containsKey('MQIACH_CURRENT_MSGS')) tracer.pushSeg("indoubtmsgs").value(ch.get('MQIACH_CURRENT_MSGS')).trace(ts).popSeg();  
+                    if(ch.containsKey('MQIACH_CURRENT_SHARING_CONVS')) tracer.pushSeg("convs").value(ch.get('MQIACH_CURRENT_SHARING_CONVS')).trace(ts).popSeg();
+                    if(ch.containsKey('MQIACH_MSGS')) tracer.pushSeg("msgs").value(ch.get('MQIACH_MSGS')).trace(ts).popSeg();
+                    if(ch.containsKey('MQIACH_XMITQ_MSGS_AVAILABLE')) tracer.pushSeg("msgsavail").value(ch.get('MQIACH_XMITQ_MSGS_AVAILABLE')).trace(ts).popSeg();
+                    
+                } finally {
+                    tracer.popTag().popTag();
+                } 
             }
         }
+    } catch (x) {
+        log.error("Channel Trace Error", x);
     }
+}
 
-@Field
-pcfConn = null;
+
+
+
+pcfAgent = { host, port, channel ->
+    return get("PCFAGENT-$host-$port-$channel", {
+        log.info("Connecting to $host/$port/$channel");
+        def p= new PCFMessageAgent(host, port, channel);
+        qManager = p.getQManagerName();
+        log.info("Connected to $qManager@$host:$port");
+        return p;
+    });
+}
+
+String mqhost = navmap[1];
+int mqport = port;
+String mqchannel = channel;
 
 
 try {
-	if(pcfConn==null)  {
-    	pcfConn = new PCFMessageAgent("wmq8", 1430, "JBOSS.SVRCONN")
-    	qManager = pcfConn.getQManagerName();
-    	log.info "Connected to $qManager";
-	}
-    
-
+    pcfConn = pcfAgent(mqhost, mqport, mqchannel);
+    if(testConn(pcfConn)==null) {
+        remove("PCFAGENT");
+        pcfConn = pcfAgent(mqhost, mqport, mqchannel);
+    }
+    qManager = pcfConn.getQManagerName();
+    subPrefix = "JMS:$qManager:";
     //==================================================================================
     //          Meta-Data Cache
     //==================================================================================
 
-    
-
-
-
-
-    //==================================================================================
-    //          Instance Vars
-    //==================================================================================
-    qManager = null;
-    appTag = "app=wmq";
-
-    /*
-    host = get('host', { 
-        String _hn = jmxHelper.getHostName(mbs);        
-        return _hn;
-    });
-    */
-    hostTag = "host=wmq8";
-
-
-    //==================================================================================
-
     try {
-        qManager = pcfConn.getQManagerName();
-        subPrefix = "JMS:$qManager:"
-        log.info "Connected to $qManager @ $mqHost";
         qnames = qNames(pcfConn);
-        log.info "=========== Primary Queue Names ===========";
+        log.info("=========== Primary Queue Names ===========");
         qnames.keySet().each() { q ->
-            log.info "\t$q"
+            log.info("\t$q");
         }
     } catch (ex) {
-        log.info ex;
+        log.error("PrimaryQueueNames Error", ex);
     }
     try {
+        log.info("Initing Topic Names");
         tnames = topicNames(pcfConn);
-        log.info "=========== Topic Names ===========";
+        log.info("=========== Topic Names ===========");
         tnames.keySet().each() { top ->
-            log.info "\t$top"
+            log.info("\t$top");
         }
     } catch (ex) {
-        log.info ex;
+        log.error("Topic Names Error", ex);
     }
 
 
     try {
         chnames = channelNames(pcfConn);
-        log.info "=========== Channel Names ===========";
+        log.info("=========== Channel Names ===========");
         chnames.keySet().each() { ch ->
-            log.info "\t$ch"
+            log.info("\t$ch");
 
         }
     } catch (ex) {
-        ex.printStackTrace();
-        //log.info ex;
+        log.error("Channel Names Error", ex);
     }
     try {
-        subNames = subNames(pcfConn);
+        subNames = subscriptionNames(pcfConn);
         log.info "=========== SUBS ===========";
         subNames.each() { k, v ->
             log.info "$k";
         }
     } catch (ex) {
-        ex.printStackTrace();
+        log.error("Subscription Names Error", ex);
         //log.info ex;
     }
-    trace.clear();
-    trace.pushSeg("mq").pushTag(hostTag).pushTag(appTag).pushTag("qm=$qManager");
-
-    
-    
+    tracer.pushSeg("mq").pushTag("host", mqhost).pushTag("app", navmap[0]);
 
 
     // QUEUE STATS
-    trace { tracer ->        
-        
+    tracer {         
         qnames = qNames(pcfConn);
-        qnames.keySet().each() { qName ->
-            log.info "TRACING [$qName]";
+        qnames.keySet().each() { qName ->            
             traceQueueStats(pcfConn, qName);
         }
     }
 
-    // TOPIC STATS
-    trace { tracer ->
+   // TOPIC STATS
+    tracer { 
         ts = System.currentTimeMillis();
         tracer.pushSeg("topic");       
         tNames = tnames.keySet();
-        Map<String, Map<String, Map>> subNames = subNames(pcfConn);
+        Map<String, Map<String, Map>> subNames = subscriptionNames(pcfConn);
         request(true, pcfConn, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):"#", (CMQCFC.MQIACF_TOPIC_STATUS_TYPE):CMQCFC.MQIACF_TOPIC_STATUS]).each() {  attrs ->
             topicName = attrs.get("MQCA_ADMIN_TOPIC_NAME");                
             if(!topicName.trim().isEmpty() && !topicName.trim().startsWith("SYSTEM.")) {
@@ -483,15 +412,15 @@ try {
                     subAttributes = subNames.get(topicName.trim());
                     pubCount = attrs.get("MQIA_PUB_COUNT");
                     subCount = attrs.get("MQIA_SUB_COUNT");
-                    tracer.pushTag("topic=${topicName.trim()}");
-                    tracer.pushSeg("pubs").value(pubCount).trace(ts).popSeg();
-                    tracer.pushSeg("subs").value(subCount).trace(ts).popSeg();
+                    tracer.pushTag("topic", topicName.trim());
+                    tracer.pushSeg("pubs").trace(pubCount, ts).popSeg();
+                    tracer.pushSeg("subs").trace(subCount, ts).popSeg();
                     try {
                         if(pubCount > 0) {
                             request(true, pcfConn, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString, (CMQCFC.MQIACF_TOPIC_STATUS_TYPE):CMQCFC.MQIACF_TOPIC_PUB]).each() {
                                 secondsSinceLastPub = (ts/1000) - (formatDate(it.get('MQCACF_LAST_PUB_DATE'), it.get('MQCACF_LAST_PUB_TIME')).getTime() / 1000);
                                 msgCount = it.get('MQIACF_PUBLISH_COUNT');                                
-                                tracer.pushSeg("pubs").pushSeg("ssincelastmsg").value(pubCount).trace(ts).popSeg().popSeg();
+                                tracer.pushSeg("pubs").pushSeg("ssincelastmsg").trace(pubCount, ts).popSeg().popSeg();
                             }                    
                         }
                     } catch (ex) {
@@ -501,10 +430,14 @@ try {
                         if(subCount > 0) {
                             request(false, pcfConn, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString, (CMQCFC.MQIACF_TOPIC_STATUS_TYPE):CMQCFC.MQIACF_TOPIC_SUB]).each() {
                                 //log.info "SUB: $it \t\t----  [${it.getClass().getName()}]"
+                                log.info("LastMessageDate: [{}], [{}]", it.get(CMQCFC.MQCACF_LAST_MSG_DATE), it.get(CMQCFC.MQCACF_LAST_MSG_TIME));
+                                String lastMsgDate = it.get(CMQCFC.MQCACF_LAST_MSG_DATE);
+                                String lastMsgTime = it.get(CMQCFC.MQCACF_LAST_MSG_TIME);
+                                
                                 secondsSinceLastMsg = (ts/1000) - (formatDate(it.get(CMQCFC.MQCACF_LAST_MSG_DATE), it.get(CMQCFC.MQCACF_LAST_MSG_TIME)).getTime() / 1000);                                                                
                                 msgCount = it.get(CMQCFC.MQIACF_MESSAGE_COUNT);
                                 byte[] subId = it.get(CMQCFC.MQBACF_SUB_ID);
-                                log.info "SUB ID: $subId";
+                                log.info("SUB ID: $subId");
                                 persistentQueue = null;
                                 strSubId = "$subId".toString();                                
                                 subName = subAttributes.get(strSubId);
@@ -516,11 +449,11 @@ try {
                                 } else {
                                     persistentQueue = subNames.get(topicName.trim()).get(subName).get('MQCACF_DESTINATION');
                                 }
-                                log.info "PQUEUE: $persistentQueue";
+                                log.info("PQUEUE: $persistentQueue");
                                 try {
                                     tracer.pushSeg("subs").pushTag("subscription=$subName");
-                                    tracer.pushSeg("ssincelastmsg").value(secondsSinceLastMsg).trace(ts).popSeg();
-                                    tracer.pushSeg("msgcount").value(msgCount).trace(ts).popSeg();
+                                    tracer.pushSeg("ssincelastmsg").trace(secondsSinceLastMsg, ts).popSeg();
+                                    tracer.pushSeg("msgcount").trace(msgCount, ts).popSeg();
                                     if(persistentQueue != null && !persistentQueue.trim().isEmpty()) {
                                         traceQueueStats(pcfConn, persistentQueue)
                                     }
@@ -546,10 +479,10 @@ try {
         }            
     }
 
-    // CHANNEL STATS
-    trace { tracer ->
-        traceChannelStats(pcfConn);
-    }
+   //  // CHANNEL STATS
+   //  tracer { 
+   //      traceChannelStats(pcfConn);
+   //  }
 
 
 
@@ -557,6 +490,6 @@ try {
     ex.printStackTrace(System.out);
 } finally {
     //log.info "============= Done ============="    
-    if(pcfConn!=null) try {pcfConn.disconnect();} catch (e) {}
+    if(pcfConn!=null) try {pcfConnFactory.returnObject(pcfConn);} catch (e) {}
 }
 

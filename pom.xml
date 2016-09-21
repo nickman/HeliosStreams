@@ -21,7 +21,7 @@
 		<module>stream-hub-onramp</module>
 		<!-- <module>bosun-connector</module> -->
 		<module>collector-server</module>
-		<!-- <module>tsdb-query</module> -->
+		<module>tsdb-query</module>
 	</modules>
 	
     <properties>    	 
@@ -53,6 +53,7 @@
 		<spring.version>4.2.6.RELEASE</spring.version>
 		<spring-cloud-config.version>1.1.2.RELEASE</spring-cloud-config.version>
 		<chronicle.version>4.5.0</chronicle.version>
+		<chronicle-map.version>3.10.1</chronicle-map.version>
 		<groovy.version>2.4.7</groovy.version>
 		<hbase-testing.version>1.1.0</hbase-testing.version>
 		<metrics.version>3.1.2</metrics.version>
@@ -424,6 +425,13 @@
 			  <artifactId>chronicle-queue</artifactId>
 			  <version>${chronicle.version}</version>
 			</dependency>
+
+			<dependency>
+			  <groupId>net.openhft</groupId>
+			  <artifactId>chronicle-map</artifactId>
+			  <version>${chronicle-map.version}</version>
+			</dependency>
+
 
 		    <!--
 		      ========================================

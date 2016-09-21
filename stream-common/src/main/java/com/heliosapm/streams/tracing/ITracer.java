@@ -191,6 +191,13 @@ public interface ITracer extends Closeable {
 	public ITracer pushTagPair(final String tagPair);
 	
 	/**
+	 * Alias for {@link #pushTagPair(String)}
+	 * @param tagPair The tag pair in the form of <b><code>K=V</code></b>
+	 * @return this tracer
+	 */
+	public ITracer pushTag(final String tagPair);
+	
+	/**
 	 * Pushes a tag pair onto the tag stack
 	 * @param tagKey The tag key
 	 * @param tagValue The tag value
