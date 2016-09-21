@@ -91,21 +91,6 @@ testConn = {pcf ->
 }
 
 
-getSubName = {agent, subId -> 
-    rez = request(true, agent, CMQCFC.MQCMD_INQUIRE_SUBSCRIPTION, [(CMQCFC.MQBACF_SUB_ID):subId]).get(0);
-    if(rez == null || rez.isEmpty()) return null;
-    //printMap("ANON SUB", rez);
-    subName = rez.get("MQCACF_SUB_NAME");
-    if(subName==null || subName.trim().isEmpty()) {
-        rez.put("MQCACF_SUB_NAME", "ANONYMOUS");
-    } else {
-        rez.put(subName.replace(subPrefix, "").replace(":", "_"));
-    }        
-    return rez;
-}
-
-
-
 listToMap = { list ->
     Map map = new HashMap();
     list.each() {
@@ -298,28 +283,28 @@ traceChannelStats = { agent ->
                 try {
                     chName = ch.get('MQCACH_CHANNEL_NAME').trim();
                     chType = CHANNEL_TYPES.get(ch.get('MQIACH_CHANNEL_TYPE'));
-                    tracer.pushTag("channel", chName).pushTag("type", chType.replace(' ', ''));
+                    tracer.pushTag("channel=$chName").pushTag("type=$chType");
                     // =====================================================================================================================================
                     //   Channel Batches
                     // =====================================================================================================================================
-                    if(ch.containsKey('MQIACH_BATCHES')) tracer.pushSeg("batches").trace(ch.remove('MQIACH_BATCHES'), ts).popSeg();
-                    if(ch.containsKey('MQIACH_BATCH_SIZE')) tracer.pushSeg("batchsize").trace(ch.remove('MQIACH_BATCH_SIZE'), ts).popSeg();
+                    if(ch.containsKey('MQIACH_BATCHES')) tracer.pushSeg("batches").value(ch.remove('MQIACH_BATCHES')).trace(ts).popSeg();
+                    if(ch.containsKey('MQIACH_BATCH_SIZE')) tracer.pushSeg("batchsize").value(ch.remove('MQIACH_BATCH_SIZE')).trace(ts).popSeg();
 
                     // =====================================================================================================================================
                     //   Channel Bytes/Buffers  Received/Sent
                     // =====================================================================================================================================
-                    tracer.pushSeg("buffersreceived").trace(ch.remove('MQIACH_BUFFERS_RCVD/MQIACH_BUFFERS_RECEIVED'), ts).popSeg();
-                    tracer.pushSeg("bytessreceived").trace(ch.remove('MQIACH_BYTES_RCVD/MQIACH_BYTES_RECEIVED'), ts).popSeg();
-                    tracer.pushSeg("bufferssent").trace(ch.remove('MQIACH_BUFFERS_SENT'), ts).popSeg();
-                    tracer.pushSeg("bytessent").trace(ch.remove('MQIACH_BYTES_SENT'), ts).popSeg();
+                    tracer.pushSeg("buffersreceived").value(ch.remove('MQIACH_BUFFERS_RCVD/MQIACH_BUFFERS_RECEIVED')).trace(ts).popSeg();
+                    tracer.pushSeg("bytessreceived").value(ch.remove('MQIACH_BYTES_RCVD/MQIACH_BYTES_RECEIVED')).trace(ts).popSeg();
+                    tracer.pushSeg("bufferssent").value(ch.remove('MQIACH_BUFFERS_SENT')).trace(ts).popSeg();
+                    tracer.pushSeg("bytessent").value(ch.remove('MQIACH_BYTES_SENT')).trace(ts).popSeg();
 
                     // =====================================================================================================================================
                     //   Channel Batches
                     // =====================================================================================================================================
-                    if(ch.containsKey('MQIACH_CURRENT_MSGS')) tracer.pushSeg("indoubtmsgs").trace(ch.get('MQIACH_CURRENT_MSGS'), ts).popSeg();  
-                    if(ch.containsKey('MQIACH_CURRENT_SHARING_CONVS')) tracer.pushSeg("convs").trace(ch.get('MQIACH_CURRENT_SHARING_CONVS'), ts).popSeg();
-                    if(ch.containsKey('MQIACH_MSGS')) tracer.pushSeg("msgs").trace(ch.get('MQIACH_MSGS'), ts).popSeg();
-                    if(ch.containsKey('MQIACH_XMITQ_MSGS_AVAILABLE')) tracer.pushSeg("msgsavail").trace(ch.get('MQIACH_XMITQ_MSGS_AVAILABLE'), ts).popSeg();
+                    if(ch.containsKey('MQIACH_CURRENT_MSGS')) tracer.pushSeg("indoubtmsgs").value(ch.get('MQIACH_CURRENT_MSGS')).trace(ts).popSeg();  
+                    if(ch.containsKey('MQIACH_CURRENT_SHARING_CONVS')) tracer.pushSeg("convs").value(ch.get('MQIACH_CURRENT_SHARING_CONVS')).trace(ts).popSeg();
+                    if(ch.containsKey('MQIACH_MSGS')) tracer.pushSeg("msgs").value(ch.get('MQIACH_MSGS')).trace(ts).popSeg();
+                    if(ch.containsKey('MQIACH_XMITQ_MSGS_AVAILABLE')) tracer.pushSeg("msgsavail").value(ch.get('MQIACH_XMITQ_MSGS_AVAILABLE')).trace(ts).popSeg();
                     
                 } finally {
                     tracer.popTag().popTag();
@@ -331,8 +316,11 @@ traceChannelStats = { agent ->
     }
 }
 
-pcfAgent = { host, port, channel ->    
-    return get("PCFAGENT-$host-$port-$channel", {        
+
+
+
+pcfAgent = { host, port, channel ->
+    return get("PCFAGENT-$host-$port-$channel", {
         log.info("Connecting to $host/$port/$channel");
         def p= new PCFMessageAgent(host, port, channel);
         qManager = p.getQManagerName();
@@ -341,10 +329,9 @@ pcfAgent = { host, port, channel ->
     });
 }
 
-String mqhost = host==null ? navmap[1] : host;
+String mqhost = navmap[1];
 int mqport = port;
 String mqchannel = channel;
-
 
 
 try {
@@ -361,20 +348,20 @@ try {
 
     try {
         qnames = qNames(pcfConn);
-        // log.info("=========== Primary Queue Names ===========");
-        // qnames.keySet().each() { q ->
-        //     log.info("\t$q");
-        // }
+        log.info("=========== Primary Queue Names ===========");
+        qnames.keySet().each() { q ->
+            log.info("\t$q");
+        }
     } catch (ex) {
         log.error("PrimaryQueueNames Error", ex);
     }
     try {
-        // log.info("Initing Topic Names");
+        log.info("Initing Topic Names");
         tnames = topicNames(pcfConn);
-        // log.info("=========== Topic Names ===========");
-        // tnames.keySet().each() { top ->
-        //     log.info("\t$top");
-        // }
+        log.info("=========== Topic Names ===========");
+        tnames.keySet().each() { top ->
+            log.info("\t$top");
+        }
     } catch (ex) {
         log.error("Topic Names Error", ex);
     }
@@ -382,24 +369,25 @@ try {
 
     try {
         chnames = channelNames(pcfConn);
-        // log.info("=========== Channel Names ===========");
-        // chnames.keySet().each() { ch ->
-        //     log.info("\t$ch");
-        // }
+        log.info("=========== Channel Names ===========");
+        chnames.keySet().each() { ch ->
+            log.info("\t$ch");
+
+        }
     } catch (ex) {
         log.error("Channel Names Error", ex);
     }
     try {
         subNames = subscriptionNames(pcfConn);
-        // log.info "=========== SUBS ===========";
-        // subNames.each() { k, v ->
-        //     log.info "$k";
-        // }
+        log.info "=========== SUBS ===========";
+        subNames.each() { k, v ->
+            log.info "$k";
+        }
     } catch (ex) {
         log.error("Subscription Names Error", ex);
         //log.info ex;
     }
-    tracer.reset().pushSeg("mq").pushTag("host", navmap[1]).pushTag("app", navmap[0]);
+    tracer.pushSeg("mq").pushTag("host", mqhost).pushTag("app", navmap[0]);
 
 
     // QUEUE STATS
@@ -442,7 +430,7 @@ try {
                         if(subCount > 0) {
                             request(false, pcfConn, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString, (CMQCFC.MQIACF_TOPIC_STATUS_TYPE):CMQCFC.MQIACF_TOPIC_SUB]).each() {
                                 //log.info "SUB: $it \t\t----  [${it.getClass().getName()}]"
-                                //log.info("LastMessageDate: [{}], [{}]", it.get(CMQCFC.MQCACF_LAST_MSG_DATE), it.get(CMQCFC.MQCACF_LAST_MSG_TIME));
+                                log.info("LastMessageDate: [{}], [{}]", it.get(CMQCFC.MQCACF_LAST_MSG_DATE), it.get(CMQCFC.MQCACF_LAST_MSG_TIME));
                                 String lastMsgDate = it.get(CMQCFC.MQCACF_LAST_MSG_DATE);
                                 String lastMsgTime = it.get(CMQCFC.MQCACF_LAST_MSG_TIME);
                                 Long secondsSinceLastMsg = null;
@@ -451,7 +439,7 @@ try {
                                 }
                                 msgCount = it.get(CMQCFC.MQIACF_MESSAGE_COUNT);
                                 byte[] subId = it.get(CMQCFC.MQBACF_SUB_ID);
-                                //log.info("SUB ID: $subId");
+                                log.info("SUB ID: $subId");
                                 persistentQueue = null;
                                 strSubId = "$subId".toString();                                
                                 subName = subAttributes.get(strSubId);
@@ -463,9 +451,9 @@ try {
                                 } else {
                                     persistentQueue = subNames.get(topicName.trim()).get(subName).get('MQCACF_DESTINATION');
                                 }
-                                //log.info("PQUEUE: $persistentQueue");
+                                log.info("PQUEUE: $persistentQueue");
                                 try {
-                                    tracer.pushSeg("subs").pushTag("subscription", subName);
+                                    tracer.pushSeg("subs").pushTag("subscription=$subName");
                                     if(secondsSinceLastMsg!=null) tracer.pushSeg("ssincelastmsg").trace(secondsSinceLastMsg, ts).popSeg();
                                     tracer.pushSeg("msgcount").trace(msgCount, ts).popSeg();
                                     if(persistentQueue != null && !persistentQueue.trim().isEmpty()) {
@@ -493,10 +481,10 @@ try {
         }            
     }
 
-    // CHANNEL STATS
-    tracer { 
-        traceChannelStats(pcfConn);
-    }
+   //  // CHANNEL STATS
+   //  tracer { 
+   //      traceChannelStats(pcfConn);
+   //  }
 
 
 

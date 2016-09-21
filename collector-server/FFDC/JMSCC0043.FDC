@@ -1,0 +1,1815 @@
+----------------------------------START FFST------------------------------------
+D:\hprojects\hstreams\collector-server\FFDC\JMSCC0043.FDC PID:60640
+
+                                    IBM WebSphere MQ classes for JMS and Java (AllClient packaging) First Failure Symptom Report
+                                            
+
+Product          :- IBM WebSphere MQ classes for JMS and Java (AllClient packaging)
+Date/Time        :- Wed Sep 21 16:59:57 EDT 2016
+System time      :- 1474491597931
+Operating System :- Windows 7
+UserID           :- nwhitehe
+Java Vendor      :- Oracle Corporation
+Java Version     :- 25.92-b14
+
+Source Class     :- com.ibm.mq.jmqi.remote.impl.RemoteProxyQueue
+Source Method    :- proxyMQGET(RemoteTls,MQMD,MQGMO,int,byte [ ],Pint,SpiGetOptions,Pint,Pint)
+ProbeID          :- 01
+Thread           :- name=CollectorExecutionServiceThread#4 priority=5 group=CollectorExecutionServiceThreadGroup ccl=sun.misc.Launcher$AppClassLoader@73d16e93
+
+                                      Data
+                                      ----
+
+|   Description  :-  Thread interrupted while waiting for lock
+
+                              Version information
+                              -------------------
+
+IBM WebSphere MQ JMS Provider
+8.0.0.5
+p800-005-160516.2
+Production
+Component Title: IBM WebSphere MQ JMS Provider
+Component Name:  com.ibm.msg.client.wmq
+Version:         8.0.0.5
+Class Name:      class com.ibm.msg.client.wmq.factories.WMQComponent
+CMVC:            p800-005-160516.2
+Jar location:    file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+Factory Class:   class com.ibm.msg.client.wmq.factories.WMQFactoryFactory
+
+IBM MQLight Service for Bluemix JMS Provider
+
+Production
+Component Title: IBM MQLight Service for Bluemix JMS Provider
+Component Name:  com.ibm.msg.client.mqlight
+Version:         
+Class Name:      class com.ibm.msg.client.mqlight.MQLightComponent
+Jar location:    file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+Factory Class:   class com.ibm.msg.client.mqlight.factories.MQLightFactoryFactory
+
+Common Services for Java Platform, Standard Edition
+8.0.0.5
+p800-005-160516.2
+Production
+inPreferenceTo[0]: com.ibm.msg.client.commonservices.j2me
+Component Title:   Common Services for Java Platform, Standard Edition
+Component Name:    com.ibm.msg.client.commonservices.j2se
+Version:           8.0.0.5
+Class Name:        class com.ibm.msg.client.commonservices.j2se.J2SEComponent
+CMVC:              p800-005-160516.2
+Jar location:      file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+Factory Class:     class com.ibm.msg.client.commonservices.j2se.CommonServicesImplementation
+
+Java Message Service Client
+8.0.0.5
+p800-005-160516.2
+Production
+Component Title: Java Message Service Client
+Component Name:  com.ibm.msg.client.jms
+Version:         8.0.0.5
+Class Name:      class com.ibm.msg.client.jms.internal.JMSComponent
+CMVC:            p800-005-160516.2
+Jar location:    file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+Factory Class:   null
+
+WebSphere MQ classes for Java Message Service
+8.0.0.5
+p800-005-160516.2
+Production
+Component Title: WebSphere MQ classes for Java Message Service
+Component Name:  com.ibm.mq.jms
+Version:         8.0.0.5
+Class Name:      class com.ibm.mq.jms.MQJMSComponent
+CMVC:            p800-005-160516.2
+Jar location:    file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+Factory Class:   null
+
+WebSphere MQ classes for Java
+8.0.0.5
+p800-005-160516.2
+Production
+Component Title: WebSphere MQ classes for Java
+Component Name:  com.ibm.mq
+Version:         8.0.0.5
+Class Name:      class com.ibm.mq.MQJavaComponent
+CMVC:            p800-005-160516.2
+Jar location:    file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+Factory Class:   null
+
+
+
+                                  Stack trace
+                                  -----------
+
+Stack trace to show the location of the FFST call
+|   FFST Location  :-  java.lang.Exception
+|   	at com.ibm.msg.client.commonservices.trace.Trace.getCurrentPosition(Trace.java:2146)
+|   	at com.ibm.msg.client.commonservices.trace.Trace.createFFSTString(Trace.java:2056)
+|   	at com.ibm.msg.client.commonservices.trace.Trace.ffstInternal(Trace.java:1938)
+|   	at com.ibm.msg.client.commonservices.trace.Trace.ffst(Trace.java:1739)
+|   	at com.ibm.mq.jmqi.remote.impl.RemoteProxyQueue.proxyMQGET(RemoteProxyQueue.java:2554)
+|   	at com.ibm.mq.jmqi.remote.api.RemoteFAP.jmqiGetInternalWithRecon(RemoteFAP.java:7197)
+|   	at com.ibm.mq.jmqi.remote.api.RemoteFAP.jmqiGetInternal(RemoteFAP.java:7082)
+|   	at com.ibm.mq.jmqi.internal.JmqiTools.getMessage(JmqiTools.java:1277)
+|   	at com.ibm.mq.jmqi.remote.api.RemoteFAP.jmqiGet(RemoteFAP.java:7029)
+|   	at com.ibm.mq.ese.jmqi.InterceptedJmqiImpl.jmqiGet(InterceptedJmqiImpl.java:1325)
+|   	at com.ibm.mq.ese.jmqi.ESEJMQI.jmqiGet(ESEJMQI.java:600)
+|   	at com.ibm.mq.MQDestination.internalGetMessage(MQDestination.java:1038)
+|   	at com.ibm.mq.MQDestination.getInt(MQDestination.java:579)
+|   	at com.ibm.mq.MQDestination.get(MQDestination.java:448)
+|   	at com.ibm.mq.pcf.PCFMessageAgent.send(PCFMessageAgent.java:251)
+|   	at com.ibm.mq.pcf.PCFMessageAgent$send.call(Unknown Source)
+|   	at pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure4.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:131)
+|   	at sun.reflect.GeneratedMethodAccessor372.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+|   	at groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+|   	at groovy.lang.Script.invokeMethod(Script.java:80)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+|   	at groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+|   	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:190)
+|   	at pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure11$_closure36.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:263)
+|   	at sun.reflect.GeneratedMethodAccessor374.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.Closure.call(Closure.java:414)
+|   	at groovy.lang.Closure.call(Closure.java:430)
+|   	at com.heliosapm.streams.tracing.groovy.GroovyTracer.checkpoint(GroovyTracer.java:53)
+|   	at com.heliosapm.streams.tracing.groovy.GroovyTracer.call(GroovyTracer.java:66)
+|   	at sun.reflect.GeneratedMethodAccessor20.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1215)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+|   	at groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+|   	at groovy.lang.Script.invokeMethod(Script.java:80)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+|   	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:166)
+|   	at pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure11.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:259)
+|   	at sun.reflect.GeneratedMethodAccessor373.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+|   	at groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+|   	at groovy.lang.Script.invokeMethod(Script.java:80)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+|   	at groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+|   	at groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+|   	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:174)
+|   	at pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure15$_closure41$_closure43.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:472)
+|   	at sun.reflect.GeneratedMethodAccessor378.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.Closure.call(Closure.java:414)
+|   	at groovy.lang.Closure.call(Closure.java:430)
+|   	at org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2030)
+|   	at org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2015)
+|   	at org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2056)
+|   	at org.codehaus.groovy.runtime.dgm$162.invoke(Unknown Source)
+|   	at org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite$PojoMetaMethodSiteNoUnwrapNoCoerce.invoke(PojoMetaMethodSite.java:274)
+|   	at org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite.call(PojoMetaMethodSite.java:56)
+|   	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:125)
+|   	at pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure15$_closure41.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:443)
+|   	at sun.reflect.GeneratedMethodAccessor376.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.Closure.call(Closure.java:414)
+|   	at groovy.lang.Closure.call(Closure.java:430)
+|   	at org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2030)
+|   	at org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2015)
+|   	at org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2056)
+|   	at org.codehaus.groovy.runtime.dgm$162.invoke(Unknown Source)
+|   	at org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite$PojoMetaMethodSiteNoUnwrapNoCoerce.invoke(PojoMetaMethodSite.java:274)
+|   	at org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite.call(PojoMetaMethodSite.java:56)
+|   	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:125)
+|   	at pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure15.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:419)
+|   	at sun.reflect.GeneratedMethodAccessor387.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.Closure.call(Closure.java:414)
+|   	at groovy.lang.Closure.call(Closure.java:430)
+|   	at com.heliosapm.streams.tracing.groovy.GroovyTracer.checkpoint(GroovyTracer.java:53)
+|   	at com.heliosapm.streams.tracing.groovy.GroovyTracer.call(GroovyTracer.java:66)
+|   	at sun.reflect.GeneratedMethodAccessor20.invoke(Unknown Source)
+|   	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+|   	at java.lang.reflect.Method.invoke(Method.java:498)
+|   	at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+|   	at groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1215)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+|   	at groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+|   	at org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+|   	at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:166)
+|   	at pdk-pt-cebmq-01.ecsqmgr.mq-5s.run(pdk-pt-cebmq-01.ecsqmgr.mq-5s:414)
+|   	at com.heliosapm.streams.collector.groovy.ManagedScript$CollectionRunnerCallable.scriptExec(ManagedScript.java:611)
+|   	at com.heliosapm.streams.collector.groovy.ManagedScript$CollectionRunnerCallable.call(ManagedScript.java:573)
+|   	at com.heliosapm.streams.collector.groovy.ManagedScript$CollectionRunnerCallable.call(ManagedScript.java:1)
+|   	at java.util.concurrent.FutureTask.run(FutureTask.java:266)
+|   	at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+|   	at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+|   	at java.lang.Thread.run(Thread.java:745)
+|   
+
+                            Property Store Contents
+                            -----------------------
+
+All currently set properties
+|   Log4jContextSelector           :-  org.apache.logging.log4j.core.selector.BasicContextSelector
+|   awt.toolkit                    :-  sun.awt.windows.WToolkit
+|   collector.service.rootdir      :-  C:\Users\nwhitehe/.collectionServer
+|   file.encoding                  :-  Cp1252
+|   file.encoding.pkg              :-  sun.io
+|   file.separator                 :-  \
+|   helios.collectors.script.root  :-  C:\Users\nwhitehe\.collectionServer\collectors
+|   helios.collectorserver.logdir  :-  C:\Users\nwhitehe\.collectionServer\log
+|   java.awt.graphicsenv           :-  sun.awt.Win32GraphicsEnvironment
+|   java.awt.printerjob            :-  sun.awt.windows.WPrinterJob
+|   java.class.path                :-  D:\hprojects\hstreams\collector-server\target\test-classes;D:\hprojects\hstreams\collector-server\target\classes;C:\Users\nwhitehe\.m2\repository\org\apache\logging\log4j\log4j-jul\2.3\log4j-jul-2.3.jar;C:\Users\nwhitehe\.m2\repository\org\apache\logging\log4j\log4j-api\2.6.1\log4j-api-2.6.1.jar;D:\hprojects\heliosutils\target\test-classes;D:\hprojects\heliosutils\target\classes;C:\Users\nwhitehe\.m2\repository\junit\junit\4.12\junit-4.12.jar;C:\Users\nwhitehe\.m2\repository\org\hamcrest\hamcrest-core\1.3\hamcrest-core-1.3.jar;C:\Users\nwhitehe\.m2\repository\org\json\json\20131018\json-20131018.jar;C:\Users\nwhitehe\.m2\repository\org\codehaus\groovy\groovy-all\2.4.7\groovy-all-2.4.7.jar;C:\Users\nwhitehe\.m2\repository\com\google\guava\guava\18.0\guava-18.0.jar;C:\Users\nwhitehe\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.7.5\jackson-core-2.7.5.jar;C:\Users\nwhitehe\.m2\repository\com\fasterxml\jackson\core\jackson-annotations\2.7.5\jackson-annotations-2.7.5.jar;C:\Users\nwhitehe\.m2\repository\com\fasterxml\jackson\core\jackson-databind\2.7.5\jackson-databind-2.7.5.jar;C:\Users\nwhitehe\.m2\repository\junit\junit\4.11\junit-4.11.jar;C:\Users\nwhitehe\.m2\repository\org\apache\mina\mina-core\2.0.9\mina-core-2.0.9.jar;C:\Users\nwhitehe\.m2\repository\org\slf4j\slf4j-api\1.7.7\slf4j-api-1.7.7.jar;C:\Users\nwhitehe\.m2\repository\org\apache\sshd\sshd-core\1.2.0\sshd-core-1.2.0.jar;C:\Users\nwhitehe\.m2\repository\bouncycastle\bcprov-jdk16\140\bcprov-jdk16-140.jar;C:\Users\nwhitehe\.m2\repository\org\quartz-scheduler\quartz\2.2.2\quartz-2.2.2.jar;C:\Users\nwhitehe\.m2\repository\c3p0\c3p0\0.9.1.1\c3p0-0.9.1.1.jar;D:\hprojects\hstreams\stream-common\target\test-classes;D:\hprojects\hstreams\stream-common\target\classes;C:\Users\nwhitehe\.m2\repository\org\apache\kafka\kafka_2.11\0.10.0.1\kafka_2.11-0.10.0.1.jar;C:\Users\nwhitehe\.m2\repository\com\101tec\zkclient\0.8\zkclient-0.8.jar;C:\Users\nwhitehe\.m2\repository\org\apache\zookeeper\zookeeper\3.4.8\zookeeper-3.4.8.jar;C:\Users\nwhitehe\.m2\repository\jline\jline\0.9.94\jline-0.9.94.jar;C:\Users\nwhitehe\.m2\repository\io\netty\netty\3.7.0.Final\netty-3.7.0.Final.jar;C:\Users\nwhitehe\.m2\repository\com\yammer\metrics\metrics-core\2.2.0\metrics-core-2.2.0.jar;C:\Users\nwhitehe\.m2\repository\org\scala-lang\scala-library\2.11.8\scala-library-2.11.8.jar;C:\Users\nwhitehe\.m2\repository\org\scala-lang\modules\scala-parser-combinators_2.11\1.0.4\scala-parser-combinators_2.11-1.0.4.jar;C:\Users\nwhitehe\.m2\repository\net\sf\jopt-simple\jopt-simple\4.9\jopt-simple-4.9.jar;C:\Users\nwhitehe\.m2\repository\org\apache\kafka\kafka-clients\0.10.0.1\kafka-clients-0.10.0.1.jar;C:\Users\nwhitehe\.m2\repository\net\jpountz\lz4\lz4\1.3.0\lz4-1.3.0.jar;C:\Users\nwhitehe\.m2\repository\org\xerial\snappy\snappy-java\1.1.2.6\snappy-java-1.1.2.6.jar;C:\Users\nwhitehe\.m2\repository\info\batey\kafka\kafka-unit\0.6\kafka-unit-0.6.jar;C:\Users\nwhitehe\.m2\repository\commons-io\commons-io\1.3.2\commons-io-1.3.2.jar;C:\Users\nwhitehe\.m2\repository\org\apache\curator\curator-recipes\2.10.0\curator-recipes-2.10.0.jar;C:\Users\nwhitehe\.m2\repository\org\apache\curator\curator-framework\2.10.0\curator-framework-2.10.0.jar;C:\Users\nwhitehe\.m2\repository\org\apache\curator\curator-client\2.10.0\curator-client-2.10.0.jar;C:\Users\nwhitehe\.m2\repository\com\netflix\hystrix\hystrix-core\1.5.3\hystrix-core-1.5.3.jar;C:\Users\nwhitehe\.m2\repository\com\netflix\archaius\archaius-core\0.7.4\archaius-core-0.7.4.jar;C:\Users\nwhitehe\.m2\repository\commons-configuration\commons-configuration\1.8\commons-configuration-1.8.jar;C:\Users\nwhitehe\.m2\repository\commons-lang\commons-lang\2.6\commons-lang-2.6.jar;C:\Users\nwhitehe\.m2\repository\commons-logging\commons-logging\1.1.1\commons-logging-1.1.1.jar;C:\Users\nwhitehe\.m2\repository\io\reactivex\rxjava\1.1.1\rxjava-1.1.1.jar;C:\Users\nwhitehe\.m2\repository\org\hdrhistogram\HdrHistogram\2.1.7\HdrHistogram-2.1.7.jar;C:\Users\nwhitehe\.m2\repository\com\google\code\findbugs\jsr305\3.0.1\jsr305-3.0.1.jar;C:\Users\nwhitehe\.m2\repository\org\slf4j\slf4j-api\1.7.14\slf4j-api-1.7.14.jar;C:\Users\nwhitehe\.m2\repository\net\openhft\chronicle-queue\4.5.0\chronicle-queue-4.5.0.jar;C:\Users\nwhitehe\.m2\repository\net\openhft\chronicle-wire\1.7.2\chronicle-wire-1.7.2.jar;C:\Users\nwhitehe\.m2\repository\net\openhft\chronicle-bytes\1.7.1\chronicle-bytes-1.7.1.jar;C:\Users\nwhitehe\.m2\repository\net\openhft\chronicle-core\1.7.1\chronicle-core-1.7.1.jar;C:\Users\nwhitehe\.m2\repository\com\intellij\annotations\12.0\annotations-12.0.jar;C:\Users\nwhitehe\.m2\repository\net\openhft\chronicle-threads\1.7.0\chronicle-threads-1.7.0.jar;C:\Users\nwhitehe\.m2\repository\net\openhft\affinity\3.0.5\affinity-3.0.5.jar;C:\Users\nwhitehe\.m2\repository\net\java\dev\jna\jna\4.2.1\jna-4.2.1.jar;C:\Users\nwhitehe\.m2\repository\net\java\dev\jna\jna-platform\4.2.1\jna-platform-4.2.1.jar;C:\Users\nwhitehe\.m2\repository\org\apache\curator\curator-x-discovery\2.10.0\curator-x-discovery-2.10.0.jar;C:\Users\nwhitehe\.m2\repository\org\codehaus\jackson\jackson-mapper-asl\1.9.13\jackson-mapper-asl-1.9.13.jar;C:\Users\nwhitehe\.m2\repository\org\codehaus\jackson\jackson-core-asl\1.9.13\jackson-core-asl-1.9.13.jar;C:\Users\nwhitehe\.m2\repository\org\apache\kafka\kafka-streams\0.10.0.1\kafka-streams-0.10.0.1.jar;C:\Users\nwhitehe\.m2\repository\org\rocksdb\rocksdbjni\4.8.0\rocksdbjni-4.8.0.jar;C:\Users\nwhitehe\.m2\repository\org\apache\kafka\connect-json\0.10.0.1\connect-json-0.10.0.1.jar;C:\Users\nwhitehe\.m2\repository\org\apache\kafka\connect-api\0.10.0.1\connect-api-0.10.0.1.jar;C:\Users\nwhitehe\.m2\repository\io\dropwizard\metrics\metrics-core\3.1.2\metrics-core-3.1.2.jar;C:\Users\nwhitehe\.m2\repository\io\netty\netty-all\4.1.4.Final\netty-all-4.1.4.Final.jar;C:\Users\nwhitehe\.m2\repository\net\sf\trove4j\trove4j\3.0.2\trove4j-3.0.2.jar;C:\Users\nwhitehe\.m2\repository\org\apache\logging\log4j\log4j-core\2.6.1\log4j-core-2.6.1.jar;C:\Users\nwhitehe\.m2\repository\org\apache\logging\log4j\log4j-slf4j-impl\2.6.1\log4j-slf4j-impl-2.6.1.jar;C:\Users\nwhitehe\.m2\repository\org\apache\logging\log4j\log4j-1.2-api\2.6.1\log4j-1.2-api-2.6.1.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\boot\spring-boot\1.3.5.RELEASE\spring-boot-1.3.5.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\spring-core\4.2.6.RELEASE\spring-core-4.2.6.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\spring-context\4.2.6.RELEASE\spring-context-4.2.6.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\spring-aop\4.2.6.RELEASE\spring-aop-4.2.6.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\aopalliance\aopalliance\1.0\aopalliance-1.0.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\spring-beans\4.2.6.RELEASE\spring-beans-4.2.6.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\spring-expression\4.2.6.RELEASE\spring-expression-4.2.6.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\boot\spring-boot-actuator\1.3.5.RELEASE\spring-boot-actuator-1.3.5.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\org\springframework\boot\spring-boot-autoconfigure\1.3.5.RELEASE\spring-boot-autoconfigure-1.3.5.RELEASE.jar;C:\Users\nwhitehe\.m2\repository\io\netty\netty-buffer\4.1.4.Final\netty-buffer-4.1.4.Final.jar;C:\Users\nwhitehe\.m2\repository\io\netty\netty-common\4.1.4.Final\netty-common-4.1.4.Final.jar;C:\Users\nwhitehe\.m2\repository\com\h2database\h2\1.4.191\h2-1.4.191.jar;C:\Users\nwhitehe\.m2\repository\com\zaxxer\HikariCP-java6\2.3.13\HikariCP-java6-2.3.13.jar;C:\Users\nwhitehe\.m2\repository\com\zaxxer\HikariCP\2.4.7\HikariCP-2.4.7.jar;C:\Users\nwhitehe\.m2\repository\org\apache\commons\commons-pool2\2.4.2\commons-pool2-2.4.2.jar
+|   java.class.version             :-  52.0
+|   java.endorsed.dirs             :-  D:\Java\jdk1.8.0_92\jre\lib\endorsed
+|   java.ext.dirs                  :-  D:\Java\jdk1.8.0_92\jre\lib\ext;C:\windows\Sun\Java\lib\ext
+|   java.home                      :-  D:\Java\jdk1.8.0_92\jre
+|   java.io.tmpdir                 :-  c:\temp\
+|   java.library.path              :-  D:\Java\jdk1.8.0_92\bin;C:\windows\Sun\Java\bin;C:\windows\system32;C:\windows;C:\ProgramData\Oracle\Java\javapath;C:\windows\system32;C:\windows;C:\windows\System32\Wbem;C:\windows\System32\WindowsPowerShell\v1.0\;C:\Program Files (x86)\Enterprise Vault\EVClient\;C:\windows\System32\WindowsPowerShell\v1.0\;;\bin;d:\bin;C:\ProgramData\Oracle\Java\javapath;C:\windows\system32;C:\windows;C:\windows\System32\Wbem;C:\windows\System32\WindowsPowerShell\v1.0\;C:\Program Files (x86)\Enterprise Vault\EVClient\;C:\windows\System32\WindowsPowerShell\v1.0\;;\bin;"C:\Program Files (x86)\Git\bin";C:\Users\nwhitehe\.babun;d:\tools\sublime;d:\tools\Git\cmd;D:\Groovy\Groovy-2.4.7\bin;D:\tools\sysinternals;.
+|   java.runtime.name              :-  Java(TM) SE Runtime Environment
+|   java.runtime.version           :-  1.8.0_92-b14
+|   java.specification.name        :-  Java Platform API Specification
+|   java.specification.vendor      :-  Oracle Corporation
+|   java.specification.version     :-  1.8
+|   java.vendor                    :-  Oracle Corporation
+|   java.vendor.url                :-  http://java.oracle.com/
+|   java.vendor.url.bug            :-  http://bugreport.sun.com/bugreport/
+|   java.version                   :-  1.8.0_92
+|   java.vm.info                   :-  mixed mode
+|   java.vm.name                   :-  Java HotSpot(TM) 64-Bit Server VM
+|   java.vm.specification.name     :-  Java Virtual Machine Specification
+|   java.vm.specification.vendor   :-  Oracle Corporation
+|   java.vm.specification.version  :-  1.8
+|   java.vm.vendor                 :-  Oracle Corporation
+|   java.vm.version                :-  25.92-b14
+|   jmxmp.server.url               :-  service:jmx:jmxmp://0.0.0.0:1429
+|   jvm.cores                      :-  12
+|   jvm.pid                        :-  60640
+|   line.separator                 :-  
+|   
+|   log4j.configurationFile        :-  C:\Users\nwhitehe\.collectionServer\conf\console-log4j2.xml
+|   org.xml.sax.parser             :-  com.sun.org.apache.xerces.internal.parsers.SAXParser
+|   os.arch                        :-  amd64
+|   os.name                        :-  Windows 7
+|   os.version                     :-  6.1
+|   path.separator                 :-  ;
+|   ssh.configs                    :-  C:\Users\nwhitehe\.collectionServer\ssh
+|   sun.arch.data.model            :-  64
+|   sun.boot.class.path            :-  D:\Java\jdk1.8.0_92\jre\lib\resources.jar;D:\Java\jdk1.8.0_92\jre\lib\rt.jar;D:\Java\jdk1.8.0_92\jre\lib\sunrsasign.jar;D:\Java\jdk1.8.0_92\jre\lib\jsse.jar;D:\Java\jdk1.8.0_92\jre\lib\jce.jar;D:\Java\jdk1.8.0_92\jre\lib\charsets.jar;D:\Java\jdk1.8.0_92\jre\lib\jfr.jar;D:\Java\jdk1.8.0_92\jre\classes
+|   sun.boot.library.path          :-  D:\Java\jdk1.8.0_92\jre\bin
+|   sun.cpu.endian                 :-  little
+|   sun.cpu.isalist                :-  amd64
+|   sun.desktop                    :-  windows
+|   sun.io.unicode.encoding        :-  UnicodeLittle
+|   sun.java.command               :-  com.heliosapm.streams.collector.CollectorServer --root=C:\Users\nwhitehe/.collectionServer --console --jmxmp=2345
+|   sun.java.launcher              :-  SUN_STANDARD
+|   sun.jnu.encoding               :-  Cp1252
+|   sun.management.compiler        :-  HotSpot 64-Bit Tiered Compilers
+|   sun.os.patch.level             :-  Service Pack 1
+|   user.country                   :-  US
+|   user.dir                       :-  D:\hprojects\hstreams\collector-server
+|   user.home                      :-  C:\Users\nwhitehe
+|   user.language                  :-  en
+|   user.name                      :-  nwhitehe
+|   user.script                    :-  
+|   user.timezone                  :-  America/New_York
+|   user.variant                   :-  
+
+                           WorkQueueMananger Contents
+                           --------------------------
+
+|   Current ThreadPool size      :-  2
+|   Maintain ThreadPool size     :-  false
+|   Maximum ThreadPool size      :-  -1
+|   ThreadPool inactive timeout  :-  0
+
+                               Runtime properties
+                               ------------------
+
+|   Available processors         :-  12
+|   Free memory in bytes (now)   :-  427614008
+|   Max memory in bytes          :-  15254683648
+|   Total memory in bytes (now)  :-  557842432
+
+                           Component Manager Contents
+                           --------------------------
+
+Common Services Components:
+|   CMVC               :-  p800-005-160516.2
+|   Class Name         :-  class com.ibm.msg.client.commonservices.j2se.J2SEComponent
+|   Component Name     :-  com.ibm.msg.client.commonservices.j2se
+|   Component Title    :-  Common Services for Java Platform, Standard Edition
+|   Factory Class      :-  class com.ibm.msg.client.commonservices.j2se.CommonServicesImplementation
+|   Jar location       :-  file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+|   Version            :-  8.0.0.5
+|   inPreferenceTo[0]  :-  com.ibm.msg.client.commonservices.j2me
+
+Messaging Provider Components:
+|   CMVC             :-  p800-005-160516.2
+|   Class Name       :-  class com.ibm.msg.client.wmq.factories.WMQComponent
+|   Component Name   :-  com.ibm.msg.client.wmq
+|   Component Title  :-  IBM WebSphere MQ JMS Provider
+|   Factory Class    :-  class com.ibm.msg.client.wmq.factories.WMQFactoryFactory
+|   Jar location     :-  file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+|   Version          :-  8.0.0.5
+
+|   Class Name       :-  class com.ibm.msg.client.mqlight.MQLightComponent
+|   Component Name   :-  com.ibm.msg.client.mqlight
+|   Component Title  :-  IBM MQLight Service for Bluemix JMS Provider
+|   Factory Class    :-  class com.ibm.msg.client.mqlight.factories.MQLightFactoryFactory
+|   Jar location     :-  file:/C:/Users/nwhitehe/.collectionServer/lib/com.ibm.mq.allclient-8.0.0.5.jar
+|   Version          :-  
+
+
+
+
+All Thread Information
+
+                          Name : main-EventThread
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 52
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.LinkedBlockingQueue.take(LinkedBlockingQueue.java:442)
+                               : org.apache.zookeeper.ClientCnxn$EventThread.run(ClientCnxn.java:501)
+
+                          Name : Signal Dispatcher
+                      Priority : 9
+                   ThreadGroup : java.lang.ThreadGroup[name=system,maxpri=10]
+                            ID : 4
+                         State : RUNNABLE
+
+                          Name : JMX server connection timeout Thread-8
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 89
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : com.sun.jmx.remote.opt.internal.ServerCommunicatorAdmin$Timeout.run(ServerCommunicatorAdmin.java:189)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Thread-2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 18
+                         State : RUNNABLE
+                         Stack : java.net.DualStackPlainSocketImpl.accept0(DualStackPlainSocketImpl.java:-2)
+                               : java.net.DualStackPlainSocketImpl.socketAccept(DualStackPlainSocketImpl.java:131)
+                               : java.net.AbstractPlainSocketImpl.accept(AbstractPlainSocketImpl.java:409)
+                               : java.net.PlainSocketImpl.accept(PlainSocketImpl.java:199)
+                               : java.net.ServerSocket.implAccept(ServerSocket.java:545)
+                               : java.net.ServerSocket.accept(ServerSocket.java:513)
+                               : com.sun.jmx.remote.socket.SocketConnectionServer.accept(SocketConnectionServer.java:220)
+                               : com.sun.jmx.remote.generic.SynchroMessageConnectionServerImpl.accept(SynchroMessageConnectionServerImpl.java:87)
+                               : javax.management.remote.generic.GenericConnectorServer$Receiver.run(GenericConnectorServer.java:380)
+
+                          Name : Timer-0
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 16
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Object.wait(Object.java:502)
+                               : java.util.TimerThread.mainLoop(Timer.java:526)
+                               : java.util.TimerThread.run(Timer.java:505)
+
+                          Name : CacheEventSchedulerThread#9
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 95
+                         State : TIMED_WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:215)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos(AbstractQueuedSynchronizer.java:2078)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1093)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor13
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 103
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Object.wait(Object.java:502)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:223)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : SharedSchedulerThread#4
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 57
+                         State : TIMED_WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:215)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos(AbstractQueuedSynchronizer.java:2078)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1093)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CacheEventSchedulerThread#10
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 96
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CacheEventSchedulerThread#7
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 69
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Attach Listener
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=system,maxpri=10]
+                            ID : 5
+                         State : RUNNABLE
+
+                          Name : JMX server connection timeout Thread-9
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 90
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : com.sun.jmx.remote.opt.internal.ServerCommunicatorAdmin$Timeout.run(ServerCommunicatorAdmin.java:189)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#9
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 32
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 82
+                         State : RUNNABLE
+                         Stack : java.net.SocketInputStream.socketRead0(SocketInputStream.java:-2)
+                               : java.net.SocketInputStream.socketRead(SocketInputStream.java:116)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:170)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:141)
+                               : com.heliosapm.utils.io.InstrumentedInputStream.read(InstrumentedInputStream.java:87)
+                               : java.io.BufferedInputStream.fill(BufferedInputStream.java:246)
+                               : java.io.BufferedInputStream.read(BufferedInputStream.java:265)
+                               : java.io.ObjectInputStream$PeekInputStream.peek(ObjectInputStream.java:2321)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peek(ObjectInputStream.java:2614)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peekByte(ObjectInputStream.java:2624)
+                               : java.io.ObjectInputStream.readObject0(ObjectInputStream.java:1321)
+                               : java.io.ObjectInputStream.readObject(ObjectInputStream.java:373)
+                               : com.sun.jmx.remote.socket.SocketConnection.readMessage(SocketConnection.java:271)
+                               : com.sun.jmx.remote.generic.ClientSynchroMessageConnectionImpl$MessageReader.run(ClientSynchroMessageConnectionImpl.java:441)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:248)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : Job_Executor14
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 104
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:127)
+
+                          Name : Job_Executor10
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 93
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : com.sun.jmx.remote.opt.internal.ArrayNotificationBuffer.fetchNotifications(ArrayNotificationBuffer.java:384)
+                               : com.sun.jmx.remote.opt.internal.ArrayNotificationBuffer$ShareBuffer.fetchNotifications(ArrayNotificationBuffer.java:163)
+                               : com.sun.jmx.remote.opt.internal.ServerNotifForwarder.fetchNotifs(ServerNotifForwarder.java:208)
+                               : javax.management.remote.generic.ServerIntermediary$RequestHandler.handleNotifReqMessage(ServerIntermediary.java:720)
+                               : javax.management.remote.generic.ServerIntermediary$RequestHandler.execute(ServerIntermediary.java:666)
+                               : com.sun.jmx.remote.generic.ServerSynchroMessageConnectionImpl$RemoteJob.run(ServerSynchroMessageConnectionImpl.java:306)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:248)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : CacheEventSchedulerThread#12
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 98
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#3
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 26
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedNotificationThreadPoolThread#2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedNotificationThreadPoolThreadGroup,maxpri=10]
+                            ID : 106
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor11
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 100
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Object.wait(Object.java:502)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:223)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : CacheEventSchedulerThread#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 63
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#11
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 34
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedSchedulerThread#12
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 94
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : JMX server connection timeout Thread-10
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 101
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : com.sun.jmx.remote.opt.internal.ServerCommunicatorAdmin$Timeout.run(ServerCommunicatorAdmin.java:189)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Thread-7
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 86
+                         State : TIMED_WAITING
+                         Stack : java.lang.Thread.sleep(Thread.java:-2)
+                               : com.sun.jmx.remote.opt.internal.ClientCommunicatorAdmin$Checker.run(ClientCommunicatorAdmin.java:193)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : RcvThread: com.ibm.mq.jmqi.remote.impl.RemoteTCPConnection@1641190284[qmid=ECSQMGR_2015-06-08_12.53.24,fap=13,channel=JBOSS.SVRCONN       ,ccsid=819,sharecnv=10,hbint=300,peer=localhost/127.0.0.1(1430),localport=52734,ssl=no]
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=JMSCCThreadPool,maxpri=10]
+                            ID : 62
+                         State : RUNNABLE
+                         Stack : java.net.SocketInputStream.socketRead0(SocketInputStream.java:-2)
+                               : java.net.SocketInputStream.socketRead(SocketInputStream.java:116)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:170)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:141)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteTCPConnection.receive(RemoteTCPConnection.java:1668)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteRcvThread.receiveBuffer(RemoteRcvThread.java:740)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteRcvThread.receiveOneTSH(RemoteRcvThread.java:706)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteRcvThread.run(RemoteRcvThread.java:138)
+                               : com.ibm.msg.client.commonservices.workqueue.WorkQueueItem.runTask(WorkQueueItem.java:319)
+                               : com.ibm.msg.client.commonservices.workqueue.SimpleWorkQueueItem.runItem(SimpleWorkQueueItem.java:99)
+                               : com.ibm.msg.client.commonservices.workqueue.WorkQueueItem.run(WorkQueueItem.java:341)
+                               : com.ibm.msg.client.commonservices.workqueue.WorkQueueManager.runWorkQueueItem(WorkQueueManager.java:312)
+                               : com.ibm.msg.client.commonservices.j2se.workqueue.WorkQueueManagerImplementation$ThreadPoolWorker.run(WorkQueueManagerImplementation.java:1227)
+
+                          Name : Job_Executor5
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 84
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Object.wait(Object.java:502)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:223)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : SharedSchedulerThread#9
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 76
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#8
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 31
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedNotificationThreadPoolThread#6
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedNotificationThreadPoolThreadGroup,maxpri=10]
+                            ID : 111
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CacheEventSchedulerThread#5
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 67
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Reference Handler
+                      Priority : 10
+                   ThreadGroup : java.lang.ThreadGroup[name=system,maxpri=10]
+                            ID : 2
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Object.wait(Object.java:502)
+                               : java.lang.ref.Reference.tryHandlePending(Reference.java:191)
+                               : java.lang.ref.Reference$ReferenceHandler.run(Reference.java:153)
+
+                          Name : SharedSchedulerThread#8
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 75
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CacheEventSchedulerThread#6
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 68
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor9
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 92
+                         State : RUNNABLE
+                         Stack : java.net.SocketInputStream.socketRead0(SocketInputStream.java:-2)
+                               : java.net.SocketInputStream.socketRead(SocketInputStream.java:116)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:170)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:141)
+                               : com.heliosapm.utils.io.InstrumentedInputStream.read(InstrumentedInputStream.java:87)
+                               : java.io.BufferedInputStream.fill(BufferedInputStream.java:246)
+                               : java.io.BufferedInputStream.read(BufferedInputStream.java:265)
+                               : java.io.ObjectInputStream$PeekInputStream.peek(ObjectInputStream.java:2321)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peek(ObjectInputStream.java:2614)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peekByte(ObjectInputStream.java:2624)
+                               : java.io.ObjectInputStream.readObject0(ObjectInputStream.java:1321)
+                               : java.io.ObjectInputStream.readObject(ObjectInputStream.java:373)
+                               : com.sun.jmx.remote.socket.SocketConnection.readMessage(SocketConnection.java:271)
+                               : com.sun.jmx.remote.generic.ServerSynchroMessageConnectionImpl$MessageReader.run(ServerSynchroMessageConnectionImpl.java:225)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:248)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : CollectorExecutionServiceThread#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 24
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedNotificationThreadPoolThread#4
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedNotificationThreadPoolThreadGroup,maxpri=10]
+                            ID : 109
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : TracerFlushThread#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 71
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.LinkedBlockingQueue.take(LinkedBlockingQueue.java:442)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : FileChangeWatcher#2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 41
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Thread.join(Thread.java:1253)
+                               : com.heliosapm.utils.time.SystemClock.sleep(SystemClock.java:53)
+                               : com.heliosapm.utils.time.SystemClock.sleep(SystemClock.java:65)
+                               : com.heliosapm.utils.file.FileChangeWatcher.run(FileChangeWatcher.java:136)
+
+                          Name : Curator-Framework-0
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 46
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.DelayQueue.take(DelayQueue.java:211)
+                               : java.util.concurrent.DelayQueue.take(DelayQueue.java:70)
+                               : org.apache.curator.framework.imps.CuratorFrameworkImpl.backgroundOperationsLoop(CuratorFrameworkImpl.java:804)
+                               : org.apache.curator.framework.imps.CuratorFrameworkImpl.access$300(CuratorFrameworkImpl.java:64)
+                               : org.apache.curator.framework.imps.CuratorFrameworkImpl$4.call(CuratorFrameworkImpl.java:267)
+                               : java.util.concurrent.FutureTask.run(FutureTask.java:266)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.access$201(ScheduledThreadPoolExecutor.java:180)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:293)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : BufferArenaMonitorThread#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 19
+                         State : TIMED_WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:215)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos(AbstractQueuedSynchronizer.java:2078)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1093)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : main-SendThread(127.0.0.1:2181)
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 44
+                         State : RUNNABLE
+                         Stack : sun.nio.ch.WindowsSelectorImpl$SubSelector.poll0(WindowsSelectorImpl.java:-2)
+                               : sun.nio.ch.WindowsSelectorImpl$SubSelector.poll(WindowsSelectorImpl.java:296)
+                               : sun.nio.ch.WindowsSelectorImpl$SubSelector.access$400(WindowsSelectorImpl.java:278)
+                               : sun.nio.ch.WindowsSelectorImpl.doSelect(WindowsSelectorImpl.java:159)
+                               : sun.nio.ch.SelectorImpl.lockAndDoSelect(SelectorImpl.java:86)
+                               : sun.nio.ch.SelectorImpl.select(SelectorImpl.java:97)
+                               : org.apache.zookeeper.ClientCnxnSocketNIO.doTransport(ClientCnxnSocketNIO.java:349)
+                               : org.apache.zookeeper.ClientCnxn$SendThread.run(ClientCnxn.java:1141)
+
+                          Name : SharedSchedulerThread#11
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 78
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Curator-ConnectionStateManager-0
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 43
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : org.apache.curator.framework.state.ConnectionStateManager.processEvents(ConnectionStateManager.java:245)
+                               : org.apache.curator.framework.state.ConnectionStateManager.access$000(ConnectionStateManager.java:43)
+                               : org.apache.curator.framework.state.ConnectionStateManager$1.call(ConnectionStateManager.java:111)
+                               : java.util.concurrent.FutureTask.run(FutureTask.java:266)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor12
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 102
+                         State : RUNNABLE
+                         Stack : java.net.SocketInputStream.socketRead0(SocketInputStream.java:-2)
+                               : java.net.SocketInputStream.socketRead(SocketInputStream.java:116)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:170)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:141)
+                               : com.heliosapm.utils.io.InstrumentedInputStream.read(InstrumentedInputStream.java:87)
+                               : java.io.BufferedInputStream.fill(BufferedInputStream.java:246)
+                               : java.io.BufferedInputStream.read(BufferedInputStream.java:265)
+                               : java.io.ObjectInputStream$PeekInputStream.peek(ObjectInputStream.java:2321)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peek(ObjectInputStream.java:2614)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peekByte(ObjectInputStream.java:2624)
+                               : java.io.ObjectInputStream.readObject0(ObjectInputStream.java:1321)
+                               : java.io.ObjectInputStream.readObject(ObjectInputStream.java:373)
+                               : com.sun.jmx.remote.socket.SocketConnection.readMessage(SocketConnection.java:271)
+                               : com.sun.jmx.remote.generic.ServerSynchroMessageConnectionImpl$MessageReader.run(ServerSynchroMessageConnectionImpl.java:225)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:248)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : UnsafeAdapterDeallocatorThread
+                      Priority : 10
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 14
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:143)
+                               : java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:164)
+                               : com.heliosapm.utils.unsafe.UnsafeAdapter$1.run(UnsafeAdapter.java:489)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Finalizer
+                      Priority : 8
+                   ThreadGroup : java.lang.ThreadGroup[name=system,maxpri=10]
+                            ID : 3
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:143)
+                               : java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:164)
+                               : java.lang.ref.Finalizer$FinalizerThread.run(Finalizer.java:209)
+
+                          Name : Thread-6
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 85
+                         State : TIMED_WAITING
+                         Stack : java.lang.Thread.sleep(Thread.java:-2)
+                               : com.sun.jmx.remote.opt.internal.ClientCommunicatorAdmin$Checker.run(ClientCommunicatorAdmin.java:193)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : TracerFlushThread#2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 74
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.LinkedBlockingQueue.take(LinkedBlockingQueue.java:442)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : main-EventThread
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 45
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.LinkedBlockingQueue.take(LinkedBlockingQueue.java:442)
+                               : org.apache.zookeeper.ClientCnxn$EventThread.run(ClientCnxn.java:501)
+
+                          Name : SharedNotificationThreadPoolThread#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedNotificationThreadPoolThreadGroup,maxpri=10]
+                            ID : 99
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 25
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : JMSCCThreadPoolMaster
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 60
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Object.wait(Object.java:502)
+                               : com.ibm.msg.client.commonservices.j2se.workqueue.WorkQueueManagerImplementation$WorkQueueManagerThread.waitForNotification(WorkQueueManagerImplementation.java:672)
+                               : com.ibm.msg.client.commonservices.j2se.workqueue.WorkQueueManagerImplementation$WorkQueueManagerThread.waitForNotification(WorkQueueManagerImplementation.java:641)
+                               : com.ibm.msg.client.commonservices.j2se.workqueue.WorkQueueManagerImplementation$WorkQueueManagerThread.run(WorkQueueManagerImplementation.java:908)
+
+                          Name : SharedNotificationThreadPoolThread#7
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedNotificationThreadPoolThreadGroup,maxpri=10]
+                            ID : 112
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedNotificationThreadPoolThread#5
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedNotificationThreadPoolThreadGroup,maxpri=10]
+                            ID : 110
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedNotificationThreadPoolThread#3
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedNotificationThreadPoolThreadGroup,maxpri=10]
+                            ID : 107
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : HeliosTimeoutService#1
+                      Priority : 10
+                   ThreadGroup : java.lang.ThreadGroup[name=HeliosTimeoutService,maxpri=10]
+                            ID : 38
+                         State : TIMED_WAITING
+                         Stack : java.lang.Thread.sleep(Thread.java:-2)
+                               : io.netty.util.HashedWheelTimer$Worker.waitForNextTick(HashedWheelTimer.java:479)
+                               : io.netty.util.HashedWheelTimer$Worker.run(HashedWheelTimer.java:378)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor3
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 81
+                         State : RUNNABLE
+                         Stack : java.net.SocketInputStream.socketRead0(SocketInputStream.java:-2)
+                               : java.net.SocketInputStream.socketRead(SocketInputStream.java:116)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:170)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:141)
+                               : com.heliosapm.utils.io.InstrumentedInputStream.read(InstrumentedInputStream.java:87)
+                               : java.io.BufferedInputStream.fill(BufferedInputStream.java:246)
+                               : java.io.BufferedInputStream.read(BufferedInputStream.java:265)
+                               : java.io.ObjectInputStream$PeekInputStream.peek(ObjectInputStream.java:2321)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peek(ObjectInputStream.java:2614)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peekByte(ObjectInputStream.java:2624)
+                               : java.io.ObjectInputStream.readObject0(ObjectInputStream.java:1321)
+                               : java.io.ObjectInputStream.readObject(ObjectInputStream.java:373)
+                               : com.sun.jmx.remote.socket.SocketConnection.readMessage(SocketConnection.java:271)
+                               : com.sun.jmx.remote.generic.ClientSynchroMessageConnectionImpl$MessageReader.run(ClientSynchroMessageConnectionImpl.java:441)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:248)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : RcvThread: com.ibm.mq.jmqi.remote.impl.RemoteTCPConnection@1688755914[qmid=ECSQMGR_2015-07-31_19.20.41,fap=10,channel=JBOSS.SVRCONN       ,ccsid=1208,sharecnv=10,hbint=300,peer=localhost/127.0.0.1(1431),localport=52733,ssl=no]
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=JMSCCThreadPool,maxpri=10]
+                            ID : 61
+                         State : RUNNABLE
+                         Stack : java.net.SocketInputStream.socketRead0(SocketInputStream.java:-2)
+                               : java.net.SocketInputStream.socketRead(SocketInputStream.java:116)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:170)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:141)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteTCPConnection.receive(RemoteTCPConnection.java:1668)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteRcvThread.receiveBuffer(RemoteRcvThread.java:740)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteRcvThread.receiveOneTSH(RemoteRcvThread.java:706)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteRcvThread.run(RemoteRcvThread.java:138)
+                               : com.ibm.msg.client.commonservices.workqueue.WorkQueueItem.runTask(WorkQueueItem.java:319)
+                               : com.ibm.msg.client.commonservices.workqueue.SimpleWorkQueueItem.runItem(SimpleWorkQueueItem.java:99)
+                               : com.ibm.msg.client.commonservices.workqueue.WorkQueueItem.run(WorkQueueItem.java:341)
+                               : com.ibm.msg.client.commonservices.workqueue.WorkQueueManager.runWorkQueueItem(WorkQueueManager.java:312)
+                               : com.ibm.msg.client.commonservices.j2se.workqueue.WorkQueueManagerImplementation$ThreadPoolWorker.run(WorkQueueManagerImplementation.java:1227)
+
+                          Name : SharedSchedulerThread#5
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 58
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CacheEventSchedulerThread#3
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 65
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Log4j2-Log4j2Scheduled-1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 12
+                         State : TIMED_WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.parkNanos(LockSupport.java:215)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.awaitNanos(AbstractQueuedSynchronizer.java:2078)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1093)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor8
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 91
+                         State : RUNNABLE
+                         Stack : java.net.SocketInputStream.socketRead0(SocketInputStream.java:-2)
+                               : java.net.SocketInputStream.socketRead(SocketInputStream.java:116)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:170)
+                               : java.net.SocketInputStream.read(SocketInputStream.java:141)
+                               : com.heliosapm.utils.io.InstrumentedInputStream.read(InstrumentedInputStream.java:87)
+                               : java.io.BufferedInputStream.fill(BufferedInputStream.java:246)
+                               : java.io.BufferedInputStream.read(BufferedInputStream.java:265)
+                               : java.io.ObjectInputStream$PeekInputStream.peek(ObjectInputStream.java:2321)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peek(ObjectInputStream.java:2614)
+                               : java.io.ObjectInputStream$BlockDataInputStream.peekByte(ObjectInputStream.java:2624)
+                               : java.io.ObjectInputStream.readObject0(ObjectInputStream.java:1321)
+                               : java.io.ObjectInputStream.readObject(ObjectInputStream.java:373)
+                               : com.sun.jmx.remote.socket.SocketConnection.readMessage(SocketConnection.java:271)
+                               : com.sun.jmx.remote.generic.ServerSynchroMessageConnectionImpl$MessageReader.run(ServerSynchroMessageConnectionImpl.java:225)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:248)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : SharedSchedulerThread#7
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 73
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedSchedulerThread#6
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 72
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#6
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 29
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#10
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 33
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : threadDeathWatcher-1-1
+                      Priority : 1
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 37
+                         State : TIMED_WAITING
+                         Stack : java.lang.Thread.sleep(Thread.java:-2)
+                               : io.netty.util.ThreadDeathWatcher$Watcher.run(ThreadDeathWatcher.java:150)
+                               : io.netty.util.concurrent.DefaultThreadFactory$DefaultRunnableDecorator.run(DefaultThreadFactory.java:144)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Curator-ConnectionStateManager-0
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 49
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : org.apache.curator.framework.state.ConnectionStateManager.processEvents(ConnectionStateManager.java:245)
+                               : org.apache.curator.framework.state.ConnectionStateManager.access$000(ConnectionStateManager.java:43)
+                               : org.apache.curator.framework.state.ConnectionStateManager$1.call(ConnectionStateManager.java:111)
+                               : java.util.concurrent.FutureTask.run(FutureTask.java:266)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor0
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 79
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:127)
+
+                          Name : ReferenceServiceRefQueueThread
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 15
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:143)
+                               : java.lang.ref.ReferenceQueue.remove(ReferenceQueue.java:164)
+                               : com.heliosapm.utils.ref.ReferenceService.run(ReferenceService.java:392)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : main
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 1
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Thread.join(Thread.java:1245)
+                               : java.lang.Thread.join(Thread.java:1319)
+                               : com.heliosapm.streams.collector.CollectorServer.main(CollectorServer.java:276)
+
+                          Name : SharedSchedulerThread#2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 39
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#5
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 28
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : ReferenceServiceThread#2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=ReferenceServiceThreadGroup,maxpri=10]
+                            ID : 108
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Job_Executor4
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=Job_Executor,maxpri=10]
+                            ID : 83
+                         State : WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Object.wait(Object.java:502)
+                               : com.sun.jmx.remote.opt.util.ThreadService$ThreadServiceJob.run(ThreadService.java:223)
+                               : com.sun.jmx.remote.opt.util.JobExecutor.run(JobExecutor.java:99)
+
+                          Name : CacheEventSchedulerThread#8
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 70
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : main-SendThread(127.0.0.1:2181)
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 51
+                         State : RUNNABLE
+                         Stack : sun.nio.ch.WindowsSelectorImpl$SubSelector.poll0(WindowsSelectorImpl.java:-2)
+                               : sun.nio.ch.WindowsSelectorImpl$SubSelector.poll(WindowsSelectorImpl.java:296)
+                               : sun.nio.ch.WindowsSelectorImpl$SubSelector.access$400(WindowsSelectorImpl.java:278)
+                               : sun.nio.ch.WindowsSelectorImpl.doSelect(WindowsSelectorImpl.java:159)
+                               : sun.nio.ch.SelectorImpl.lockAndDoSelect(SelectorImpl.java:86)
+                               : sun.nio.ch.SelectorImpl.select(SelectorImpl.java:97)
+                               : org.apache.zookeeper.ClientCnxnSocketNIO.doTransport(ClientCnxnSocketNIO.java:349)
+                               : org.apache.zookeeper.ClientCnxn$SendThread.run(ClientCnxn.java:1141)
+
+                          Name : ReferenceServiceThread#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=ReferenceServiceThreadGroup,maxpri=10]
+                            ID : 105
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedSchedulerThread#3
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 40
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : FileChangeWatcher#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 36
+                         State : TIMED_WAITING
+                         Stack : java.lang.Object.wait(Object.java:-2)
+                               : java.lang.Thread.join(Thread.java:1253)
+                               : com.heliosapm.utils.time.SystemClock.sleep(SystemClock.java:53)
+                               : com.heliosapm.utils.time.SystemClock.sleep(SystemClock.java:65)
+                               : com.heliosapm.utils.file.FileChangeWatcher.run(FileChangeWatcher.java:136)
+
+                          Name : SharedSchedulerThread#10
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 77
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#12
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 35
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CacheEventSchedulerThread#4
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 66
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CacheEventSchedulerThread#2
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 64
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#7
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 30
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ArrayBlockingQueue.take(ArrayBlockingQueue.java:403)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : SharedSchedulerThread#1
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=SharedSchedulerThreadGroup,maxpri=10]
+                            ID : 20
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Curator-Framework-0
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 53
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.DelayQueue.take(DelayQueue.java:211)
+                               : java.util.concurrent.DelayQueue.take(DelayQueue.java:70)
+                               : org.apache.curator.framework.imps.CuratorFrameworkImpl.backgroundOperationsLoop(CuratorFrameworkImpl.java:804)
+                               : org.apache.curator.framework.imps.CuratorFrameworkImpl.access$300(CuratorFrameworkImpl.java:64)
+                               : org.apache.curator.framework.imps.CuratorFrameworkImpl$4.call(CuratorFrameworkImpl.java:267)
+                               : java.util.concurrent.FutureTask.run(FutureTask.java:266)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.access$201(ScheduledThreadPoolExecutor.java:180)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:293)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : Thread-3
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=main,maxpri=10]
+                            ID : 22
+                         State : RUNNABLE
+                         Stack : java.net.DualStackPlainSocketImpl.accept0(DualStackPlainSocketImpl.java:-2)
+                               : java.net.DualStackPlainSocketImpl.socketAccept(DualStackPlainSocketImpl.java:131)
+                               : java.net.AbstractPlainSocketImpl.accept(AbstractPlainSocketImpl.java:409)
+                               : java.net.PlainSocketImpl.accept(PlainSocketImpl.java:199)
+                               : java.net.ServerSocket.implAccept(ServerSocket.java:545)
+                               : java.net.ServerSocket.accept(ServerSocket.java:513)
+                               : com.sun.jmx.remote.socket.SocketConnectionServer.accept(SocketConnectionServer.java:220)
+                               : com.sun.jmx.remote.generic.SynchroMessageConnectionServerImpl.accept(SynchroMessageConnectionServerImpl.java:87)
+                               : javax.management.remote.generic.GenericConnectorServer$Receiver.run(GenericConnectorServer.java:380)
+
+                          Name : CacheEventSchedulerThread#11
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CacheEventSchedulerThreadGroup,maxpri=10]
+                            ID : 97
+                         State : WAITING
+                         Stack : sun.misc.Unsafe.park(Unsafe.java:-2)
+                               : java.util.concurrent.locks.LockSupport.park(LockSupport.java:175)
+                               : java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject.await(AbstractQueuedSynchronizer.java:2039)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:1088)
+                               : java.util.concurrent.ScheduledThreadPoolExecutor$DelayedWorkQueue.take(ScheduledThreadPoolExecutor.java:809)
+                               : java.util.concurrent.ThreadPoolExecutor.getTask(ThreadPoolExecutor.java:1067)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1127)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+                          Name : CollectorExecutionServiceThread#4
+                      Priority : 5
+                   ThreadGroup : java.lang.ThreadGroup[name=CollectorExecutionServiceThreadGroup,maxpri=10]
+                            ID : 27
+                         State : RUNNABLE
+                         Stack : java.lang.Thread.dumpThreads(Thread.java:-2)
+                               : java.lang.Thread.getAllStackTraces(Thread.java:1603)
+                               : com.ibm.msg.client.commonservices.j2se.trace.DefaultTracer.generateThreadInfo(DefaultTracer.java:1144)
+                               : com.ibm.msg.client.commonservices.j2se.trace.DefaultTracer.access$1200(DefaultTracer.java:145)
+                               : com.ibm.msg.client.commonservices.j2se.trace.DefaultTracer$8.run(DefaultTracer.java:1098)
+                               : com.ibm.msg.client.commonservices.j2se.trace.DefaultTracer$8.run(DefaultTracer.java:1022)
+                               : java.security.AccessController.doPrivileged(AccessController.java:-2)
+                               : com.ibm.msg.client.commonservices.j2se.trace.DefaultTracer.ffst(DefaultTracer.java:1022)
+                               : com.ibm.msg.client.commonservices.j2se.wmqsupport.TracerImpl.ffst(TracerImpl.java:173)
+                               : com.ibm.msg.client.commonservices.trace.Trace.ffstInternal(Trace.java:1943)
+                               : com.ibm.msg.client.commonservices.trace.Trace.ffst(Trace.java:1739)
+                               : com.ibm.mq.jmqi.remote.impl.RemoteProxyQueue.proxyMQGET(RemoteProxyQueue.java:2554)
+                               : com.ibm.mq.jmqi.remote.api.RemoteFAP.jmqiGetInternalWithRecon(RemoteFAP.java:7197)
+                               : com.ibm.mq.jmqi.remote.api.RemoteFAP.jmqiGetInternal(RemoteFAP.java:7082)
+                               : com.ibm.mq.jmqi.internal.JmqiTools.getMessage(JmqiTools.java:1277)
+                               : com.ibm.mq.jmqi.remote.api.RemoteFAP.jmqiGet(RemoteFAP.java:7029)
+                               : com.ibm.mq.ese.jmqi.InterceptedJmqiImpl.jmqiGet(InterceptedJmqiImpl.java:1325)
+                               : com.ibm.mq.ese.jmqi.ESEJMQI.jmqiGet(ESEJMQI.java:600)
+                               : com.ibm.mq.MQDestination.internalGetMessage(MQDestination.java:1038)
+                               : com.ibm.mq.MQDestination.getInt(MQDestination.java:579)
+                               : com.ibm.mq.MQDestination.get(MQDestination.java:448)
+                               : com.ibm.mq.pcf.PCFMessageAgent.send(PCFMessageAgent.java:251)
+                               : com.ibm.mq.pcf.PCFMessageAgent$send.call(null:-1)
+                               : pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure4.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:131)
+                               : sun.reflect.GeneratedMethodAccessor372.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+                               : groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+                               : groovy.lang.Script.invokeMethod(Script.java:80)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+                               : groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+                               : org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:190)
+                               : pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure11$_closure36.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:263)
+                               : sun.reflect.GeneratedMethodAccessor374.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.Closure.call(Closure.java:414)
+                               : groovy.lang.Closure.call(Closure.java:430)
+                               : com.heliosapm.streams.tracing.groovy.GroovyTracer.checkpoint(GroovyTracer.java:53)
+                               : com.heliosapm.streams.tracing.groovy.GroovyTracer.call(GroovyTracer.java:66)
+                               : sun.reflect.GeneratedMethodAccessor20.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1215)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+                               : groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+                               : groovy.lang.Script.invokeMethod(Script.java:80)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+                               : org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:166)
+                               : pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure11.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:259)
+                               : sun.reflect.GeneratedMethodAccessor373.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+                               : groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+                               : groovy.lang.Script.invokeMethod(Script.java:80)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+                               : groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:812)
+                               : groovy.lang.GroovyObjectSupport.invokeMethod(GroovyObjectSupport.java:46)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeOnDelegationObjects(ClosureMetaClass.java:430)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:369)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+                               : org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:174)
+                               : pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure15$_closure41$_closure43.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:472)
+                               : sun.reflect.GeneratedMethodAccessor378.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.Closure.call(Closure.java:414)
+                               : groovy.lang.Closure.call(Closure.java:430)
+                               : org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2030)
+                               : org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2015)
+                               : org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2056)
+                               : org.codehaus.groovy.runtime.dgm$162.invoke(null:-1)
+                               : org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite$PojoMetaMethodSiteNoUnwrapNoCoerce.invoke(PojoMetaMethodSite.java:274)
+                               : org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite.call(PojoMetaMethodSite.java:56)
+                               : org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:125)
+                               : pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure15$_closure41.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:443)
+                               : sun.reflect.GeneratedMethodAccessor376.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.Closure.call(Closure.java:414)
+                               : groovy.lang.Closure.call(Closure.java:430)
+                               : org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2030)
+                               : org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2015)
+                               : org.codehaus.groovy.runtime.DefaultGroovyMethods.each(DefaultGroovyMethods.java:2056)
+                               : org.codehaus.groovy.runtime.dgm$162.invoke(null:-1)
+                               : org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite$PojoMetaMethodSiteNoUnwrapNoCoerce.invoke(PojoMetaMethodSite.java:274)
+                               : org.codehaus.groovy.runtime.callsite.PojoMetaMethodSite.call(PojoMetaMethodSite.java:56)
+                               : org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:125)
+                               : pdk-pt-cebmq-01.ecsqmgr.mq-5s$_run_closure15.doCall(pdk-pt-cebmq-01.ecsqmgr.mq-5s:419)
+                               : sun.reflect.GeneratedMethodAccessor387.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : org.codehaus.groovy.runtime.metaclass.ClosureMetaClass.invokeMethod(ClosureMetaClass.java:294)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.Closure.call(Closure.java:414)
+                               : groovy.lang.Closure.call(Closure.java:430)
+                               : com.heliosapm.streams.tracing.groovy.GroovyTracer.checkpoint(GroovyTracer.java:53)
+                               : com.heliosapm.streams.tracing.groovy.GroovyTracer.call(GroovyTracer.java:66)
+                               : sun.reflect.GeneratedMethodAccessor20.invoke(null:-1)
+                               : sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+                               : java.lang.reflect.Method.invoke(Method.java:498)
+                               : org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:93)
+                               : groovy.lang.MetaMethod.doMethodInvoke(MetaMethod.java:325)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1215)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : groovy.lang.MetaClassImpl.invokePropertyOrMissing(MetaClassImpl.java:1261)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1217)
+                               : groovy.lang.MetaClassImpl.invokeMethod(MetaClassImpl.java:1024)
+                               : org.codehaus.groovy.runtime.callsite.PogoMetaClassSite.callCurrent(PogoMetaClassSite.java:69)
+                               : org.codehaus.groovy.runtime.callsite.AbstractCallSite.callCurrent(AbstractCallSite.java:166)
+                               : pdk-pt-cebmq-01.ecsqmgr.mq-5s.run(pdk-pt-cebmq-01.ecsqmgr.mq-5s:414)
+                               : com.heliosapm.streams.collector.groovy.ManagedScript$CollectionRunnerCallable.scriptExec(ManagedScript.java:611)
+                               : com.heliosapm.streams.collector.groovy.ManagedScript$CollectionRunnerCallable.call(ManagedScript.java:573)
+                               : com.heliosapm.streams.collector.groovy.ManagedScript$CollectionRunnerCallable.call(ManagedScript.java:1)
+                               : java.util.concurrent.FutureTask.run(FutureTask.java:266)
+                               : java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1142)
+                               : java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:617)
+                               : java.lang.Thread.run(Thread.java:745)
+
+First Failure Symptom Report completed at Wed Sep 21 16:59:57 EDT 2016
+------------------------------------END FFST------------------------------------
