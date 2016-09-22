@@ -18,6 +18,7 @@ import java.text.SimpleDateFormat;
 //==================================================================================
 //      Constants
 //==================================================================================
+@Field byte[] NULL_CONN = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] as byte[];
 @Field
 def int[] QUEUE_STATUS_ATTRS = [
     CMQC.MQCA_Q_NAME, CMQC.MQIA_CURRENT_Q_DEPTH,  
@@ -232,6 +233,19 @@ subscriptionNames = { agent ->
                                 cleanSubName = subName.replace(subPrefix, "").replace(":", "_");
                                 topicSubs.put(strSubId, cleanSubName);  
                                 topicSubs.put(cleanSubName, it);                                
+                                request(true, agent, CMQCFC.MQCMD_INQUIRE_SUB_STATUS, [(CMQCFC.MQBACF_SUB_ID):subId]).each() {
+                                    def connId = it.get("MQBACF_CONNECTION_ID");
+                                    if(!Arrays.equals(NULL_CONN, connId)) {
+                                        println "----> SUBID: $subId, CONN: $connId"; 
+                                        request(true, agent, CMQCFC.MQCMD_INQUIRE_CONNECTION, [(CMQCFC.MQBACF_CONNECTION_ID):connId, (CMQCFC.MQIACF_CONN_INFO_TYPE):MQConstants.MQIACF_CONN_INFO_ALL]).each() {
+                                            StringBuilder b = new StringBuilder();
+                                            it.each() { k,v ->
+                                                b.append("\t").append(k).append(" : ").append(v).append("\n");
+                                            }
+                                            log.info(b.toString());
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -431,7 +445,7 @@ try {
                         if(pubCount > 0) {
                             request(true, pcfConn, CMQCFC.MQCMD_INQUIRE_TOPIC_STATUS, [(CMQC.MQCA_TOPIC_STRING):topicString, (CMQCFC.MQIACF_TOPIC_STATUS_TYPE):CMQCFC.MQIACF_TOPIC_PUB]).each() {
                                 secondsSinceLastPub = (ts/1000) - (formatDate(it.get('MQCACF_LAST_PUB_DATE'), it.get('MQCACF_LAST_PUB_TIME')).getTime() / 1000);
-                                msgCount = it.get('MQIACF_PUBLISH_COUNT');                                
+                                msgCount = it.get('s');                                
                                 tracer.pushSeg("pubs").pushSeg("ssincelastmsg").trace(pubCount, ts).popSeg().popSeg();
                             }                    
                         }
@@ -469,7 +483,10 @@ try {
                                     if(secondsSinceLastMsg!=null) tracer.pushSeg("ssincelastmsg").trace(secondsSinceLastMsg, ts).popSeg();
                                     tracer.pushSeg("msgcount").trace(msgCount, ts).popSeg();
                                     if(persistentQueue != null && !persistentQueue.trim().isEmpty()) {
-                                        traceQueueStats(pcfConn, persistentQueue)
+                                        if(!persistentQueue.startsWith("system.managed.ndurable")) {
+                                            traceQueueStats(pcfConn, persistentQueue)
+                                            // TODO: need topic stats for non-durable queues without the queue name in the tags
+                                        }
                                     }
 
                                 } finally {
