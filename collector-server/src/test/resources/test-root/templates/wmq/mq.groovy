@@ -236,7 +236,7 @@ subscriptionNames = { agent ->
                                 request(true, agent, CMQCFC.MQCMD_INQUIRE_SUB_STATUS, [(CMQCFC.MQBACF_SUB_ID):subId]).each() {
                                     def connId = it.get("MQBACF_CONNECTION_ID");
                                     if(!Arrays.equals(NULL_CONN, connId)) {
-                                        println "----> SUBID: $subId, CONN: $connId"; 
+                                        println "----> SUBID: $subId, CONN: $connId"; // deocde in CONN_INFO_TYPES
                                         request(true, agent, CMQCFC.MQCMD_INQUIRE_CONNECTION, [(CMQCFC.MQBACF_CONNECTION_ID):connId, (CMQCFC.MQIACF_CONN_INFO_TYPE):MQConstants.MQIACF_CONN_INFO_ALL]).each() {
                                             StringBuilder b = new StringBuilder();
                                             it.each() { k,v ->
