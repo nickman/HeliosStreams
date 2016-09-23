@@ -142,7 +142,8 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 			"import java.util.concurrent.*",
 			"import com.heliosapm.streams.collector.groovy.*",
 			"import groovy.transform.*",
-			"import com.heliosapm.streams.collector.jmx.*"
+			"import com.heliosapm.streams.collector.jmx.*",
+			"import java.util.regex.*"
 			
 	};
 	//"import static com.heliosapm.utils.jmx.JMXHelper.*"
