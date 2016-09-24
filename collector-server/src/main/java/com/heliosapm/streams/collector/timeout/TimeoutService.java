@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.heliosapm.streams.collector;
+package com.heliosapm.streams.collector.timeout;
 
 import java.util.Set;
 import java.util.concurrent.ThreadFactory;
@@ -251,7 +251,7 @@ public class TimeoutService implements TimeoutServiceMBean, ThreadFactory, Timer
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.collector.TimeoutServiceMBean#getCancellations()
+	 * @see com.heliosapm.streams.collector.timeout.TimeoutServiceMBean#getCancellations()
 	 */
 	@Override
 	public long getCancellations() {
@@ -259,7 +259,7 @@ public class TimeoutService implements TimeoutServiceMBean, ThreadFactory, Timer
 	}
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.collector.TimeoutServiceMBean#getTimeouts()
+	 * @see com.heliosapm.streams.collector.timeout.TimeoutServiceMBean#getTimeouts()
 	 */
 	@Override
 	public long getTimeouts() {
@@ -268,7 +268,7 @@ public class TimeoutService implements TimeoutServiceMBean, ThreadFactory, Timer
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.collector.TimeoutServiceMBean#getActiveThreads()
+	 * @see com.heliosapm.streams.collector.timeout.TimeoutServiceMBean#getActiveThreads()
 	 */
 	@Override
 	public int getActiveThreads() {
@@ -277,7 +277,7 @@ public class TimeoutService implements TimeoutServiceMBean, ThreadFactory, Timer
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.collector.TimeoutServiceMBean#getPending()
+	 * @see com.heliosapm.streams.collector.timeout.TimeoutServiceMBean#getPending()
 	 */
 	@Override
 	public int getPending() {

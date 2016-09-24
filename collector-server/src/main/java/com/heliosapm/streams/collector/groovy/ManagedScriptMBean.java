@@ -271,5 +271,14 @@ public interface ManagedScriptMBean { //extends NamedBean {
 	 */
 	public long getLastFlushCount();
 	
+	/**
+	 * Returns the names of the implemented lifecycle closures
+	 * @return the names of the implemented lifecycle closures
+	 */
+	public String[] getLifecycleClosures();
 	
+	/**
+	 * Resets all deltas for this script
+	 */
+	public void resetDeltas();	
 }

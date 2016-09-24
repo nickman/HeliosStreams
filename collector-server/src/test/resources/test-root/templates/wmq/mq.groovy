@@ -229,7 +229,7 @@ subscriptionNames = { agent ->
                             subName = it.get("MQCACF_SUB_NAME");
                             if(subName!=null) {
                                 topicSubs.put(subName, it);  
-                                strSubId = "$subId".toString();
+                                def strSubId = "$subId".toString();
                                 cleanSubName = subName.replace(subPrefix, "").replace(":", "_");
                                 topicSubs.put(strSubId, cleanSubName);  
                                 topicSubs.put(cleanSubName, it);                                
@@ -349,10 +349,15 @@ pcfAgent = { host, port, channel ->
     return get("PCFAGENT-$host-$port-$channel", {        
         log.info("Connecting to $host/$port/$channel");
         def p= new PCFMessageAgent(host, port, channel);
+        deferredClose(p, {pcf ->  pcf.disconnect();});    // ensures the pcf agent is closed when script is closed.
         qManager = p.getQManagerName();
         log.info("Connected to $qManager@$host:$port");
         return p;
     });
+}
+
+def init = {
+    pcfAgent(mqhost, mqport, mqchannel);
 }
 
 String mqhost = host==null ? navmap[1] : host;

@@ -22,11 +22,13 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
@@ -70,9 +72,9 @@ import com.codahale.metrics.CachedGauge;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import com.heliosapm.streams.collector.CollectorServer;
-import com.heliosapm.streams.collector.TimeoutService;
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
+import com.heliosapm.streams.collector.timeout.TimeoutService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.hystrix.HystrixCommandFactory;
 import com.heliosapm.streams.hystrix.HystrixCommandProvider;
@@ -85,6 +87,7 @@ import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.jmx.SharedScheduler;
 import com.heliosapm.utils.lang.StringHelper;
+import com.heliosapm.utils.ref.ReferenceService;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.tuples.NVP;
 
@@ -213,6 +216,9 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** The deployment sequence id */
 	protected int deploymentId = 0;
 	
+	/** The lifecycle closures (if any) keyed by the closure name */
+	protected final Map<String, Closure<?>> lifecycleClosures = new HashMap<String, Closure<?>>();
+	
 	/** Regex pattern to determine if a schedule directive is build into the source file name */
 	public static final Pattern PERIOD_PATTERN = Pattern.compile(".*\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
 	/** The pattern identifying a property value that should be resolved post-compilation */
@@ -227,6 +233,28 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** The jmx notification infos */
 	private static final MBeanNotificationInfo[] NOTIF_INFOS;
 	
+	/** The lifecycle closure name for the <b>close</b> event, called when the script is de-allocated */
+	public static final String LIFECYCLE_CLOSE = "close";
+	/** The lifecycle closure name for the <b>init</b> event, called once before the first execution after script scheduling */
+	public static final String LIFECYCLE_INIT = "init";
+	/** The lifecycle closure name for the <b>preexec</b> event, called before each execution */
+	public static final String LIFECYCLE_PREEXEC = "preexec";
+	/** The lifecycle closure name for the <b>postexec</b> event, called after each execution */
+	public static final String LIFECYCLE_POSTEXEC = "postexec";
+	
+	/** The names of supported lifecycle script closures */
+	public static final Set<String> LIFECYCLE_CLOSURES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(new String[]{
+			LIFECYCLE_CLOSE,
+			LIFECYCLE_INIT,
+			LIFECYCLE_PREEXEC,
+			LIFECYCLE_POSTEXEC
+	})));
+	
+	/** Serial number to create unique wrapped closeable binding names */
+	protected static final AtomicLong wrappedCloseableSerial = new AtomicLong(0L);
+	
+	/** A map of wek-ref referenced wrapped closeables keyed by the generated key */
+	protected final Map<String, WeakReference<Closeable>> wrappedCloseables = new NonBlockingHashMap<String, WeakReference<Closeable>>();
 	
 	static {
 		final MBeanNotificationInfo[] STATE_INFOS = ScriptState.NOTIF_INFOS.values().toArray(new MBeanNotificationInfo[ScriptState.values().length]);
@@ -291,7 +319,6 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 				.andThreadPoolKey(regionKey.replace('.', '-'))
 				.build();
 		}
-			
 	}
 	
 	private final int packageElems;
@@ -321,7 +348,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 * @param sourceReader The source file
 	 * @param compileTime The compile time for this script in ms.
 	 */
-	void initialize(final GroovyClassLoader gcl, final Map<String, Object> baseBindings, final ByteBufReaderSource sourceReader, final String rootDirectory, final long compileTime) {
+	void initialize(final GroovyClassLoader gcl, final Map<String, Object> baseBindings, final ByteBufReaderSource sourceReader, final String rootDirectory, final long compileTime) {		
+		final Map<String, Object> postCompileBindingMap = new HashMap<String, Object>(getBinding().getVariables());
 		this.gcl = gcl;
 		this.compileTime = compileTime;
 		this.sourceReader = sourceReader;
@@ -409,15 +437,24 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			}
 		} catch (Exception ex) {
 			log.warn("Failed to register MBean for ManagedScript [{}]", objectName, ex);
-		}
-		
+		}		
+		for(Map.Entry<String,Object> entry: postCompileBindingMap.entrySet()) {
+			final String cname = entry.getKey();
+			final Object value = entry.getValue();
+			if(LIFECYCLE_CLOSURES.contains(cname)) {
+				if(value!=null && (value instanceof Closure)) {
+					lifecycleClosures.put(cname, (Closure<?>)value);
+				}
+			}
+		}		
 		// Script is ready, now schedule it if a schedule was specified
 		if(scheduledPeriod!=null) {
 			if(pendingDependencies.isEmpty()) {
 				canReschedule.set(true);
 				setState(ScriptState.SCHEDULED);
 				scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);			
-				log.info("Collection Script scheduled");				
+				log.info("Collection Script scheduled");
+				invokeLifecycleClosure(LIFECYCLE_INIT);
 			} else {
 				setState(ScriptState.WAITING);
 				log.info("\n ================================ \n Script [{}} not scheduled. \nWaiting on {}", this.sourceFile, pendingDependencies);
@@ -572,10 +609,12 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 				});
 				final long elapsed = scriptExec();
 				txout.cancel();
-				lastCollectionElapsed.set(elapsed);
-				collectionTimer.update(elapsed, TimeUnit.MILLISECONDS);
-				consecutiveErrors.set(0L);
-				lastCompleteCollection.set(System.currentTimeMillis());
+				if(elapsed!=-1L) {
+					lastCollectionElapsed.set(elapsed);
+					collectionTimer.update(elapsed, TimeUnit.MILLISECONDS);
+					consecutiveErrors.set(0L);
+					lastCompleteCollection.set(System.currentTimeMillis());
+				}
 			} catch (Exception iex) {
 				consecutiveErrors.incrementAndGet();
 				totalErrors.increment();
@@ -601,16 +640,38 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			return null;
 		}
 		
+		/**
+		 * Executes the script 
+		 * @return the elapsed time or -1 if pre-exec fails or returns false.
+		 */
 		protected long scriptExec() {
 			try {
 				log.debug("Starting collect");
+				try {
+					final Object preExec = invokeLifecycleClosure(LIFECYCLE_PREEXEC);
+					if(preExec!=null && (preExec instanceof Boolean)) {
+						if(!((Boolean)preExec).booleanValue()) {
+							log.warn("Pre-Exec return false. Skipping execution");
+							return -1L;
+						}
+					}
+				} catch (Exception ex) {
+					log.warn("Pre-Exec Failed: {}", ex);					
+					return -1L;
+				}
 				final long start = System.currentTimeMillis();
 //				if(hystrixEnabled.get()) {
 //					runInCircuitBreaker();
 //				} else {
 					run();
 //				}
-				return System.currentTimeMillis() - start;
+				final long elapsed = System.currentTimeMillis() - start;
+				try {
+					invokeLifecycleClosure(LIFECYCLE_POSTEXEC);
+				} catch (Exception ex) {
+					log.warn("Post-Exec Failed: {}", ex);
+				}
+				return elapsed;
 			} finally {
 				final ITracer itracer = (ITracer)bindingMap.get("tracer");
 				if(itracer!=null) {
@@ -619,8 +680,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 					lastFlushCount.set(itracer.getFlushedCount());
 				} else {
 					log.warn("No tracer found in binding");
-				}
-				
+				}				
 			}
 		}
 	}
@@ -709,6 +769,57 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		}
 	}
 	
+	/**
+	 * Invokes the named lifecycle closure (if defined)
+	 * @param name The name of the lifecycle closure
+	 * @return the return value of the closure call, or null if the closure was not defined
+	 */
+	protected Object invokeLifecycleClosure(final String name) {
+		final Closure<?> closure = lifecycleClosures.get(name);
+		if(closure!=null) {
+			closure.call();
+		}
+		return null;
+	}
+
+	/**
+	 * Creates a new on-enqueue runnable for a wrapped closeable
+	 * @param key The index key
+	 * @param map The map to remove the ref from when enqueued
+	 * @return the runnable
+	 */
+	protected static Runnable onEnqueued(final String key, final Map<String, WeakReference<Closeable>> map) {
+		return new Runnable() {
+			public void run() {
+				map.remove(key);
+			}
+		};
+	}
+	
+	/**
+	 * This provides a way of ensuring that objects created by the script that need to be closed,
+	 * are closed, even if they are of classes the developer neglected to make them implement {@link Closeable}.
+	 * @param nonCloseable The object to close
+	 * @param closure A closure which will be passed the non closeable instance to dispose of.
+	 */
+	protected Object deferredClose(final Object nonCloseable, final Closure<?> closure) {
+		if(nonCloseable != null) {
+			final String key = "Closeable#" + wrappedCloseableSerial.incrementAndGet();
+			final Runnable onEnqueued = onEnqueued(key, wrappedCloseables);
+			final Closeable closer = (nonCloseable instanceof Closeable) ? (Closeable)nonCloseable : new Closeable() {
+				public void close() throws IOException {
+					try {
+						closure.call(nonCloseable);
+					} catch (Exception ex) {
+						log.error("Failed to issue close on wrapped closeable [{}]", nonCloseable);
+					}
+				}				
+			};
+			wrappedCloseables.put("Closeable#" + wrappedCloseableSerial.incrementAndGet(), ReferenceService.getInstance().newWeakReference(closer, onEnqueued));
+		}
+		return nonCloseable;
+	}
+	
     /**
      * A helper method to allow the dynamic evaluation of groovy expressions using this
      * scripts binding as the variable scope
@@ -777,6 +888,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			scheduleHandle.cancel(true);
 			scheduleHandle = null;
 		}
+		invokeLifecycleClosure(LIFECYCLE_CLOSE);
 		for(Object o: bindingMap.values()) {
 			if(o!=null && (o instanceof Closeable)) {
 				try {
@@ -785,6 +897,11 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			}
 		}
 		bindingMap.clear();
+		for(WeakReference<Closeable> cref: wrappedCloseables.values()) {
+			final Closeable c = cref.get();
+			if(c!=null) try { c.close(); } catch (Exception x) {/* No Op */}
+		}
+		wrappedCloseables.clear();
 		fields.clear();
 		try { dependencyManager.close(); } catch (Exception x) {/* No Op */}
 		if(gcl!=null) {
@@ -1445,8 +1562,10 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	}
 	
 	/**
-	 * Resets all deltas for this script
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#resetDeltas()
 	 */
+	@Override
 	public void resetDeltas() {
 		for(String key: deltaKeys) {
 			deltaManager.resetDouble(key);
@@ -1454,6 +1573,15 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			deltaManager.resetLong(key);
 		}
 		deltaKeys.clear();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLifecycleClosures()
+	 */
+	@Override
+	public String[] getLifecycleClosures() {
+		return lifecycleClosures.keySet().toArray(new String[0]);
 	}
 	
 	/**
