@@ -21,12 +21,23 @@ package com.heliosapm.streams.tsdb.listener;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.utils.time.SystemClock.ElapsedTime;
+
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ChronicleQueueBuilder;
+import net.openhft.chronicle.queue.ExcerptAppender;
+import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.impl.StoreFileListener;
 
 /**
@@ -45,6 +56,86 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable {
 	protected final String basePath = System.getProperty("java.io.tmpdir") + "/getting-started";
 	protected final ChronicleQueue queue = ChronicleQueueBuilder.single(basePath).build();
 	
+	/** A random value generator */
+	protected static final Random RANDOM = new Random(System.currentTimeMillis());
+	/**
+	 * Generates an array of random strings created from splitting a randomly generated UUID.
+	 * @return an array of random strings
+	 */
+	public static String[] getRandomFragments() {
+		return UUID.randomUUID().toString().split("-");
+	}
+	
+	/**
+	 * Generates a random string made up from a UUID.
+	 * @return a random string
+	 */
+	public static String getRandomFragment() {
+		return UUID.randomUUID().toString();
+	}
+	
+	/**
+	 * Returns a random positive long
+	 * @return a random positive long
+	 */
+	public static long nextPosLong() {
+		return Math.abs(RANDOM.nextLong());
+	}
+	
+	/**
+	 * Returns a random positive double
+	 * @return a random positive double
+	 */
+	public static double nextPosDouble() {
+		return Math.abs(RANDOM.nextDouble());
+	}
+	
+	/**
+	 * Returns a random boolean
+	 * @return a random boolean
+	 */
+	public static boolean nextBoolean() {
+		return RANDOM.nextBoolean();
+	}
+	
+	/**
+	 * Returns a random positive int
+	 * @return a random positive int
+	 */
+	public static int nextPosInt() {
+		return Math.abs(RANDOM.nextInt());
+	}
+	/**
+	 * Returns a random positive int within the bound
+	 * @param bound the bound on the random number to be returned. Must be positive. 
+	 * @return a random positive int
+	 */
+	public static int nextPosInt(int bound) {
+		return Math.abs(RANDOM.nextInt(bound));
+	}
+	
+	public static byte[] randomBytes(int size) {
+		final byte[] bytes = new byte[size];
+		RANDOM.nextBytes(bytes);
+		return bytes;
+	}
+
+	/**
+	 * Creates a map of random tags
+	 * @param tagCount The number of tags
+	 * @return the tag map
+	 */
+	public static Map<String, String> randomTags(final int tagCount) {
+		final Map<String, String> tags = new LinkedHashMap<String, String>(tagCount);
+		for(int i = 0; i < tagCount; i++) {
+			String[] frags = getRandomFragments();
+			tags.put(frags[0], frags[1]);
+		}
+		return tags;
+	}
+	
+
+	
 	/**
 	 * @param args
 	 */
@@ -55,7 +146,50 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable {
 	
 	
 	public void run() {
+		final int CNT = 20000;
+		final Set<DataPoint> set = new LinkedHashSet<DataPoint>(CNT);
+		for(int i = 0; i < CNT; i++) {
+			final DataPoint dp = DataPoint.dp(getRandomFragment(), System.currentTimeMillis(), nextPosInt(100) + nextPosDouble(), randomTags(4), randomBytes(12));
+			set.add(dp.clone());
+		}
+		final ExcerptAppender ea = queue.acquireAppender();
+		for(DataPoint dp: set) {
+			
+			try {
+//				ea = queue.acquireAppender();
+				ea.writeBytes(dp);
+			} catch (Exception ex) {
+				log.error("Failed to write", ex);
+			}
+		}
 		
+		ElapsedTime et = SystemClock.startClock();
+		for(DataPoint dp: set) {
+			try {
+//				ea = queue.acquireAppender();
+				ea.writeBytes(dp);
+			} catch (Exception ex) {
+				log.error("Failed to write", ex);
+			}
+		}
+		log.info(et.printAvg("Writes", CNT));
+		final Set<DataPoint> dataPoints = new LinkedHashSet<DataPoint>(CNT);
+		final ExcerptTailer tailer = queue.createTailer();
+		et = SystemClock.startClock();
+		for(int i = 0; i < CNT; i++) {
+			try {
+				final DataPoint dp = DataPoint.getAndReset();
+				if(tailer.readBytes(dp)) {
+					dataPoints.add(dp.clone());
+				}
+			} catch (Exception ex) {
+				log.error("Failed to read", ex);
+			} 
+		}
+		log.info(et.printAvg("Reads", CNT));
+		for(DataPoint dp: dataPoints) {
+			//log.info(dp.toString());
+		}
 	}
 
 
