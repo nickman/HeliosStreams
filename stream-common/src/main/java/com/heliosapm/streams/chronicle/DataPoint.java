@@ -67,6 +67,27 @@ public class DataPoint implements BytesMarshallable {
 		return DP.get().reset();
 	}
 	
+	private DataPoint() {}
+	
+	private DataPoint(final DataPoint dp) {
+		this.tags.putAll(dp.tags);
+		this.metricName = dp.metricName;
+		this.timestamp = dp.timestamp;
+		this.doubleType = dp.doubleType;
+		this.longValue = dp.longValue;
+		this.doubleValue = dp.doubleValue;
+		this.tsuid = dp.tsuid;
+	}
+	
+	/**
+	 * <p>Creates an independent deep clone of this data point</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Object#clone()
+	 */
+	public DataPoint clone() {
+		return new DataPoint(this);
+	}
+
 	/**
 	 * Acquires the datapoint instance for the current thread and loads it with the passed event
 	 * @param metric the metric name

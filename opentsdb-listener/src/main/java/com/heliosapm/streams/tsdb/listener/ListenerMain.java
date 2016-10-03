@@ -21,22 +21,25 @@ package com.heliosapm.streams.tsdb.listener;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Map;
 import java.util.Random;
-import java.util.Set;
-import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.heliosapm.streams.chronicle.DataPoint;
+import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ChronicleQueueBuilder;
-import net.openhft.chronicle.queue.ExcerptAppender;
 import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.impl.StoreFileListener;
 
@@ -47,9 +50,14 @@ import net.openhft.chronicle.queue.impl.StoreFileListener;
  * <p><code>com.heliosapm.streams.tsdb.listener.ListenerMain</code></p>
  */
 
-public class ListenerMain implements Closeable, StoreFileListener, Runnable {
+public class ListenerMain implements Closeable, StoreFileListener, Runnable, ThreadFactory {
 	/** Instance logger */
-	protected final Logger log = LogManager.getLogger();
+	protected final Logger log = LogManager.getLogger(getClass());
+	/** the thread group the threadpool threads belong to */
+	final ThreadGroup tg = new ThreadGroup("MessageListGroup");
+	
+	final AtomicBoolean running = new AtomicBoolean(true);
+
 //	/** The in/out queue */
 //	protected final MessageQueue<AbstractMarshallable> q;
 	
@@ -76,41 +84,166 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable {
 	 * 
 	 */
 	
-	protected final String basePath = System.getProperty("java.io.tmpdir") + "/getting-started";
-	protected final ChronicleQueue queue = ChronicleQueueBuilder.single(basePath).build();
+	protected final String basePath;
+	protected final ChronicleQueue queue;
+	final int threadCount;
+	protected final ExecutorService threadPool;
+	final AtomicInteger threadSerial = new AtomicInteger();
+	/** A counter for sent messages */
+	final LongAdder receiveCounter = new LongAdder();
+	final int batchSize;
+	final long pauseTime;
+	
+	@Override
+	public Thread newThread(final Runnable r) {
+		final Thread t = new Thread(tg, r, "MessageListener#" + threadSerial.incrementAndGet());
+		t.setDaemon(true);
+		return t;
+	}
+	
 	
 	/** A random value generator */
 	protected static final Random RANDOM = new Random(System.currentTimeMillis());
-	/**
-	 * Generates an array of random strings created from splitting a randomly generated UUID.
-	 * @return an array of random strings
-	 */
-	public static String[] getRandomFragments() {
-		return UUID.randomUUID().toString().split("-");
+	
+	public ListenerMain(final String basePath, final int threadCount, final int batchSize, final long pauseTime) {		
+		this.basePath = basePath;
+		this.threadCount = threadCount;
+		this.batchSize = batchSize;
+		this.pauseTime = pauseTime;
+//        this.rollCycle = RollCycles.DAILY;
+//        this.blockSize = 64L << 20;
+//        this.path = path;
+//        this.wireType = WireType.BINARY_LIGHT;
+//        this.epoch = 0;
+//        this.bufferCapacity = 2 << 20;
+//        this.indexSpacing = -1;
+//        this.indexCount = -1;
+		threadPool = Executors.newFixedThreadPool(threadCount, this);		
+		queue = ChronicleQueueBuilder			
+			.single(basePath)	
+//			.rollCycle(RollCycles.MINUTELY)
+			.build();
 	}
+
+	
+	
+
 	
 	/**
-	 * Generates a random string made up from a UUID.
-	 * @return a random string
+	 * @param args
 	 */
-	public static String getRandomFragment() {
-		return UUID.randomUUID().toString();
+	public static void main(String[] args) {
+		final String path = "d:\\chronicle\\datapoints";
+		final int batchSize = 1000000;
+		final long pauseTime = 0L;
+		final File dir = new File(path);
+		final int threadCount = 1;
+		if(dir.isDirectory()) {
+			for(File f: dir.listFiles()) {
+				if(f.isFile()) f.delete();
+			}
+		}
+		final ListenerMain listener = new ListenerMain(path, threadCount, batchSize, pauseTime);
+		
+		final MessageGenerator mg = new MessageGenerator(path, batchSize, pauseTime, threadCount);		
+		listener.start();
+		mg.start();
+		final AtomicBoolean b = new AtomicBoolean(false);
+		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
+			public void run() {
+				b.set(true);
+				mg.stop();
+				listener.stop();
+				listener.log.info("MESSAGE TOTAL:\n\tSent:{}\n\tReceived:{}", mg.getSentCount(), listener.receiveCounter.longValue());
+				System.exit(0);
+			}
+		}).runAsync(true);
+		while(!b.get()) {
+			listener.log.info("--------> MSGS REC: {}", listener.receiveCounter.longValue());
+			SystemClock.sleep(5000);
+		}
 	}
 	
-	/**
-	 * Returns a random positive long
-	 * @return a random positive long
-	 */
-	public static long nextPosLong() {
-		return Math.abs(RANDOM.nextLong());
+	public void stop() {
+		running.set(false);
+		tg.interrupt();
+		threadPool.shutdown();
+		try {
+			threadPool.awaitTermination(5000, TimeUnit.MILLISECONDS);
+		} catch (InterruptedException e) {
+			// Won't happen
+		}
+	}
+
+	
+	public void run() {
+		
 	}
 	
+	
+	public void start() {
+		for(int i = 0; i < threadCount; i++) {
+			final int ID = i;
+			threadPool.execute(new Runnable(){				
+				public void run() {
+					final Thread thread = Thread.currentThread();
+					final ExcerptTailer tailer = queue.createTailer();
+					final boolean pause = pauseTime > 0L;
+					log.info("Starting reader thread #{}", ID);
+					int messagesRead = 0;
+					ElapsedTime et = SystemClock.startClock();
+					while(true) {
+						if(!running.get()) break;
+						try {							
+							final DataPoint dp = DataPoint.get();
+							while(tailer.readBytes(dp.reset())) {
+								if(dp.getTags().size()!=4) {
+									log.error("Incorrect Tag Count: {}" , dp);
+								}
+								receiveCounter.increment();
+								messagesRead++;
+								if(messagesRead==batchSize) {
+									log.info("Receiver: {}", et.printAvg("MessagesReceived", batchSize));
+									messagesRead = 0;
+									et = SystemClock.startClock();
+								}
+							}						
+							if(pause) thread.join(pauseTime);
+						} catch (InterruptedException iex) {
+							log.info("Stopped reader thread #{}", ID);
+							break;
+						} catch (Exception ex) {
+							if(running.get()) {
+								log.error("Processing error in reader", ex);
+							}							
+						}
+					}
+				}
+			});			
+		}
+	}
+
+
 	/**
-	 * Returns a random positive double
-	 * @return a random positive double
+	 * {@inheritDoc}
+	 * @see net.openhft.chronicle.queue.impl.StoreFileListener#onReleased(int, java.io.File)
 	 */
-	public static double nextPosDouble() {
-		return Math.abs(RANDOM.nextDouble());
+	@Override
+	public void onReleased(final int cycle, final File file) {
+		final boolean del = file.delete();
+		log.info("Released File: [{}], cycle: {}, deleted: {}", file, cycle, del);
+		
+	}
+
+
+	/**
+	 * {@inheritDoc}
+	 * @see java.io.Closeable#close()
+	 */
+	@Override
+	public void close() throws IOException {
+		// TODO Auto-generated method stub
+		
 	}
 	
 	/**
@@ -135,103 +268,6 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable {
 	 */
 	public static int nextPosInt(int bound) {
 		return Math.abs(RANDOM.nextInt(bound));
-	}
-	
-	public static byte[] randomBytes(int size) {
-		final byte[] bytes = new byte[size];
-		RANDOM.nextBytes(bytes);
-		return bytes;
-	}
-
-	/**
-	 * Creates a map of random tags
-	 * @param tagCount The number of tags
-	 * @return the tag map
-	 */
-	public static Map<String, String> randomTags(final int tagCount) {
-		final Map<String, String> tags = new LinkedHashMap<String, String>(tagCount);
-		for(int i = 0; i < tagCount; i++) {
-			String[] frags = getRandomFragments();
-			tags.put(frags[0], frags[1]);
-		}
-		return tags;
-	}
-	
-
-	
-	/**
-	 * @param args
-	 */
-	public static void main(String[] args) {
-		final ListenerMain listener = new ListenerMain();
-		listener.run();
-	}
-	
-	
-	public void run() {
-		final int CNT = 20000;
-		final Set<DataPoint> set = new LinkedHashSet<DataPoint>(CNT);
-		for(int i = 0; i < CNT; i++) {
-			final DataPoint dp = DataPoint.dp(getRandomFragment(), System.currentTimeMillis(), nextPosInt(100) + nextPosDouble(), randomTags(4), randomBytes(12));
-			set.add(dp.clone());
-		}
-		final ExcerptAppender ea = queue.acquireAppender();
-		for(DataPoint dp: set) {
-			
-			try {
-//				ea = queue.acquireAppender();
-				ea.writeBytes(dp);
-			} catch (Exception ex) {
-				log.error("Failed to write", ex);
-			}
-		}
-		
-		ElapsedTime et = SystemClock.startClock();
-		for(DataPoint dp: set) {
-			try {
-//				ea = queue.acquireAppender();
-				ea.writeBytes(dp);
-			} catch (Exception ex) {
-				log.error("Failed to write", ex);
-			}
-		}
-		log.info(et.printAvg("Writes", CNT));
-		final Set<DataPoint> dataPoints = new LinkedHashSet<DataPoint>(CNT);
-		final ExcerptTailer tailer = queue.createTailer();
-		int i = 0;
-		final DataPoint dp = DataPoint.getAndReset();
-		et = SystemClock.startClock();		
-		while(tailer.readBytes(dp.reset())) {
-			i++;
-			dataPoints.add(dp.clone());
-			if(i==CNT) break;
-		}
-		log.info(et.printAvg("Reads", CNT));
-//		for(DataPoint dp: dataPoints) {
-//			//log.info(dp.toString());
-//		}
-	}
-
-
-	/**
-	 * {@inheritDoc}
-	 * @see net.openhft.chronicle.queue.impl.StoreFileListener#onReleased(int, java.io.File)
-	 */
-	@Override
-	public void onReleased(int cycle, File file) {
-		// TODO Auto-generated method stub
-		
-	}
-
-
-	/**
-	 * {@inheritDoc}
-	 * @see java.io.Closeable#close()
-	 */
-	@Override
-	public void close() throws IOException {
-		// TODO Auto-generated method stub
-		
 	}
 	
 
