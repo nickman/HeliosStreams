@@ -53,6 +53,29 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable {
 //	/** The in/out queue */
 //	protected final MessageQueue<AbstractMarshallable> q;
 	
+	
+	/*
+	 * Configurables:
+	 * ==============
+	 * chronicle directory | tmp
+	 * chronicle name | tsdb-rtpublisher
+	 * blockSize
+	 * buffer capacity
+	 * buffered(boolean)
+	 * RollCycle
+	 * 
+	 */
+	
+	
+	/*
+	 * FX:
+	 * ===
+	 * pauser in tailer loop
+	 * head chronicle writes with byte indicating type
+	 * store file listener & delete retry loop
+	 * 
+	 */
+	
 	protected final String basePath = System.getProperty("java.io.tmpdir") + "/getting-started";
 	protected final ChronicleQueue queue = ChronicleQueueBuilder.single(basePath).build();
 	
@@ -175,21 +198,18 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable {
 		log.info(et.printAvg("Writes", CNT));
 		final Set<DataPoint> dataPoints = new LinkedHashSet<DataPoint>(CNT);
 		final ExcerptTailer tailer = queue.createTailer();
-		et = SystemClock.startClock();
-		for(int i = 0; i < CNT; i++) {
-			try {
-				final DataPoint dp = DataPoint.getAndReset();
-				if(tailer.readBytes(dp)) {
-					dataPoints.add(dp.clone());
-				}
-			} catch (Exception ex) {
-				log.error("Failed to read", ex);
-			} 
+		int i = 0;
+		final DataPoint dp = DataPoint.getAndReset();
+		et = SystemClock.startClock();		
+		while(tailer.readBytes(dp.reset())) {
+			i++;
+			dataPoints.add(dp.clone());
+			if(i==CNT) break;
 		}
 		log.info(et.printAvg("Reads", CNT));
-		for(DataPoint dp: dataPoints) {
-			//log.info(dp.toString());
-		}
+//		for(DataPoint dp: dataPoints) {
+//			//log.info(dp.toString());
+//		}
 	}
 
 
