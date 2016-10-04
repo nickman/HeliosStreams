@@ -41,7 +41,15 @@
 			  <artifactId>curator-recipes</artifactId>
 			</dependency>
 			
+			<dependency>
+			  <groupId>com.lmax</groupId>
+			  <artifactId>disruptor</artifactId>
+			</dependency>
 		
+		    <dependency>
+		      <groupId>com.stumbleupon</groupId>
+		      <artifactId>async</artifactId>
+		    </dependency>
 		
 		<!--
 		

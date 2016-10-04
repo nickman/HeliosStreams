@@ -41,7 +41,14 @@ public enum MessageType implements MessageTypeProvider, BytesMarshallable {
 		public BytesMarshallable instance() {			
 			return DataPoint.getAndReset();
 		}
+	},
+	METRICMETA(TSDBMetricMeta.class){
+		@Override
+		public BytesMarshallable instance() {			
+			return TSDBMetricMeta.FACTORY.newInstance();
+		}		
 	};
+	
 	
 	
 	private static final MessageType[] values = values();

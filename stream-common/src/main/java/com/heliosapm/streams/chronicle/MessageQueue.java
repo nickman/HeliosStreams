@@ -225,7 +225,9 @@ public class MessageQueue implements Closeable, StoreFileListener, Runnable {
 		this.listener = listener;
 		compression = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_COMPRESS_QWRITES, DEFAULT_COMPRESS_QWRITES, queueConfig);
 		blockSize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_BLOCK_SIZE, DEFAULT_BLOCK_SIZE, queueConfig);
-		readerThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
+		readerThreads = 1;
+		// In Chronicle 4, every tailer gets a copy of a published message !!
+		//ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_READER_THREADS, DEFAULT_READER_THREADS, queueConfig);
 		idlePauseTime = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_IDLE_PAUSE, DEFAULT_IDLE_PAUSE, queueConfig);
 		stopCheckCount = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_STOPCHECK_COUNT, DEFAULT_STOPCHECK_COUNT, queueConfig);
 		rollCycle = ConfigurationHelper.getEnumSystemThenEnvProperty(RollCycles.class, CONFIG_ROLL_CYCLE, DEFAULT_ROLL_CYCLE, queueConfig);
