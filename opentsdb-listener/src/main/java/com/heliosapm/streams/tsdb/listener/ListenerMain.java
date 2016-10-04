@@ -33,15 +33,19 @@ import java.util.concurrent.atomic.LongAdder;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.codahale.metrics.Meter;
 import com.heliosapm.streams.chronicle.DataPoint;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
+import net.openhft.chronicle.map.ChronicleMap;
+import net.openhft.chronicle.map.ChronicleMapBuilder;
 import net.openhft.chronicle.queue.ChronicleQueue;
-import net.openhft.chronicle.queue.ChronicleQueueBuilder;
 import net.openhft.chronicle.queue.ExcerptTailer;
+import net.openhft.chronicle.queue.RollCycles;
 import net.openhft.chronicle.queue.impl.StoreFileListener;
+import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 
 /**
  * <p>Title: ListenerMain</p>
@@ -93,6 +97,9 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 	final LongAdder receiveCounter = new LongAdder();
 	final int batchSize;
 	final long pauseTime;
+	final Meter msgMeter = new Meter();
+	final MessageGenerator mg;
+	final ChronicleMap<byte[], DataPoint> dataPointMap;
 	
 	@Override
 	public Thread newThread(final Runnable r) {
@@ -105,11 +112,29 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 	/** A random value generator */
 	protected static final Random RANDOM = new Random(System.currentTimeMillis());
 	
-	public ListenerMain(final String basePath, final int threadCount, final int batchSize, final long pauseTime) {		
-		this.basePath = basePath;
+	public ListenerMain(final String basePath, final int threadCount, final int batchSize, final long pauseTime, final MessageGenerator mg) {		
+		this.basePath = basePath;		
 		this.threadCount = threadCount;
 		this.batchSize = batchSize;
 		this.pauseTime = pauseTime;
+		this.mg = mg;
+		final File dataPointMapDir = new File(this.basePath + File.separator + "datapoints.db");
+		try {
+			final DataPoint sample = mg.randomDataPoint();
+			dataPointMap = ChronicleMapBuilder.of(byte[].class, DataPoint.class)
+				.averageKey(sample.getTsuid())
+				.averageValue(sample)
+				.entries(mg.tsuidIndex.longSize())
+				.createPersistedTo(dataPointMapDir);
+				
+			log.info("Created DataPointMap persisted at [{}]", dataPointMapDir);
+			dataPointMap.clear();
+		} catch (Exception ex) {
+			log.error("Failed to create datapoint map at {}", dataPointMapDir, ex);
+			throw new RuntimeException("Failed to create datapoint map", ex);
+		}
+			
+			
 //        this.rollCycle = RollCycles.DAILY;
 //        this.blockSize = 64L << 20;
 //        this.path = path;
@@ -119,9 +144,9 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 //        this.indexSpacing = -1;
 //        this.indexCount = -1;
 		threadPool = Executors.newFixedThreadPool(threadCount, this);		
-		queue = ChronicleQueueBuilder			
-			.single(basePath)	
-//			.rollCycle(RollCycles.MINUTELY)
+		queue = new SingleChronicleQueueBuilder(basePath)			
+			.rollCycle(RollCycles.MINUTELY)
+			.storeFileListener(this)
 			.build();
 	}
 
@@ -133,7 +158,8 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 	 * @param args
 	 */
 	public static void main(String[] args) {
-		final String path = "d:\\chronicle\\datapoints";
+//		final String path = "d:\\chronicle\\datapoints";
+		final String path = "/tmp/chronicle/datapoints";
 		final int batchSize = 1000000;
 		final long pauseTime = 0L;
 		final File dir = new File(path);
@@ -143,9 +169,10 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 				if(f.isFile()) f.delete();
 			}
 		}
-		final ListenerMain listener = new ListenerMain(path, threadCount, batchSize, pauseTime);
+		final MessageGenerator mg = new MessageGenerator(path, batchSize, pauseTime, threadCount);
+		final ListenerMain listener = new ListenerMain(path, threadCount, batchSize, pauseTime, mg);
 		
-		final MessageGenerator mg = new MessageGenerator(path, batchSize, pauseTime, threadCount);		
+				
 		listener.start();
 		mg.start();
 		final AtomicBoolean b = new AtomicBoolean(false);
@@ -154,12 +181,19 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 				b.set(true);
 				mg.stop();
 				listener.stop();
-				listener.log.info("MESSAGE TOTAL:\n\tSent:{}\n\tReceived:{}", mg.getSentCount(), listener.receiveCounter.longValue());
+				listener.log.info("MESSAGE TOTAL:\n\tDPMap:{}\n\tSent:{}\n\tReceived:{}\n\tRate:{}\n\tPending: {}", listener.dataPointMap.size(), mg.getSentCount(), listener.receiveCounter.longValue(), listener.msgMeter.getMeanRate(), mg.getPendingMessages());
 				System.exit(0);
 			}
 		}).runAsync(true);
 		while(!b.get()) {
-			listener.log.info("--------> MSGS REC: {}", listener.receiveCounter.longValue());
+			final int pending = mg.getPendingMessages();
+			final double rate = listener.msgMeter.getOneMinuteRate();
+			final int maxPending = batchSize * 3;
+			listener.log.info("--------> DPOINTS: {}, RATE: {}, MSGS REC: {}", listener.dataPointMap.size(), rate, listener.receiveCounter.longValue());
+			if(pending > maxPending) {
+				System.err.println("MAX PENDING EXCEEDED");
+				System.exit(-1);
+			}
 			SystemClock.sleep(5000);
 		}
 	}
@@ -169,10 +203,14 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 		tg.interrupt();
 		threadPool.shutdown();
 		try {
-			threadPool.awaitTermination(5000, TimeUnit.MILLISECONDS);
+			if(!threadPool.awaitTermination(15000, TimeUnit.MILLISECONDS)) {
+				final int tasks = threadPool.shutdownNow().size();
+				log.warn("Timed out waiting on threadpool shutdown. Pending: {}", tasks);				
+			}
 		} catch (InterruptedException e) {
 			// Won't happen
 		}
+		try { dataPointMap.close(); } catch (Exception x) {/* No Op */}
 	}
 
 	
@@ -196,10 +234,13 @@ public class ListenerMain implements Closeable, StoreFileListener, Runnable, Thr
 						if(!running.get()) break;
 						try {							
 							final DataPoint dp = DataPoint.get();
-							while(tailer.readBytes(dp.reset())) {
+							while(tailer.readBytes(dp.reset())) {								
 								if(dp.getTags().size()!=4) {
 									log.error("Incorrect Tag Count: {}" , dp);
 								}
+								msgMeter.mark();
+//								mg.confirm(dp.longHashCode());
+								dataPointMap.put(dp.getTsuid(), dp);
 								receiveCounter.increment();
 								messagesRead++;
 								if(messagesRead==batchSize) {

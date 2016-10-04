@@ -68,7 +68,7 @@
 		<disruptor.version>3.3.4</disruptor.version>
 		<hystrix-core.version>1.5.3</hystrix-core.version>
 		<quartz.version>2.2.2</quartz.version>
-
+		<za-hashing.version>0.6</za-hashing.version>
 		<!-- <kafka.version>0.9.0.1</kafka.version> -->
 		
 		<zookeeper.version>3.4.8</zookeeper.version>
@@ -433,6 +433,11 @@
 			  <version>${chronicle-map.version}</version>
 			</dependency>
 
+			<dependency>
+			  <groupId>net.openhft</groupId>
+			  <artifactId>zero-allocation-hashing</artifactId>
+			  <version>${za-hashing.version}</version>
+			</dependency>
 
 		    <!--
 		      ========================================

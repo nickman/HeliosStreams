@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.tsdb.listener;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,6 +35,7 @@ import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.cliffc.high_scale_lib.NonBlockingHashMapLong;
 
 import com.heliosapm.streams.chronicle.DataPoint;
 import com.heliosapm.utils.time.SystemClock;
@@ -42,6 +44,10 @@ import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ChronicleQueueBuilder;
 import net.openhft.chronicle.queue.ExcerptAppender;
+import net.openhft.chronicle.queue.RollCycles;
+import net.openhft.chronicle.queue.impl.StoreFileListener;
+import net.openhft.chronicle.set.ChronicleSet;
+import net.openhft.chronicle.set.ChronicleSetBuilder;
 import net.openhft.chronicle.wire.MarshallableOut.Padding;
 
 /**
@@ -51,7 +57,7 @@ import net.openhft.chronicle.wire.MarshallableOut.Padding;
  * <p><code>com.heliosapm.streams.tsdb.listener.MessageGenerator</code></p>
  */
 
-public class MessageGenerator implements ThreadFactory {
+public class MessageGenerator implements ThreadFactory, StoreFileListener {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
 	
@@ -75,6 +81,9 @@ public class MessageGenerator implements ThreadFactory {
 	/** A counter for sent messages */
 	final LongAdder sendCounter = new LongAdder();
 	
+	/** Unconfirmed datapoints */
+	final NonBlockingHashMapLong<DataPoint> pendingDataPoints = new NonBlockingHashMapLong<DataPoint>(1024 * 500, true);
+	
 	final AtomicInteger threadSerial = new AtomicInteger();
 	
 	@Override
@@ -83,12 +92,20 @@ public class MessageGenerator implements ThreadFactory {
 		t.setDaemon(true);
 		return t;
 	}
+	
+		
 
 	
 	/** The number of random samples for metric names and tags */
-	public static final int SAMPLE_SIZE = 100;
+	public static final int SAMPLE_SIZE = 10000;
 	/** A random value generator */
 	protected static final Random RANDOM = new Random(System.currentTimeMillis());
+
+	static final ChronicleSet<byte[]> tsuidIndex = ChronicleSetBuilder
+			.of(byte[].class)
+			.averageKey(randomBytes(nextPosInt(60) + 4))
+			.entries(SAMPLE_SIZE)
+			.create();
 
 	/**
 	 * Returns a random positive int within the bound
@@ -105,6 +122,17 @@ public class MessageGenerator implements ThreadFactory {
 	 */
 	public static long nextPosLong() {
 		return Math.abs(RANDOM.nextLong());
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see net.openhft.chronicle.queue.impl.StoreFileListener#onReleased(int, java.io.File)
+	 */
+	@Override
+	public void onReleased(final int cycle, final File file) {
+		final boolean del = file.delete();
+		log.info("Released File: [{}], cycle: {}, deleted: {}", file, cycle, del);
+		
 	}
 	
 	/**
@@ -141,53 +169,40 @@ public class MessageGenerator implements ThreadFactory {
 
 	
 	
-	private static final List<String> metricNames = new ArrayList<String>(SAMPLE_SIZE);
-	private static final List<String> tagKeys = new ArrayList<String>(SAMPLE_SIZE);
-	private static final List<String> tagValues = new ArrayList<String>(SAMPLE_SIZE);
-	private static final List<Double> doubleValues = new ArrayList<Double>(SAMPLE_SIZE);
-	private static final List<Long> longValues = new ArrayList<Long>(SAMPLE_SIZE);
-	private static final List<byte[]> tsuidValues = new ArrayList<byte[]>(SAMPLE_SIZE);
-	
+	private static final NonBlockingHashMapLong<DataPoint> dataPointSamples = new NonBlockingHashMapLong<DataPoint>(SAMPLE_SIZE, true); 
 	static {
 		for(int i = 0; i < SAMPLE_SIZE; i++) {
-			metricNames.add(getRandomFragment());
-			String[] x = getRandomFragments();
-			tagKeys.add(x[0]);
-			tagValues.add(x[0]);
-			doubleValues.add(nextPosInt(1000) + nextPosDouble());
-			longValues.add(nextPosLong());
-			tsuidValues.add(randomBytes(nextPosInt(60) + 4));
+			final HashMap<String, String> tags = new HashMap<String, String>(4);
+			for(int y = 0; y < 4; y++) {
+				String[] frags = getRandomFragments();
+				tags.put(frags[0], frags[1]);
+			}
+			byte[] tsuid = randomBytes(nextPosInt(60) + 4);
+			while(tsuidIndex.contains(tsuid)) {
+				tsuid = randomBytes(nextPosInt(60) + 4);
+			}
+			tsuidIndex.add(tsuid);
+			
+			
+			if(i%2==0) {				
+				dataPointSamples.put(i, DataPoint.dp(getRandomFragment(), System.currentTimeMillis(), (nextPosInt(1000) + nextPosDouble()), tags, tsuid).clone());
+			} else {
+				dataPointSamples.put(i, DataPoint.dp(getRandomFragment(), System.currentTimeMillis(), nextPosLong(), tags, tsuid).clone());
+			}
 		}
+		System.err.println("TSUID Index: " + tsuidIndex.size() );
 	}
 	
-	String randomMetricName() {
-		return metricNames.get(nextPosInt(SAMPLE_SIZE));
-	}
-	String randomTagKey() {
-		return tagKeys.get(nextPosInt(SAMPLE_SIZE));
-	}
-	String randomTagValue() {
-		return tagValues.get(nextPosInt(SAMPLE_SIZE));
-	}
-	double randomD() {
-		return doubleValues.get(nextPosInt(SAMPLE_SIZE));
-	}
-	double randomL() {
-		return longValues.get(nextPosInt(SAMPLE_SIZE));
-	}
-	byte[] randomTsuid() {
-		return tsuidValues.get(nextPosInt(SAMPLE_SIZE));
+	public static DataPoint randomDataPoint() {
+		final DataPoint dp =  dataPointSamples.get(nextPosInt(SAMPLE_SIZE));
+		if(dp.isDoubleType()) {
+			dp.update((nextPosInt(1000) + nextPosDouble()));
+		} else {
+			dp.update(nextPosLong());
+		}
+		return dp;
 	}
 
-	
-	Map<String, String> randomTags(final Map<String, String> map, final int count) {
-		map.clear();
-		while(map.size() < count) {
-			map.put(randomTagKey(), randomTagValue());
-		}
-		return map;
-	}
-	
 	
 	/**
 	 * Creates a new MessageGenerator
@@ -201,7 +216,10 @@ public class MessageGenerator implements ThreadFactory {
 		this.pauseTime = pauseTime;
 		this.threadCount = threadCount;
 		threadPool = Executors.newFixedThreadPool(threadCount, this);
-		queue = ChronicleQueueBuilder.single(this.chroniclePath).build();
+		queue = ChronicleQueueBuilder.single(this.chroniclePath)
+				.rollCycle(RollCycles.MINUTELY)
+				.storeFileListener(this)
+				.build();
 	}
 	
 	
@@ -212,24 +230,18 @@ public class MessageGenerator implements ThreadFactory {
 				public void run() {
 					final Thread thread = Thread.currentThread();
 					final ExcerptAppender ae = queue.acquireAppender();
+					ae.padToCacheAlign(Padding.SMART);
 					final HashMap<String, String> map = new HashMap<String, String>(4);
 					final boolean pause = pauseTime > 0L;
-					boolean dOrL = false;
 					log.info("Starting writer thread #{}", ID);
 					while(true) {
 						if(!running.get()) break;
 						try {
 							final ElapsedTime et = SystemClock.startClock();
 							for(int i = 0; i < batchSize; i++) {
-								final DataPoint dp;
-								if(dOrL) {
-									dp = DataPoint.dp(randomMetricName(), System.currentTimeMillis(), randomD(), randomTags(map, 4), randomTsuid());
-								} else {
-									dp = DataPoint.dp(randomMetricName(), System.currentTimeMillis(), randomL(), randomTags(map, 4), randomTsuid());
-								}
-								dOrL = !dOrL;
-								ae.writeBytes(dp);
-								ae.padToCacheAlign(Padding.SMART);
+								final DataPoint dp = randomDataPoint();
+								//pendingDataPoints.put(dp.longHashCode(), dp.clone());
+								ae.writeBytes(dp);								
 								sendCounter.increment();
 							}
 							log.info("Sender: {}", et.printAvg("MessagesSent", batchSize));
@@ -262,6 +274,14 @@ public class MessageGenerator implements ThreadFactory {
 	
 	public long getSentCount() {
 		return sendCounter.longValue();
+	}
+	
+	public int getPendingMessages() {
+		return pendingDataPoints.size();
+	}
+	
+	public void confirm(final long longHashCode) {
+		pendingDataPoints.remove(longHashCode);
 	}
 
 	/**

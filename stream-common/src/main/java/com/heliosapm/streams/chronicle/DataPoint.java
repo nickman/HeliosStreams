@@ -28,6 +28,7 @@ import net.openhft.chronicle.bytes.BytesIn;
 import net.openhft.chronicle.bytes.BytesMarshallable;
 import net.openhft.chronicle.bytes.BytesOut;
 import net.openhft.chronicle.core.io.IORuntimeException;
+import net.openhft.hashing.LongHashFunction;
 
 /**
  * <p>Title: DataPoint</p>
@@ -39,6 +40,8 @@ import net.openhft.chronicle.core.io.IORuntimeException;
 public class DataPoint implements BytesMarshallable {
 	public static final byte ZERO_BYTE = 0;
 	public static final byte ONE_BYTE = 1;
+	
+	private static final LongHashFunction hashFx = LongHashFunction.murmur_3();
 	
 	private static final ThreadLocal<DataPoint> DP = new ThreadLocal<DataPoint>() {
 		/**
@@ -58,6 +61,7 @@ public class DataPoint implements BytesMarshallable {
 	long longValue = -1L;
 	double doubleValue = -1D;
 	byte[] tsuid = null;
+	volatile long longHashCode = -1L;
 	
 	public static DataPoint get() {
 		return DP.get();
@@ -86,6 +90,35 @@ public class DataPoint implements BytesMarshallable {
 	 */
 	public DataPoint clone() {
 		return new DataPoint(this);
+	}
+	
+	public DataPoint update(final long value) {
+		final DataPoint dp  = clone();
+		timestamp = System.currentTimeMillis();
+		doubleType = false;
+		longValue = value;
+		longHashCode=-1L;
+		return dp;
+	}
+	
+	public DataPoint update(final double value) {
+		final DataPoint dp  = clone();
+		timestamp = System.currentTimeMillis();
+		doubleType = true;
+		doubleValue = value;
+		longHashCode=-1L;
+		return dp;
+	}
+
+	
+	public long longHashCode() {
+		if(longHashCode==-1L) {
+			longHashCode = hashFx.hashChars(new StringBuilder(metricName)
+				.append(tags)
+				.append(timestamp)
+			);
+		}
+		return longHashCode;
 	}
 
 	/**
@@ -131,6 +164,7 @@ public class DataPoint implements BytesMarshallable {
 	
 	public DataPoint reset() {
 		tags.clear();
+		longHashCode = -1L;
 		return this;
 	}
 	
