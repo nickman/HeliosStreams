@@ -85,9 +85,9 @@ public class StreamHubAdminServer {
 		if(jmxmp!=null) {
 			System.out.println("JMXMP Server enabled on [" + jmxmp.getAddress() + "]");
 		}		
-		if(!JMXHelper.isRegistered(CascadingService.CASCADING_SERVICE_DEFAULT_NAME)) {
-			JMXHelper.registerMBean(cascadingService, CascadingService.CASCADING_SERVICE_DEFAULT_NAME);
-		}
+//		if(!JMXHelper.isRegistered(CascadingService.CASCADING_SERVICE_DEFAULT_NAME)) {
+//			JMXHelper.registerMBean(cascadingService, CascadingService.CASCADING_SERVICE_DEFAULT_NAME);
+//		}
 	}
 	
 	/**
@@ -127,7 +127,7 @@ public class StreamHubAdminServer {
 			}
 		});			
 		appCtx = springApp.run(args);
-        StdInCommandHandler.getInstance().run();
+//        StdInCommandHandler.getInstance().run();
     }	
 	
 	/**

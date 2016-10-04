@@ -36,14 +36,14 @@ import net.opentsdb.stats.StatsCollector;
 import net.opentsdb.tsd.RpcPlugin;
 
 /**
- * <p>Title: TSDBEndpointPublisher</p>
+ * <p>Title: TSDBKafkaEndpointPublisher</p>
  * <p>Description: </p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.opentsdb.TSDBEndpointPublisher</code></p>
+ * <p><code>com.heliosapm.streams.opentsdb.TSDBKafkaEndpointPublisher</code></p>
  */
 
-public class TSDBEndpointPublisher extends RpcPlugin {
+public class TSDBKafkaEndpointPublisher extends RpcPlugin {
 	
 	/** The template for the JMX service URL */
 	public static final String DEFAULT_JMX_URLS  = "service:jmx:jmxmp://%s:4245";
@@ -58,7 +58,7 @@ public class TSDBEndpointPublisher extends RpcPlugin {
 	 */
 	@Override
 	public void initialize(final TSDB tsdb) {
-		log.info(">>>>> Initializing TSDBEndpointPublisher...");
+		log.info(">>>>> Initializing TSDBKafkaEndpointPublisher...");
 		final Properties properties = new Properties();
 		properties.putAll(tsdb.getConfig().getMap());
 		final String zkConnect = properties.getProperty("tsd.storage.hbase.zk_quorum", "localhost:2181");

@@ -65,7 +65,7 @@
 		<h2.version>1.4.187</h2.version>
 		<hikari.version>2.3.8</hikari.version>		
 		<jexl.version>3.0</jexl.version>
-		<disruptor.version>3.3.4</disruptor.version>
+		<disruptor.version>3.3.5</disruptor.version>
 		<hystrix-core.version>1.5.3</hystrix-core.version>
 		<quartz.version>2.2.2</quartz.version>
 		<za-hashing.version>0.6</za-hashing.version>

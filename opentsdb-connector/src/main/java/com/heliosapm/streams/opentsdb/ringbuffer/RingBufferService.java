@@ -84,7 +84,7 @@ public class RingBufferService implements EventFactory<ByteBuf>, EventHandler<By
 	
 	
 	/** A counter to track the number of event handling errors */
-	protected final Counter handleEventExceptions = SharedMetricsRegistry.getInstance().counter("opentsdb.kafkartp.handler.exceptions");
+	protected final Counter handleEventExceptions = SharedMetricsRegistry.getInstance().counter("disruptor.handler.exceptions");
 
 	
 	/** The ring buffer thread factory */

@@ -48,8 +48,8 @@ import de.codecentric.boot.admin.registry.ApplicationRegistry;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.admin.discovery.ClientEventListenerService</code></p>
  */
-@Service
-@EnableAutoConfiguration
+//@Service
+//@EnableAutoConfiguration
 public class ClientEventListenerService implements InitializingBean {
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -89,21 +89,21 @@ public class ClientEventListenerService implements InitializingBean {
 	@EventListener
 	public void onClientApplicationRegistered(final ClientApplicationRegisteredEvent event) {
 		log.info("Client Registration", event);
-		registerCascade(event);
+//		registerCascade(event);
 	}
 	
 	protected void registerCascade(final ClientApplicationEvent event) {
-		final String managementUrl = event.getApplication().getManagementUrl();
-		final URL manUrl = URLHelper.toURL(managementUrl);
-		final String jmxUrlJson = URLHelper.getTextFromURL(managementUrl + "/jmxmp");
-		final JsonNode node = JSONOps.parseToNode(jmxUrlJson);
-		final String jmxUrl = node.get("jmx").asText();
-		final String key = event.getApplication().getName() + "/" + manUrl.getHost() + "-" + manUrl.getPort();
-		final String mountId = JMXHelper.invoke(CascadingService.CASCADING_SERVICE_DEFAULT_NAME, "mount", new Object[]{
-			jmxUrl, "*:*", key
-				
-		}, new String[]{String.class.getName(), String.class.getName(), String.class.getName()}).toString();
-		mounts.put(key, mountId);
+//		final String managementUrl = event.getApplication().getManagementUrl();
+//		final URL manUrl = URLHelper.toURL(managementUrl);
+//		final String jmxUrlJson = URLHelper.getTextFromURL(managementUrl + "/jmxmp");
+//		final JsonNode node = JSONOps.parseToNode(jmxUrlJson);
+//		final String jmxUrl = node.get("jmx").asText();
+//		final String key = event.getApplication().getName() + "/" + manUrl.getHost() + "-" + manUrl.getPort();
+//		final String mountId = JMXHelper.invoke(CascadingService.CASCADING_SERVICE_DEFAULT_NAME, "mount", new Object[]{
+//			jmxUrl, "*:*", key
+//				
+//		}, new String[]{String.class.getName(), String.class.getName(), String.class.getName()}).toString();
+//		mounts.put(key, mountId);
 	}
 	
 	/**
@@ -114,7 +114,7 @@ public class ClientEventListenerService implements InitializingBean {
 	public void onClientApplicationStatusChange(final ClientApplicationStatusChangedEvent event) {
 		final String newStatus = event.getTo().getStatus();
 		if("UP".equals(newStatus)) {
-			registerCascade(event);
+//			registerCascade(event);
 		}
 	}
 
@@ -124,12 +124,12 @@ public class ClientEventListenerService implements InitializingBean {
 	 */
 	@EventListener
 	public void onClientApplicationDeregistered(final ClientApplicationDeregisteredEvent event) {
-		final URL manUrl = URLHelper.toURL(event.getApplication().getManagementUrl());
-		final String key = manUrl.getHost() + "-" + manUrl.getPort() + "/" + event.getApplication().getName();
-		final String mountId = mounts.remove(key);
-		if(mountId!=null) {
-			JMXHelper.invoke(CascadingService.CASCADING_SERVICE_DEFAULT_NAME, "unmount", new Object[]{mountId}, new String[]{String.class.getName()});
-		}
+//		final URL manUrl = URLHelper.toURL(event.getApplication().getManagementUrl());
+//		final String key = manUrl.getHost() + "-" + manUrl.getPort() + "/" + event.getApplication().getName();
+//		final String mountId = mounts.remove(key);
+//		if(mountId!=null) {
+//			JMXHelper.invoke(CascadingService.CASCADING_SERVICE_DEFAULT_NAME, "unmount", new Object[]{mountId}, new String[]{String.class.getName()});
+//		}
 	}
 
 }
