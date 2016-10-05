@@ -41,9 +41,11 @@ import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.streams.opentsdb.ringbuffer.RBWaitStrategy;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.RingBuffer;
+import com.lmax.disruptor.TimeoutException;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.stumbleupon.async.Callback;
@@ -188,25 +190,31 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		@Override
 		public void run() {
 			while(keepRunning.get()) {
-				try { Thread.currentThread().join(60000); } catch (Exception x) {/* No Op */}
-				if(!pendingDeletes.isEmpty()) {
-					final Map<String, File> tmp = new HashMap<String, File>(pendingDeletes);
-					for(Map.Entry<String, File> entry: tmp.entrySet()) {
-						final File f = entry.getValue();
-						if(!f.exists()) {
-							pendingDeletes.remove(entry.getKey());
-							continue;
-						}
-						final long size = f.length();
-						if(entry.getValue().delete()) {
-							deletedRolledFiles.inc();
-							pendingRolledFiles.dec();
-							log.info("Deleted pending roll file [{}], size [{}} bytes", entry.getKey(), size);
-							pendingDeletes.remove(entry.getKey());
+				try { 
+					Thread.currentThread().join(60000); 
+					if(!pendingDeletes.isEmpty()) {
+						final Map<String, File> tmp = new HashMap<String, File>(pendingDeletes);
+						for(Map.Entry<String, File> entry: tmp.entrySet()) {
+							final File f = entry.getValue();
+							if(!f.exists()) {
+								pendingDeletes.remove(entry.getKey());
+								continue;
+							}
+							final long size = f.length();
+							if(entry.getValue().delete()) {
+								deletedRolledFiles.inc();
+								pendingRolledFiles.dec();
+								log.info("Deleted pending roll file [{}], size [{}} bytes", entry.getKey(), size);
+								pendingDeletes.remove(entry.getKey());
+							}
 						}
 					}
+				} catch (Exception ex) {
+					if(!keepRunning.get()) break;
+					if(Thread.interrupted()) Thread.interrupted();
 				}
 			}
+			log.info("rolledFileDeletionThread stopped");
 		}
 	} : null;
 	
@@ -366,6 +374,11 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			rolledFileDeletionThread.setDaemon(true);
 			rolledFileDeletionThread.start();
 		}
+		try {
+			JMXHelper.registerMBean(this, JMXHelper.objectName("net.opentsdb:service=TSDBChronicleEventPublisher"));
+		} catch (Exception ex) {
+			log.warn("Failed to register management interface", ex);
+		}
 		log.info("<<<<< TSDBChronicleEventPublisher Initialized");
 	}
 	
@@ -377,10 +390,43 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 */
 	@Override
 	public Deferred<Object> shutdown() {
-		log.info("Stopping TSDBChronicleEventPublisher");
+		log.info(">>>>> Stopping TSDBChronicleEventPublisher");
+		stopDisruptor("CacheLookup", cacheRbDisruptor);
+		stopDisruptor("Dispatch", dispatchRbDisruptor);
 		keepRunning.set(false);
-		if(rolledFileDeletionThread!=null) rolledFileDeletionThread.interrupt(); 
+		if(rolledFileDeletionThread!=null) rolledFileDeletionThread.interrupt();
+		try { 
+			outQueue.close();
+			log.info("OutboundQueue Closed");
+		} catch (Exception ex) {
+			log.warn("Error closing OutboundQueue: {}", ex);
+		}
+		try {
+			JMXHelper.unregisterMBean(JMXHelper.objectName("net.opentsdb:service=TSDBChronicleEventPublisher"));
+		} catch (Exception x) {/* No Op */}
+
+		log.info("<<<<< TSDBChronicleEventPublisher Stopped");
 		return Deferred.fromResult(null);
+	}
+	
+	
+	/**
+	 * Executes a controlled shutdown of the passed disruptor
+	 * @param name The name of the disruptor for logging
+	 * @param disruptor The disruptor to stop
+	 */
+	protected void stopDisruptor(final String name, final Disruptor<?> disruptor) {
+		final long start = System.currentTimeMillis();
+		try {			
+			disruptor.shutdown(5000, TimeUnit.MILLISECONDS);
+			final long elapsed = System.currentTimeMillis() - start;
+			log.info("{} Disruptor stopped normally in {} ms.", name, elapsed);
+		} catch (TimeoutException tex) {
+			final long elapsed = System.currentTimeMillis() - start;
+			log.warn("{} Disruptor failed to stop normally after {} ms. Halting....", name, elapsed);
+			disruptor.halt();
+			log.warn("{} Disruptor halted");
+		}
 	}
 
 	/**
@@ -669,5 +715,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		return resolveUidsTimer.getSnapshot().get99thPercentile();
 	}
 	
-
+	public void clearLookupCache() {
+		cacheDb.clear();
+	}
 }
