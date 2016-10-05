@@ -27,8 +27,6 @@ import java.util.Properties;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 import org.apache.logging.log4j.LogManager;
@@ -43,6 +41,7 @@ import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.streams.opentsdb.ringbuffer.RBWaitStrategy;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.dsl.Disruptor;
@@ -73,7 +72,7 @@ import net.opentsdb.uid.UniqueId.UniqueIdType;
  * <p><code>com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisher</code></p>
  */
 
-public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFileListener, Consumer<BytesRingBufferStats> {
+public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChronicleEventPublisherMBean, StoreFileListener, Consumer<BytesRingBufferStats> {
 	
 	/** The number of processors */
 	public static final int CORES = Runtime.getRuntime().availableProcessors();
@@ -154,14 +153,11 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	protected TSDB tsdb = null;
 	/** Timer to track elapsed times on uid resolutions called when the cacheDB does not contain an incoming tsuid */
 	protected final Timer resolveUidsTimer = metricManager.timer("resolveUids");
+	/** Timer to track elapsed times on executing the cache lookup handler */
+	protected final Timer cacheLookupHandlerTimer = metricManager.timer("cacheLookupHandler");
+	/** Timer to track elapsed times on executing the dispatch handler */
+	protected final Timer dispatchHandlerTimer = metricManager.timer("dispatchHandler");
 	
-	
-//	queue = SingleChronicleQueueBuilder.binary(baseQueueDirectory)
-//			.blockSize(blockSize)
-//			.rollCycle(rollCycle)
-//			.storeFileListener(this)
-//			.wireType(WireType.BINARY)
-//			.build();
 	
 	// ===============================================================================================
 	//		Out Queue Config
@@ -182,6 +178,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	protected final Counter rolledFiles = metricManager.counter("rolledFiles");
 	/** A counter of deleted rolled queue files */
 	protected final Counter deletedRolledFiles = metricManager.counter("deletedRolledFiles");
+	/** A counter of rolled queue files pending deletion */
+	protected final Counter pendingRolledFiles = metricManager.counter("pendingRolledFiles");
+	
 	/** Flag to switch off deletion thread on shutdown */
 	protected final AtomicBoolean keepRunning = new AtomicBoolean(IS_WIN);
 	/** Background rolled file deletion thread if we're on windows, otherwise null */
@@ -201,6 +200,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 						final long size = f.length();
 						if(entry.getValue().delete()) {
 							deletedRolledFiles.inc();
+							pendingRolledFiles.dec();
 							log.info("Deleted pending roll file [{}], size [{}} bytes", entry.getKey(), size);
 							pendingDeletes.remove(entry.getKey());
 						}
@@ -235,36 +235,49 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	protected RBWaitStrategy cacheRbWaitStrat = null;
 	protected RBWaitStrategy dispatchRbWaitStrat = null;
 	
-	protected final ThreadFactory cacheRbThreadFactory = new ThreadFactory() {
-		final AtomicInteger serial = new AtomicInteger(0);
-		@Override
-		public Thread newThread(final Runnable r) {
-			final Thread t = new Thread(r, "CacheLookupThread#" + serial.incrementAndGet());
-			t.setDaemon(true);
-			return t;
-		}		
-	};
-	protected ThreadFactory dispatchRbThreadFactory = new ThreadFactory() {
-		final AtomicInteger serial = new AtomicInteger(0);
-		@Override
-		public Thread newThread(final Runnable r) {
-			final Thread t = new Thread(r, "MetricDispatchThread#" + serial.incrementAndGet());
-			t.setDaemon(true);
-			return t;
-		}		
-	};
+	/** The cache lookup ring buffer thread factory */
+	protected final ThreadFactory cacheRbThreadFactory = JMXManagedThreadFactory.newThreadFactory("CacheLookupThread", true);
+	/** The dispatch ring buffer thread factory */
+	protected ThreadFactory dispatchRbThreadFactory = JMXManagedThreadFactory.newThreadFactory("MetricDispatchThread", true); 
 	
+	/** The cache lookup disruptor */
 	protected Disruptor<TSDBMetricMeta> cacheRbDisruptor = null;
+	/** The dispatch disruptor */
 	protected Disruptor<TSDBMetricMeta> dispatchRbDisruptor = null;
+	/** The cache lookup ring buffer */
 	protected RingBuffer<TSDBMetricMeta> cacheRb = null;
+	/** The dispatch ring buffer */
 	protected RingBuffer<TSDBMetricMeta> dispatchRb = null;
 	
 	/** The cache lookup handler */
 	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
-		public void onEvent(final TSDBMetricMeta event, final long sequence, final boolean endOfBatch) throws Exception {
-			// TODO Auto-generated method stub
-			
+		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
+			final Context ctx = cacheLookupHandlerTimer.time();
+			try {
+				if(!cacheDb.contains(meta.getTsuid())) {
+					// We have to clone here since the incoming meta gets recycled back to the cacheRb.
+					// Alternatively, the resolveUID could be synchronous. 
+					final TSDBMetricMeta metaClone = meta.clone();
+					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
+						@Override
+						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
+							metaClone.resolved(
+									map.get(UniqueIdType.METRIC).values().iterator().next(), 
+									map.get(UniqueIdType.TAGK), 
+									map.get(UniqueIdType.TAGV)
+							);
+							final long seq = dispatchRb.next();
+							final TSDBMetricMeta meta = dispatchRb.get(seq);
+							meta.load(metaClone);
+							dispatchRb.publish(seq);										
+							return null;
+						}
+					});
+				}
+			} finally {
+				ctx.close();
+			}
 		}
 	};
 	
@@ -272,8 +285,12 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	protected final EventHandler<TSDBMetricMeta> dispatchHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
 		public void onEvent(final TSDBMetricMeta event, final long sequence, final boolean endOfBatch) throws Exception {
-			// TODO Auto-generated method stub
-			
+			final Context ctx = dispatchHandlerTimer.time();
+			try {
+				outQueue.acquireAppender().writeBytes(event);
+			} finally {
+				ctx.stop();
+			}
 		}
 	};
 	
@@ -309,28 +326,6 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 				.onRingBufferStats(this)
 				.wireType(WireType.BINARY)
 				.build();
-//		public static final String CONFIG_OUTQ_DIR = "eventpublisher.outq.dir";
-//		public static final String CONFIG_OUTQ_BLOCKSIZE = "eventpublisher.outq.blocksize";
-//		public static final String CONFIG_OUTQ_ROLLCYCLE = "eventpublisher.outq.rollcycle";
-//		
-//		queue = SingleChronicleQueueBuilder.binary(baseQueueDirectory)
-//				.blockSize(blockSize)
-//				.rollCycle(rollCycle)
-//				.storeFileListener(this)
-//				.wireType(WireType.BINARY)
-//				.build();
-//		
-//		// ===============================================================================================
-//		//		Out Queue Config
-//		// ===============================================================================================
-//		/** The queue base directory name */
-//		protected String outQueueDirName = null;
-//		/** The queue base directory */
-//		protected File outQueueDir = null;	
-//		/** The queue block size */
-//		protected int outQueueBlockSize = -1;
-//		/** The queue roll cycle */
-//		protected RollCycle outQueueRollCycle = null;
 
 		// ================  Configure Cache
 		tsuidCacheDbFileName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_CACHE_FILE, DEFAULT_CACHE_FILE, properties);
@@ -367,13 +362,14 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 		dispatchRb = dispatchRbDisruptor.start();
 		log.info("Started MetricDispatch RingBuffer");
 		
-		
-		
-		
+		if(rolledFileDeletionThread!=null) {
+			rolledFileDeletionThread.setDaemon(true);
+			rolledFileDeletionThread.start();
+		}
 		log.info("<<<<< TSDBChronicleEventPublisher Initialized");
-		
-		
 	}
+	
+	
 
 	/**
 	 * {@inheritDoc}
@@ -382,6 +378,8 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	@Override
 	public Deferred<Object> shutdown() {
 		log.info("Stopping TSDBChronicleEventPublisher");
+		keepRunning.set(false);
+		if(rolledFileDeletionThread!=null) rolledFileDeletionThread.interrupt(); 
 		return Deferred.fromResult(null);
 	}
 
@@ -409,7 +407,10 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	 */
 	@Override
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final long value, final Map<String, String> tags, final byte[] tsuid) {
-
+		final long sequence = cacheRb.next();
+		final TSDBMetricMeta meta = cacheRb.get(sequence);
+		meta.reset().load(metric, tags, tsuid);
+		cacheRb.publish(sequence);
 		return Deferred.fromResult(null);
 	}
 
@@ -419,7 +420,10 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	 */
 	@Override
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final double value, final Map<String, String> tags, final byte[] tsuid) {
-
+		final long sequence = cacheRb.next();
+		final TSDBMetricMeta meta = cacheRb.get(sequence);
+		meta.reset().load(metric, tags, tsuid);
+		cacheRb.publish(sequence);
 		return Deferred.fromResult(null);
 	}
 
@@ -439,7 +443,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	 * should only be called once per TSUID.
 	 * <p>FIXME: The first {@link TSDB#metrics_width()} bytes of the TSUID are the metric name UID, so we don't need to fetch it.</p>
 	 * @param meta The meta to resolve the UIDs for
-	 * @return A map of name to UID pairs within a map keyed by uniqueidtypes (metricname, tag key, tag value)
+	 * @return A deferred handle to a map of name to UID pairs within a map keyed by uniqueidtypes (metricname, tag key, tag value)
 	 */
 	protected Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>> resolveUIDsAsync(final TSDBMetricMeta meta) {
 		final Context ctx = resolveUidsTimer.time();
@@ -493,6 +497,32 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 		});
 		return resultDef;
 	}
+	
+	/**
+	 * A synchronous version of {@link #resolveUIDsAsync}.
+	 * @param meta The meta to resolve the UIDs for
+	 * @param timeout The timeout on the operation in ms.
+	 * @return A map of name to UID pairs within a map keyed by uniqueidtypes (metricname, tag key, tag value)
+	 */
+	protected EnumMap<UniqueIdType, Map<String, byte[]>> resolveUIDs(final TSDBMetricMeta meta, final long timeout) {
+		try {
+			return resolveUIDsAsync(meta).join(timeout);
+		} catch (Exception ex) {
+			log.error("Synchronous resolveUIDs failed", ex);
+			throw new RuntimeException("Synchronous resolveUIDs failed", ex);
+		}
+	}
+	
+	/**
+	 * A synchronous version of {@link #resolveUIDsAsync} with a timeout of 5000 ms.
+	 * @param meta The meta to resolve the UIDs for
+	 * @return A map of name to UID pairs within a map keyed by uniqueidtypes (metricname, tag key, tag value)
+	 */
+	protected EnumMap<UniqueIdType, Map<String, byte[]>> resolveUIDs(final TSDBMetricMeta meta) {
+		return resolveUIDs(meta, 5000);
+	}
+	
+	
 
 	/**
 	 * {@inheritDoc}
@@ -500,6 +530,14 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	 */
 	@Override
 	public void onReleased(final int cycle, final File file) {
+		rolledFiles.inc();
+		if(file.delete()) {
+			deletedRolledFiles.inc();
+			log.info("Deleted rolled file [{}], cycle: [{}]", file, cycle);
+		} else {
+			pendingRolledFiles.inc();
+			pendingDeletes.put(file.getName(), file);
+		}
 		
 	}
 
@@ -509,8 +547,127 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements StoreFil
 	 */
 	@Override
 	public void accept(final BytesRingBufferStats queueStats) {
-		
+		// enterprise only, I think
 	}
 
+
+	public String getOutQueueDir() {
+		return outQueueDir.getAbsolutePath();
+	}
+
+	public int getOutQueueBlockSize() {
+		return outQueueBlockSize;
+	}
+
+	public String getOutQueueRollCycle() {
+		return outQueueRollCycle.format();
+	}
+
+	public int getPendingDeleteCount() {
+		return pendingDeletes.size();
+	}
+
+	public long getRolledFiles() {
+		return rolledFiles.getCount();
+	}
+
+	public long getDeletedRolledFiles() {
+		return deletedRolledFiles.getCount();
+	}
+
+	public long getPendingRolledFiles() {
+		return pendingRolledFiles.getCount();
+	}
+
+	public String getTsuidCacheDbFile() {
+		return tsuidCacheDbFile.getAbsolutePath();
+	}
+	
+	public long getTsuidCacheDbFileSize() {
+		return tsuidCacheDbFile.length();
+	}
+	
+
+	public int getAvgKeySize() {
+		return avgKeySize;
+	}
+
+	public int getLookupCacheSize() {
+		return cacheDb.size();
+	}
+	
+	public int getLookupCacheSegments() {
+		return cacheDb.segments();
+	}
+	
+
+	public int getCacheRbThreads() {
+		return cacheRbThreads;
+	}
+
+	public int getDispatchRbThreads() {
+		return dispatchRbThreads;
+	}
+
+	public int getCacheRbSize() {
+		return cacheRbSize;
+	}
+
+	public int getDispatchRbSize() {
+		return dispatchRbSize;
+	}
+
+	public String getCacheRbWaitStrat() {
+		return cacheRbWaitStrat.name();
+	}
+
+	public String getDispatchRbWaitStrat() {
+		return dispatchRbWaitStrat.name();
+	}
+
+	public long getCacheRbCapacity() {
+		return cacheRb.remainingCapacity();
+	}
+
+	public long getDispatchRbCapacity() {
+		return dispatchRb.remainingCapacity();
+	}
+
+	public long getDispatchHandleCount() {
+		return dispatchHandlerTimer.getCount();
+	}
+	
+	public double getDispatchHandle1mRate() {
+		return dispatchHandlerTimer.getOneMinuteRate();
+	}
+	
+	public double getDispatchHandle99PctElapsed() {
+		return dispatchHandlerTimer.getSnapshot().get99thPercentile();
+	}
+	
+	public long getCacheLookupHandleCount() {
+		return cacheLookupHandlerTimer.getCount();
+	}
+	
+	public double getCacheLookupHandle1mRate() {
+		return cacheLookupHandlerTimer.getOneMinuteRate();
+	}
+	
+	public double getCacheLookupHandle99PctElapsed() {
+		return cacheLookupHandlerTimer.getSnapshot().get99thPercentile();
+	}
+	
+	public long getResolveUidHandleCount() {
+		return resolveUidsTimer.getCount();
+	}
+	
+	public double getResolveUidHandle1mRate() {
+		return resolveUidsTimer.getOneMinuteRate();
+	}
+	
+	public double getResolveUidHandle99PctElapsed() {
+		return resolveUidsTimer.getSnapshot().get99thPercentile();
+	}
+	
 
 }

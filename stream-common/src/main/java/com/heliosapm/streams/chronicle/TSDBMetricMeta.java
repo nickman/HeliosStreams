@@ -20,6 +20,7 @@ package com.heliosapm.streams.chronicle;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -27,8 +28,6 @@ import java.util.TreeMap;
 import java.util.UUID;
 
 import javax.xml.bind.DatatypeConverter;
-
-import org.jetbrains.annotations.NotNull;
 
 import com.heliosapm.streams.tracing.TagKeySorter;
 import com.lmax.disruptor.EventFactory;
@@ -40,6 +39,7 @@ import net.openhft.chronicle.bytes.BytesMarshallable;
 import net.openhft.chronicle.bytes.BytesOut;
 import net.openhft.chronicle.bytes.MappedBytes;
 import net.openhft.chronicle.core.io.IORuntimeException;
+
 
 /**
  * <p>Title: TSDBMetricMeta</p>
@@ -175,6 +175,28 @@ public class TSDBMetricMeta implements BytesMarshallable {
 
 	}
 	
+	/**
+	 * Creates a new TSDBMetricMeta
+	 */
+	private TSDBMetricMeta(final TSDBMetricMeta meta) {
+		this.metricName = meta.metricName;
+		this.tsuid = meta.tsuid;
+		this.tags.putAll(meta.tags);
+		this.metricUid = meta.metricUid;
+		this.getTagKeyUids().putAll(meta.tagKeyUids);
+		this.getTagValueUids().putAll(meta.tagValueUids);
+	}
+	
+	/**
+	 * <p>Creates a deep, full and independent clone of this meta.</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Object#clone()
+	 */
+	public TSDBMetricMeta clone() {
+		return new TSDBMetricMeta(this);
+	}
+	
+	
 	private static class TSDBMetricMetaEventFactory implements EventFactory<TSDBMetricMeta> {
 		@Override
 		public TSDBMetricMeta newInstance() {			
@@ -228,6 +250,33 @@ public class TSDBMetricMeta implements BytesMarshallable {
 		this.metricName = metricName;
 		this.tsuid = tsuid;
 		this.tags.putAll(tags);
+		return this;
+	}
+	
+	/**
+	 * Loads this from another TSDBMetricMeta
+	 * @param otherMeta the TSDBMetricMeta to load from
+	 * @return this instance
+	 */
+	public TSDBMetricMeta load(final TSDBMetricMeta otherMeta) {
+		this.metricName = otherMeta.metricName;
+		this.tsuid = otherMeta.tsuid;
+		this.tags.putAll(otherMeta.tags);
+		return this;
+	}
+	
+	
+	/**
+	 * Resolves the UIDs for this metric
+	 * @param metricUid The metric name UID
+	 * @param tagKeyUids The tag key UIDs keyed by the tag key value
+	 * @param tagValueUids The tag value UIDs keyed by the tag value value
+	 * @return this instance
+	 */
+	public TSDBMetricMeta resolved(final byte[] metricUid, final Map<String, byte[]> tagKeyUids, final Map<String, byte[]> tagValueUids) {
+		this.metricUid = metricUid;
+		this.getTagKeyUids().putAll(tagKeyUids);
+		this.getTagValueUids().putAll(tagValueUids);
 		return this;
 	}
 	
