@@ -94,6 +94,10 @@ public interface TSDBChronicleEventPublisherMBean {
 	
 	public long getCacheLookupExceptionCount();
 	
+	public int getOutQueueFileCount();
+	
+	public long getOutQueueFileSize();
+	
 	
 
 }

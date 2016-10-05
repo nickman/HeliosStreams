@@ -19,7 +19,9 @@ under the License.
 package com.heliosapm.streams.opentsdb;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
@@ -28,6 +30,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -248,9 +251,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected RBWaitStrategy dispatchRbWaitStrat = null;
 	
 	/** The cache lookup ring buffer thread factory */
-	protected final ThreadFactory cacheRbThreadFactory = JMXManagedThreadFactory.newThreadFactory("CacheLookupThread", true);
+	protected final ThreadFactory cacheRbThreadFactory = JMXManagedThreadFactory.newThreadFactory("CacheLookupThread", false);
 	/** The dispatch ring buffer thread factory */
-	protected ThreadFactory dispatchRbThreadFactory = JMXManagedThreadFactory.newThreadFactory("MetricDispatchThread", true); 
+	protected ThreadFactory dispatchRbThreadFactory = JMXManagedThreadFactory.newThreadFactory("MetricDispatchThread", false); 
 	
 	/** The cache lookup disruptor */
 	protected Disruptor<TSDBMetricMeta> cacheRbDisruptor = null;
@@ -665,7 +668,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	}
 
 	public int getPendingDeleteCount() {
-		return pendingDeletes.size();
+		return IS_WIN ? pendingDeletes.size() : 0;
 	}
 
 	public long getRolledFiles() {
@@ -686,6 +689,26 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	
 	public long getTsuidCacheDbFileSize() {
 		return tsuidCacheDbFile.length();
+	}
+	
+	public int getOutQueueFileCount() {
+		return outQueueDir.listFiles(new FilenameFilter(){
+			@Override
+			public boolean accept(final File f, final String name) {				
+				return f.isFile() && name.toLowerCase().endsWith(".cq4");
+			}
+		}).length;
+	}
+	
+	public long getOutQueueFileSize() {
+		return Arrays.stream(
+			outQueueDir.listFiles(new FilenameFilter(){
+				@Override
+				public boolean accept(final File f, final String name) {				
+					return f.isFile() && name.toLowerCase().endsWith(".cq4");
+				}
+			})
+		).mapToLong(f -> f.length()).sum();
 	}
 	
 
