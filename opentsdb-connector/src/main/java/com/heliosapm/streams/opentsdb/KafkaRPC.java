@@ -252,6 +252,9 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		subThread.start();
 		JMXHelper.registerMBean(this, OBJECT_NAME);
 		try {
+			// FIXME:  this sucks if Kafka is not available.
+			// since it basically runs out the clock and nothing ever happens.
+			// worse yet, it seems to disable the Ctrl-C interrupt on the command line
 			log.info("\n\t#########################\n\tWaiting on partition assignment\n\t#########################\n");
 			if(!startLatch.await(kafkaStartupTimeout, TimeUnit.SECONDS)) {  
 				log.error("Timed out waiting on partition assignment");

@@ -261,7 +261,7 @@ public class TSDBMetricMeta implements BytesMarshallable {
 	public TSDBMetricMeta load(final TSDBMetricMeta otherMeta) {
 		this.metricName = otherMeta.metricName;
 		this.tsuid = otherMeta.tsuid;
-		this.tags.putAll(otherMeta.tags);
+		this.tags.putAll(otherMeta.tags);		
 		return this;
 	}
 	
@@ -278,6 +278,19 @@ public class TSDBMetricMeta implements BytesMarshallable {
 		this.getTagKeyUids().putAll(tagKeyUids);
 		this.getTagValueUids().putAll(tagValueUids);
 		return this;
+	}
+	
+	/**
+	 * Resolves the UIDs for this metric from another metric
+	 * @param otherMeta The metric to resolve from
+	 * @return this instance
+	 */
+	public TSDBMetricMeta resolved(final TSDBMetricMeta otherMeta) {
+		this.metricUid = otherMeta.metricUid;
+		this.getTagKeyUids().putAll(otherMeta.tagKeyUids);
+		this.getTagValueUids().putAll(otherMeta.tagValueUids);
+		return this;
+		
 	}
 	
 	/**

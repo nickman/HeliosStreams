@@ -89,5 +89,11 @@ public interface TSDBChronicleEventPublisherMBean {
 	public double getResolveUidHandle99PctElapsed();
 	
 	public void clearLookupCache();
+	
+	public long getDispatchExceptionCount();
+	
+	public long getCacheLookupExceptionCount();
+	
+	
 
 }

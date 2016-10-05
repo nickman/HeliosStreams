@@ -266,16 +266,19 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		
 		@Override
 		public void handleEventException(final Throwable ex, final long sequence, final TSDBMetricMeta event) {
+			cacheLookupExceptions.inc();
 			log.error("CacheLookup exception on meta {}", event, ex);
 		}
 
 		@Override
 		public void handleOnStartException(final Throwable ex) {
+			cacheLookupExceptions.inc();
 			log.error("CacheLookup exception on start", ex);			
 		}
 
 		@Override
 		public void handleOnShutdownException(final Throwable ex) {
+			cacheLookupExceptions.inc();
 			log.error("CacheLookup exception on shutdown", ex);			
 		}
 	};
@@ -301,13 +304,14 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 							);
 							final long seq = dispatchRb.next();
 							final TSDBMetricMeta meta = dispatchRb.get(seq);
-							meta.load(metaClone);
+							meta.load(metaClone).resolved(metaClone);
 							dispatchRb.publish(seq);										
 							return null;
 						}
 					});
 				}
 			} finally {
+				meta.reset();
 				ctx.close();
 			}
 		}
@@ -318,16 +322,19 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		
 		@Override
 		public void handleEventException(final Throwable ex, final long sequence, final TSDBMetricMeta event) {
+			dispatchExceptions.inc();
 			log.error("Dispatch exception on meta {}", event, ex);
 		}
 
 		@Override
 		public void handleOnStartException(final Throwable ex) {
+			dispatchExceptions.inc();
 			log.error("Dispatch exception on start", ex);			
 		}
 
 		@Override
 		public void handleOnShutdownException(final Throwable ex) {
+			dispatchExceptions.inc();
 			log.error("Dispatch exception on shutdown", ex);			
 		}
 	};
@@ -335,12 +342,13 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	/** The dispatch handler */
 	protected final EventHandler<TSDBMetricMeta> dispatchHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
-		public void onEvent(final TSDBMetricMeta event, final long sequence, final boolean endOfBatch) throws Exception {
+		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
 			final Context ctx = dispatchHandlerTimer.time();
 			try {
-				outQueue.acquireAppender().writeBytes(event);
-				cacheDb.add(event.getTsuid());
+				outQueue.acquireAppender().writeBytes(meta);
+				cacheDb.add(meta.getTsuid());
 			} finally {
+				meta.reset();
 				ctx.stop();
 			}
 		}
@@ -765,4 +773,13 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public void clearLookupCache() {
 		cacheDb.clear();
 	}
+	
+	public long getDispatchExceptionCount() {
+		return dispatchExceptions.getCount();
+	}
+	
+	public long getCacheLookupExceptionCount() {
+		return cacheLookupExceptions.getCount();
+	}
+	
 }
