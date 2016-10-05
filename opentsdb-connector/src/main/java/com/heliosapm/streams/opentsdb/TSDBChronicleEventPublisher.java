@@ -306,8 +306,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 					// We have to clone here since the incoming meta gets recycled back to the cacheRb.
 					// Alternatively, the resolveUID could be synchronous. 
 					final TSDBMetricMeta metaClone = meta.clone();
-					// FIXME: temporarilly calling this just so we can compare elapsed times
-					getTSMetaAsync(meta);
+//					FIXME: temporarilly calling this just so we can compare elapsed times
+//					FIXED: getTSMetaAsync is approx 20-30 slower than resolveUIDsAsync 
+//					getTSMetaAsync(meta);
 					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
 						@Override
 						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
@@ -706,6 +707,11 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		return tsuidCacheDbFile.length();
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getOutQueueFileCount()
+	 * FIXME: Always returns 0
+	 */
 	public int getOutQueueFileCount() {
 		return outQueueDir.listFiles(new FilenameFilter(){
 			@Override
@@ -715,6 +721,11 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		}).length;
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getOutQueueFileSize()
+	 * FIXME: Always returns 0
+	 */
 	public long getOutQueueFileSize() {
 		return Arrays.stream(
 			outQueueDir.listFiles(new FilenameFilter(){
