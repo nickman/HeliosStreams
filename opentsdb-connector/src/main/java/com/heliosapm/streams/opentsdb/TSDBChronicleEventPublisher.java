@@ -44,6 +44,7 @@ import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 import com.lmax.disruptor.EventHandler;
+import com.lmax.disruptor.ExceptionHandler;
 import com.lmax.disruptor.RingBuffer;
 import com.lmax.disruptor.TimeoutException;
 import com.lmax.disruptor.dsl.Disruptor;
@@ -159,7 +160,10 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected final Timer cacheLookupHandlerTimer = metricManager.timer("cacheLookupHandler");
 	/** Timer to track elapsed times on executing the dispatch handler */
 	protected final Timer dispatchHandlerTimer = metricManager.timer("dispatchHandler");
-	
+	/** Counter of uncaught exceptions in the cacheLookUp handler */
+	protected final Counter cacheLookupExceptions = metricManager.counter("cacheLookupExceptions");
+	/** Counter of uncaught exceptions in the dispatch handler */
+	protected final Counter dispatchExceptions = metricManager.counter("dispatchExceptions");
 	
 	// ===============================================================================================
 	//		Out Queue Config
@@ -257,6 +261,26 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	/** The dispatch ring buffer */
 	protected RingBuffer<TSDBMetricMeta> dispatchRb = null;
 	
+	/** The cache lookup exception handler */
+	protected final ExceptionHandler<TSDBMetricMeta> cacheLookupExceptionHandler = new ExceptionHandler<TSDBMetricMeta>() {
+		
+		@Override
+		public void handleEventException(final Throwable ex, final long sequence, final TSDBMetricMeta event) {
+			log.error("CacheLookup exception on meta {}", event, ex);
+		}
+
+		@Override
+		public void handleOnStartException(final Throwable ex) {
+			log.error("CacheLookup exception on start", ex);			
+		}
+
+		@Override
+		public void handleOnShutdownException(final Throwable ex) {
+			log.error("CacheLookup exception on shutdown", ex);			
+		}
+	};
+	
+	
 	/** The cache lookup handler */
 	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
@@ -286,6 +310,25 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			} finally {
 				ctx.close();
 			}
+		}
+	};
+	
+	/** The dispatch exception handler */
+	protected final ExceptionHandler<TSDBMetricMeta> dispatchExceptionHandler = new ExceptionHandler<TSDBMetricMeta>() {
+		
+		@Override
+		public void handleEventException(final Throwable ex, final long sequence, final TSDBMetricMeta event) {
+			log.error("Dispatch exception on meta {}", event, ex);
+		}
+
+		@Override
+		public void handleOnStartException(final Throwable ex) {
+			log.error("Dispatch exception on start", ex);			
+		}
+
+		@Override
+		public void handleOnShutdownException(final Throwable ex) {
+			log.error("Dispatch exception on shutdown", ex);			
 		}
 	};
 	
@@ -364,8 +407,10 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		cacheRbWaitStrat = ConfigurationHelper.getEnumSystemThenEnvProperty(RBWaitStrategy.class, CONFIG_CACHERB_WAITSTRAT, DEFAULT_CACHERB_WAITSTRAT, properties);		
 		dispatchRbWaitStrat = ConfigurationHelper.getEnumSystemThenEnvProperty(RBWaitStrategy.class, CONFIG_DISPATCHRB_WAITSTRAT, DEFAULT_DISPATCHRB_WAITSTRAT, properties);
 		cacheRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, cacheRbSize, cacheRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(cacheRbWaitStratConfig));
+		cacheRbDisruptor.setDefaultExceptionHandler(cacheLookupExceptionHandler);
 		cacheRbDisruptor.handleEventsWith(cacheLookupHandler);
 		dispatchRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, dispatchRbSize, dispatchRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(dispatchRbWaitStratConfig));
+		dispatchRbDisruptor.setDefaultExceptionHandler(dispatchExceptionHandler);
 		dispatchRbDisruptor.handleEventsWith(dispatchHandler);
 		cacheRb = cacheRbDisruptor.start();
 		log.info("Started CacheLookup RingBuffer");
