@@ -18,12 +18,17 @@ under the License.
  */
 package com.heliosapm.streams.chronicle;
 
+import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Random;
 import java.util.TreeMap;
+import java.util.UUID;
 
 import javax.xml.bind.DatatypeConverter;
+
+import org.jetbrains.annotations.NotNull;
 
 import com.heliosapm.streams.tracing.TagKeySorter;
 import com.lmax.disruptor.EventFactory;
@@ -33,6 +38,7 @@ import com.stumbleupon.async.Deferred;
 import net.openhft.chronicle.bytes.BytesIn;
 import net.openhft.chronicle.bytes.BytesMarshallable;
 import net.openhft.chronicle.bytes.BytesOut;
+import net.openhft.chronicle.bytes.MappedBytes;
 import net.openhft.chronicle.core.io.IORuntimeException;
 
 /**
@@ -61,7 +67,82 @@ public class TSDBMetricMeta implements BytesMarshallable {
 	protected final HashMap<String, byte[]> tagValueUids = new HashMap<String, byte[]>(8);
 	
 	
-	protected final Callback<Deferred<Void>, byte[]> metricUidCallback = new Callback<Deferred<Void>, byte[]>() {
+	/** A random value generator */
+	protected static final Random RANDOM = new Random(System.currentTimeMillis());
+	public static byte[] randomBytes(int size) {
+		final byte[] bytes = new byte[size];
+		RANDOM.nextBytes(bytes);
+		return bytes;
+	}
+	/**
+	 * Generates an array of random strings created from splitting a randomly generated UUID.
+	 * @return an array of random strings
+	 */
+	public static String[] getRandomFragments() {
+		return UUID.randomUUID().toString().split("-");
+	}
+	/**
+	 * Generates a random string made up from a UUID.
+	 * @return a random string
+	 */
+	public static String getRandomFragment() {
+		return UUID.randomUUID().toString();
+	}
+	/**
+	 * Returns a random positive int within the bound
+	 * @param bound the bound on the random number to be returned. Must be positive. 
+	 * @return a random positive int
+	 */
+	public static int nextPosInt(int bound) {
+		return Math.abs(RANDOM.nextInt(bound));
+	}
+	
+	
+
+	
+	public static void main(String[] args) {
+		File tmp = null;
+		MappedBytes bytes = null; 
+		try {
+			tmp = File.createTempFile("tsdbmetricmeta", ".bytes");
+			bytes = MappedBytes.mappedBytes(tmp, 2048);
+			final long startPos = bytes.writePosition();
+			log("Bytes Pos:" + startPos);
+			final TSDBMetricMeta m = TSDBMetricMeta.FACTORY.newInstance();
+			final String mn = getRandomFragment();
+			final HashMap<String, String> tags = new HashMap<String, String>(4);
+			
+			final HashMap<String, byte[]> tagKeys = new HashMap<String, byte[]>(4);
+			final HashMap<String, byte[]> tagValues = new HashMap<String, byte[]>(4);
+			for(int y = 0; y < 4; y++) {
+				String[] frags = getRandomFragments();
+				tags.put(frags[0], frags[1]);
+				tagKeys.put(frags[0], randomBytes(6));
+				tagValues.put(frags[1], randomBytes(6));
+			}
+			byte[] tsuid = randomBytes(nextPosInt(60) + 4);
+			m.load(mn, tags, tsuid);
+			m.metricUidCallback.call(randomBytes(6));
+			m.tagKeyUids.putAll(tagKeys);
+			m.tagValueUids.putAll(tagValues);
+			m.writeMarshallable(bytes);
+			final long endPos = bytes.writePosition();
+			log("Size:" + (endPos - startPos));
+			
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+		} finally {
+			if(bytes!=null) try { bytes.close(); } catch (Exception x) {/* No Op */}
+			if(tmp!=null) tmp.delete();
+		}
+	}
+	
+	public static void log(final Object msg) {
+		System.out.println(msg);
+	}
+	
+	
+	public final Callback<Deferred<Void>, byte[]> metricUidCallback = new Callback<Deferred<Void>, byte[]>() {
 		/**
 		 * Callback with the metric uid
 		 * {@inheritDoc}
@@ -74,7 +155,7 @@ public class TSDBMetricMeta implements BytesMarshallable {
 		}
 	};
 	
-	protected final Callback<Void, ArrayList<byte[]>> tagUidsCallback = new Callback<Void, ArrayList<byte[]>>() {
+	public final Callback<Void, ArrayList<byte[]>> tagUidsCallback = new Callback<Void, ArrayList<byte[]>>() {
 		/**
 		 * Callback with tags uids in tagk1, tagv1, .. tagkn, tagvn
 		 * {@inheritDoc}
