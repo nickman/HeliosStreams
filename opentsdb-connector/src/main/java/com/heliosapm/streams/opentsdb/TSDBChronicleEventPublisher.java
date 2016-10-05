@@ -296,6 +296,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			final Context ctx = dispatchHandlerTimer.time();
 			try {
 				outQueue.acquireAppender().writeBytes(event);
+				cacheDb.add(event.getTsuid());
 			} finally {
 				ctx.stop();
 			}
