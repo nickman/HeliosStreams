@@ -338,6 +338,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		// ================  Configure Cache
 		tsuidCacheDbFileName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_CACHE_FILE, DEFAULT_CACHE_FILE, properties);
 		tsuidCacheDbFile = new File(tsuidCacheDbFileName);
+		tsuidCacheDbFile.getParentFile().mkdirs();
 		avgKeySize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_CACHE_AVGKEYSIZE, DEFAULT_CACHE_AVGKEYSIZE, properties);
 		maxEntries = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_CACHE_MAXKEYS, DEFAULT_CACHE_MAXKEYS, properties);
 		try {

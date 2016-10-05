@@ -1,2 +1,3 @@
 com.heliosapm.streams.opentsdb.KafkaRTPublisher
 com.heliosapm.streams.opentsdb.EventCounterRTPublisher
+com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisher
