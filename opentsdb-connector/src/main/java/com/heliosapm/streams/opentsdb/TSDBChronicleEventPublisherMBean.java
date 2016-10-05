@@ -27,7 +27,6 @@ package com.heliosapm.streams.opentsdb;
 
 public interface TSDBChronicleEventPublisherMBean {
 	
-	
 	public String getOutQueueDir();
 
 	public int getOutQueueBlockSize();
@@ -46,14 +45,12 @@ public interface TSDBChronicleEventPublisherMBean {
 	
 	public long getTsuidCacheDbFileSize();
 	
-
 	public int getAvgKeySize();
 
 	public int getLookupCacheSize();
 	
 	public int getLookupCacheSegments();
 	
-
 	public int getCacheRbThreads();
 
 	public int getDispatchRbThreads();
@@ -97,6 +94,13 @@ public interface TSDBChronicleEventPublisherMBean {
 	public int getOutQueueFileCount();
 	
 	public long getOutQueueFileSize();
+	
+	public double getTSMetaLookup1mRate();
+	
+	public double getTSMetaLookup99PctElapsed();
+	
+	public long getTSMetaLookupCount();
+	
 	
 	
 

@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FilenameFilter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
@@ -30,7 +31,6 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -66,8 +66,10 @@ import net.openhft.chronicle.set.ChronicleSetBuilder;
 import net.openhft.chronicle.wire.WireType;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.meta.Annotation;
+import net.opentsdb.meta.TSMeta;
 import net.opentsdb.stats.StatsCollector;
 import net.opentsdb.tsd.RTPublisher;
+import net.opentsdb.uid.UniqueId;
 import net.opentsdb.uid.UniqueId.UniqueIdType;
 
 /**
@@ -159,6 +161,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected TSDB tsdb = null;
 	/** Timer to track elapsed times on uid resolutions called when the cacheDB does not contain an incoming tsuid */
 	protected final Timer resolveUidsTimer = metricManager.timer("resolveUids");
+	/** Timer to track elapsed times on TSMeta retrievals */
+	protected final Timer getTSMetaTimer = metricManager.timer("getTSMeta");
+	
 	/** Timer to track elapsed times on executing the cache lookup handler */
 	protected final Timer cacheLookupHandlerTimer = metricManager.timer("cacheLookupHandler");
 	/** Timer to track elapsed times on executing the dispatch handler */
@@ -167,6 +172,10 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected final Counter cacheLookupExceptions = metricManager.counter("cacheLookupExceptions");
 	/** Counter of uncaught exceptions in the dispatch handler */
 	protected final Counter dispatchExceptions = metricManager.counter("dispatchExceptions");
+	
+	
+	/** The number of bytes in a metric uid */
+	protected short metrics_width = -1;
 	
 	// ===============================================================================================
 	//		Out Queue Config
@@ -297,6 +306,8 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 					// We have to clone here since the incoming meta gets recycled back to the cacheRb.
 					// Alternatively, the resolveUID could be synchronous. 
 					final TSDBMetricMeta metaClone = meta.clone();
+					// FIXME: temporarilly calling this just so we can compare elapsed times
+					getTSMetaAsync(meta);
 					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
 						@Override
 						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
@@ -375,6 +386,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public void initialize(final TSDB tsdb) {
 		log.info(">>>>> Initializing TSDBChronicleEventPublisher");
 		this.tsdb = tsdb;
+		metrics_width = TSDB.metrics_width();
 		final Properties properties = new Properties();
 		properties.putAll(tsdb.getConfig().getMap());
 		// ================  Configure Outbound Queue
@@ -540,6 +552,17 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		return Deferred.fromResult(null);
 	}
 	
+	protected Deferred<TSMeta> getTSMetaAsync(final TSDBMetricMeta meta) {
+		final Context ctx = getTSMetaTimer.time();
+		return TSMeta.getTSMeta(tsdb, UniqueId.uidToString(meta.getTsuid())).addCallback(new Callback<TSMeta, TSMeta>() {
+			@Override
+			public TSMeta call(final TSMeta tsMeta) throws Exception {
+				ctx.close();
+				return tsMeta;
+			}			
+		});
+	}
+	
 	/**
 	 * The RTPublisher callbacks do not supply the metric name or tag UIDs, and so far as I can tell,
 	 * it's not possible to link the TSUID segments to the tag values. So if the cacheDB does not contain
@@ -554,20 +577,12 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		final int tsize = meta.getTags().size();
 		final Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>> resultDef = new Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>>();
 		final EnumMap<UniqueIdType, Map<String, byte[]>> resolvedMap = new EnumMap<UniqueIdType, Map<String, byte[]>>(UniqueIdType.class);
-		resolvedMap.put(UniqueIdType.METRIC, new HashMap<String, byte[]>(1));
+		final byte[] metricUid = new byte[metrics_width];
+		System.arraycopy(meta.getTsuid(), 0, metricUid, 0, metrics_width);
+		resolvedMap.put(UniqueIdType.METRIC, Collections.singletonMap(meta.getMetricName(), metricUid));
 		resolvedMap.put(UniqueIdType.TAGK, new HashMap<String, byte[]>(tsize));
 		resolvedMap.put(UniqueIdType.TAGV, new HashMap<String, byte[]>(tsize));
-		final String metricName = meta.getMetricName();
-		final ArrayList<Deferred<byte[]>> completion = new ArrayList<Deferred<byte[]>>((tsize * 2)+1);		
-		final Deferred<byte[]> metricNameDef = tsdb.getUIDAsync(UniqueIdType.METRIC, metricName);
-		metricNameDef.addCallback(new Callback<Void, byte[]>(){
-			@Override
-			public Void call(final byte[] uid) throws Exception {
-				resolvedMap.get(UniqueIdType.METRIC).put(metricName, uid);
-				return null;
-			}
-		});
-		completion.add(metricNameDef);
+		final ArrayList<Deferred<byte[]>> completion = new ArrayList<Deferred<byte[]>>((tsize * 2));		
 		for (final Map.Entry<String, String> entry : meta.getTags().entrySet()) {
 			final String tagKey = entry.getKey();
 			final String tagValue = entry.getValue();
@@ -783,6 +798,18 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	
 	public long getResolveUidHandleCount() {
 		return resolveUidsTimer.getCount();
+	}
+	
+	public double getTSMetaLookup1mRate() {
+		return getTSMetaTimer.getOneMinuteRate();
+	}
+	
+	public double getTSMetaLookup99PctElapsed() {
+		return getTSMetaTimer.getSnapshot().get99thPercentile();
+	}
+	
+	public long getTSMetaLookupCount() {
+		return getTSMetaTimer.getCount();
 	}
 	
 	public double getResolveUidHandle1mRate() {
