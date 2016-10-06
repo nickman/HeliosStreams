@@ -112,7 +112,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	
 	public static void main(String[] args) {
 		log("TSDBMetricMeta Test");
-		final boolean TEXT = true;
+		final boolean TEXT = false;
 		File tmp = null;
 		MappedBytes bytes = null;
 		

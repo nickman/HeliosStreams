@@ -58,6 +58,7 @@ import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
 import net.openhft.chronicle.bytes.BytesRingBufferStats;
+import net.openhft.chronicle.map.ChronicleMap;
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.RollCycle;
 import net.openhft.chronicle.queue.RollCycles;
@@ -330,6 +331,56 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	}
 	
 	
+//	/** The cache lookup handler */
+//	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
+//		@Override
+//		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
+//			final Context ctx = cacheLookupHandlerTimer.time();
+//			try {
+//				if(!cacheDb.contains(meta.getTsuid())) {
+//					// We have to clone here since the incoming meta gets recycled back to the cacheRb.
+//					// Alternatively, the resolveUID could be synchronous. 
+//					final TSDBMetricMeta metaClone = meta.clone();
+////					FIXME: temporarilly calling this just so we can compare elapsed times
+////					FIXED: getTSMetaAsync is approx 20-30 slower than resolveUIDsAsync 
+////					getTSMetaAsync(meta);
+//					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
+//						@Override
+//						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
+//							metaClone.resolved(
+//									map.get(UniqueIdType.METRIC).values().iterator().next(), 
+//									map.get(UniqueIdType.TAGK), 
+//									map.get(UniqueIdType.TAGV)
+//							);
+//							final long seq = dispatchRb.next();
+//							final TSDBMetricMeta meta = dispatchRb.get(seq);
+//							meta.load(metaClone).resolved(metaClone);
+//							dispatchRb.publish(seq);										
+//							return null;
+//						}
+//					});
+//				}
+//			} finally {
+//				meta.reset();
+//				ctx.close();
+//			}
+//		}
+//	};
+	
+	protected ChronicleMap<byte[], TSDBMetricMeta> metricMetas = null;
+	public void setTestLookup(final ChronicleMap<byte[], TSDBMetricMeta> metricMetas) {
+		this.metricMetas = metricMetas;
+	}
+	
+	public Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>> testLookup(final TSDBMetricMeta meta) {
+		final EnumMap<UniqueIdType, Map<String, byte[]>> map = new EnumMap<UniqueIdType, Map<String, byte[]>>(UniqueIdType.class);
+		final TSDBMetricMeta m = metricMetas.get(meta.getTsuid());
+		map.put(UniqueIdType.METRIC, Collections.singletonMap(m.getMetricName(), m.getMetricUid()));
+		map.put(UniqueIdType.TAGK, m.getTagKeyUids());
+		map.put(UniqueIdType.TAGV, m.getTagValueUids());
+		return Deferred.fromResult(map);
+	}
+	
 	/** The cache lookup handler */
 	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
@@ -343,7 +394,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 //					FIXME: temporarilly calling this just so we can compare elapsed times
 //					FIXED: getTSMetaAsync is approx 20-30 slower than resolveUIDsAsync 
 //					getTSMetaAsync(meta);
-					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
+					testLookup(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
 						@Override
 						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
 							metaClone.resolved(
@@ -365,6 +416,8 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			}
 		}
 	};
+
+	
 	
 	/** The dispatch exception handler */
 	protected final ExceptionHandler<TSDBMetricMeta> dispatchExceptionHandler = new ExceptionHandler<TSDBMetricMeta>() {
