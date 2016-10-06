@@ -168,6 +168,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected final Timer cacheLookupHandlerTimer = metricManager.timer("cacheLookupHandler");
 	/** Timer to track elapsed times on executing the dispatch handler */
 	protected final Timer dispatchHandlerTimer = metricManager.timer("dispatchHandler");
+	/** Endto end Timer to track elapsed times from the rtpublisher callback to the dispatcher */
+	protected final Timer endToEndTimer = metricManager.timer("endToEnd");
+	
 	/** Counter of uncaught exceptions in the cacheLookUp handler */
 	protected final Counter cacheLookupExceptions = metricManager.counter("cacheLookupExceptions");
 	/** Counter of uncaught exceptions in the dispatch handler */
@@ -362,6 +365,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			try {
 				outQueue.acquireAppender().writeBytes(meta);
 				cacheDb.add(meta.getTsuid());
+				meta.time();
 			} finally {
 				meta.reset();
 				ctx.stop();
@@ -526,7 +530,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final long value, final Map<String, String> tags, final byte[] tsuid) {
 		final long sequence = cacheRb.next();
 		final TSDBMetricMeta meta = cacheRb.get(sequence);
-		meta.reset().load(metric, tags, tsuid);
+		meta.reset().load(metric, tags, tsuid).timer(endToEndTimer.time());
 		cacheRb.publish(sequence);
 		return Deferred.fromResult(null);
 	}
@@ -539,7 +543,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final double value, final Map<String, String> tags, final byte[] tsuid) {
 		final long sequence = cacheRb.next();
 		final TSDBMetricMeta meta = cacheRb.get(sequence);
-		meta.reset().load(metric, tags, tsuid);
+		meta.reset().load(metric, tags, tsuid).timer(endToEndTimer.time());
 		cacheRb.publish(sequence);
 		return Deferred.fromResult(null);
 	}
@@ -842,5 +846,23 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public long getCacheLookupExceptionCount() {
 		return cacheLookupExceptions.getCount();
 	}
+	
+	public double getEndToEnd99PctElapsed() {
+		return endToEndTimer.getSnapshot().get99thPercentile();
+	}
+	
+	public double getEndToEnd999PctElapsed() {
+		return endToEndTimer.getSnapshot().get999thPercentile();
+	}
+	
+	public double getEndToEndMeanElapsed() {
+		return endToEndTimer.getSnapshot().getMean();
+	}
+	
+	public double getEndToEndMedianElapsed() {
+		return endToEndTimer.getSnapshot().getMedian();
+	}
+	
+	
 	
 }

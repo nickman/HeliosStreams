@@ -101,6 +101,13 @@ public interface TSDBChronicleEventPublisherMBean {
 	
 	public long getTSMetaLookupCount();
 	
+	public double getEndToEnd99PctElapsed();
+	
+	public double getEndToEnd999PctElapsed();
+	
+	public double getEndToEndMeanElapsed();
+	
+	public double getEndToEndMedianElapsed();
 	
 	
 
