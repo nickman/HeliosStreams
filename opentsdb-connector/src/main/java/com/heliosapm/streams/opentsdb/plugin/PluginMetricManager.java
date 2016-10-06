@@ -21,6 +21,7 @@ package com.heliosapm.streams.opentsdb.plugin;
 import java.lang.management.ManagementFactory;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -34,8 +35,10 @@ import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
+import com.heliosapm.utils.config.ConfigurationHelper;
 
 import net.opentsdb.stats.StatsCollector;
+import net.opentsdb.utils.Config;
 
 /**
  * <p>Title: PluginMetricManager</p>
@@ -71,6 +74,7 @@ public class PluginMetricManager {
 	protected final Map<String, String> extraTags = new HashMap<String, String>();
 	
 	
+	
 	/**
 	 * Creates a new PluginMetricManager
 	 * @param serviceName The service name assigned to this plugin
@@ -82,6 +86,39 @@ public class PluginMetricManager {
 		extraTags.put("app", agentName.getAppName());
 		extraTags.put("host", agentName.getHostName());
 	}
+	
+	public int getAndSetConfig(final String key, final int defaultValue, final Properties p, final Config cfg) {
+		final int v = ConfigurationHelper.getIntSystemThenEnvProperty(key, defaultValue, p);
+		cfg.overrideConfig(key, "" + v);
+		return v;
+	}
+	
+	public long getAndSetConfig(final String key, final long defaultValue, final Properties p, final Config cfg) {
+		final long v = ConfigurationHelper.getLongSystemThenEnvProperty(key, defaultValue, p);
+		cfg.overrideConfig(key, "" + v);
+		return v;
+	}
+	
+	public boolean getAndSetConfig(final String key, final boolean defaultValue, final Properties p, final Config cfg) {
+		final boolean v = ConfigurationHelper.getBooleanSystemThenEnvProperty(key, defaultValue, p);
+		cfg.overrideConfig(key, "" + v);
+		return v;
+	}
+	
+	public String getAndSetConfig(final String key, final String defaultValue, final Properties p, final Config cfg) {
+		final String v = ConfigurationHelper.getSystemThenEnvProperty(key, defaultValue, p);
+		cfg.overrideConfig(key, v);
+		return v;
+	}
+	
+	public <E extends Enum<E>> E getAndSetConfig(final String key, final E defaultValue, final Properties p, final Config cfg) {
+		final E v = ConfigurationHelper.getEnumUpperSystemThenEnvProperty(defaultValue.getDeclaringClass(), key, defaultValue, p);
+		cfg.overrideConfig(key, v.name());
+		return v;
+	}
+	
+	
+	
 	
 	/**
 	 * Adds an extra tag to this plugin's metrics

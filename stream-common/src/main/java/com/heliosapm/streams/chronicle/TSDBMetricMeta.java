@@ -20,11 +20,13 @@ package com.heliosapm.streams.chronicle;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import javax.xml.bind.DatatypeConverter;
@@ -68,9 +70,9 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	/** The metric tags */
 	protected final TreeMap<String, String> tags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
 	/** The tag key UIDs */
-	protected final HashMap<String, byte[]> tagKeyUids = new HashMap<String, byte[]>(8);
+	protected final MarshallableUIDMap tagKeyUids = new MarshallableUIDMap(8);
 	/** The tag value UIDs */
-	protected final HashMap<String, byte[]> tagValueUids = new HashMap<String, byte[]>(8);
+	protected final MarshallableUIDMap tagValueUids = new MarshallableUIDMap(8);
 	
 	/** The end to end timer start time in ms. */
 	protected long endToEndStartTime = -1L;
@@ -396,9 +398,11 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		.write("tsuid").text(bytesToHex(tsuid))
 		.write("muid").text(bytesToHex(metricUid))
 		.write("tkuid")
-			.marshallable(tagKeyUids, String.class, byte[].class, true)
+			.object(tagKeyUids)
+//			.marshallable(tagKeyUids, String.class, byte[].class, true)
 		.write("tvuid")
-			.marshallable(tagValueUids, String.class, byte[].class, true)
+			.object(tagValueUids)
+//			.marshallable(tagValueUids, String.class, byte[].class, true)
 		.write("e2e").int64(endToEndStartTime);
 	}
 	
@@ -412,10 +416,56 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		tags.putAll(wire.read("tags").marshallableAsMap(String.class, String.class));
 		tsuid = hexToBytes(wire.read("tsuid").text());
 		metricUid = hexToBytes(wire.read("muid").text());
-		tagKeyUids.putAll(wire.read("tkuid").marshallableAsMap(String.class, byte[].class));
-		tagValueUids.putAll(wire.read("tvuid")
-				.marshallableAsMap(String.class, byte[].class));
+		wire.read("tkuid").marshallable((Marshallable)tagKeyUids);
+		wire.read("tvuid").marshallable((Marshallable)tagValueUids);
+//		tagKeyUids.putAll((Map<String, byte[]>)wire.read("tkuid").object());
+//		tagValueUids.putAll((Map<String, byte[]>)wire.read("tvuid").object());				
 		endToEndStartTime = wire.read("e2e").int64();
+	}
+	
+	/**
+	 * <p>Title: MarshallableUIDMap</p>
+	 * <p>Description: A marshallable map of strings to byte arrays</p> 
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.chronicle.TSDBMetricMeta.MarshallableUIDMap</code></p>
+	 */
+	static class MarshallableUIDMap extends HashMap<String, byte[]> implements Marshallable {
+		/**  */
+		private static final long serialVersionUID = 3250838014971886072L;
+
+		/**
+		 * Creates a new MarshallableUIDMap
+		 * @param initialCapacity The initial capacity of the map
+		 */
+		public MarshallableUIDMap(final int initialCapacity) {
+			super(initialCapacity);
+		}
+
+		/**
+		 * {@inheritDoc}
+		 * @see net.openhft.chronicle.wire.Marshallable#writeMarshallable(net.openhft.chronicle.wire.WireOut)
+		 */
+		@Override
+		public void writeMarshallable(final WireOut wire) {
+			if(!isEmpty()) {
+				final ConcurrentHashMap<String, String> tmp = new ConcurrentHashMap<String, String>(size());
+				entrySet().parallelStream().forEach(e -> tmp.put(e.getKey(), bytesToHex(e.getValue())));
+				wire.writeAllAsMap(String.class, String.class, tmp);
+			}
+		}
+		
+		/**
+		 * {@inheritDoc}
+		 * @see net.openhft.chronicle.wire.Marshallable#readMarshallable(net.openhft.chronicle.wire.WireIn)
+		 */
+		@Override
+		public void readMarshallable(final WireIn wire) throws IORuntimeException {
+			final ConcurrentHashMap<String, String> tmp = new ConcurrentHashMap<String, String>(8);
+			wire.readAllAsMap(String.class, String.class, tmp);
+			if(!tmp.isEmpty()) {				
+				tmp.entrySet().parallelStream().forEach(e -> put(e.getKey(), hexToBytes(e.getValue())));
+			}
+		}
 	}
 	
 	
@@ -450,7 +500,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		}
 		tsuid = readShortSizedBytes(bytes);
 		metricUid = readByteSizedBytes(bytes);
-		// tag key uids: HashMap<String, byte[]> tagKeyUids
+		// tag key uids: HashMap<String, byte[]> tagKeyUids		
 		for(int i = 0; i < tagCount; i++) {
 			tagKeyUids.put(bytes.readUtf8(), readByteSizedBytes(bytes));
 		}

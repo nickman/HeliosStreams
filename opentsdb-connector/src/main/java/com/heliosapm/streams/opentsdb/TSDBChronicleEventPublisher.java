@@ -39,11 +39,13 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
+import com.heliosapm.streams.chronicle.MessageType;
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
 import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.streams.opentsdb.ringbuffer.RBWaitStrategy;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 import com.lmax.disruptor.EventHandler;
@@ -71,6 +73,7 @@ import net.opentsdb.stats.StatsCollector;
 import net.opentsdb.tsd.RTPublisher;
 import net.opentsdb.uid.UniqueId;
 import net.opentsdb.uid.UniqueId.UniqueIdType;
+import net.opentsdb.utils.Config;
 
 /**
  * <p>Title: TSDBChronicleEventPublisher</p>
@@ -149,6 +152,12 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public static final String CONFIG_OUTQ_ROLLCYCLE = "eventpublisher.outq.rollcycle";
 	/** The default out queue roll cycle */
 	public static final RollCycles DEFAULT_OUTQ_ROLLCYCLE = RollCycles.HOURLY;
+	
+	/** The config key name for the out queue's data format (true for TEXT, false for BINARY) */
+	public static final String CONFIG_OUTQ_TEXT = "eventpublisher.outq.text";
+	/** The default out queue data format setting (BINARY) */
+	public static final boolean DEFAULT_OUTQ_TEXT = false;
+	
 
 	/** Flag indicating if the OS is windows, meaning rolled files will not immediately be able to be deleted */
 	public static final boolean IS_WIN = System.getProperty("os.name").toLowerCase().contains("windows");
@@ -163,6 +172,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected final Timer resolveUidsTimer = metricManager.timer("resolveUids");
 	/** Timer to track elapsed times on TSMeta retrievals */
 	protected final Timer getTSMetaTimer = metricManager.timer("getTSMeta");
+	
+	/** Indicates if the out queue is using text format (true) or binary (false) */
+	protected boolean outQueueTextFormat = false;
 	
 	/** Timer to track elapsed times on executing the cache lookup handler */
 	protected final Timer cacheLookupHandlerTimer = metricManager.timer("cacheLookupHandler");
@@ -299,6 +311,25 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	};
 	
 	
+	public static void main(String[] args) {
+		try {
+			final Config cfg = new Config(true);
+			final TSDB tsdb = new TSDB(cfg);
+			final TSDBChronicleEventPublisher pub = new TSDBChronicleEventPublisher();
+			pub.initialize(tsdb);
+			StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
+				public void run() {
+					pub.shutdown();
+					System.exit(0);
+				}
+			}).run();
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+			System.exit(-1);
+		}
+	}
+	
+	
 	/** The cache lookup handler */
 	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
@@ -363,9 +394,13 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
 			final Context ctx = dispatchHandlerTimer.time();
 			try {
-				outQueue.acquireAppender().writeBytes(meta);
+				if(outQueueTextFormat) {
+					outQueue.acquireAppender().writeDocument(w -> w.write(MessageType.METRICMETA.shortName).marshallable(meta));
+				} else {
+					outQueue.acquireAppender().writeBytes(meta);
+				}
 				cacheDb.add(meta.getTsuid());
-				meta.time();
+				meta.recordTimer(endToEndTimer);
 			} finally {
 				meta.reset();
 				ctx.stop();
@@ -393,25 +428,28 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		this.tsdb = tsdb;
 		metrics_width = TSDB.metrics_width();
 		final Properties properties = new Properties();
-		properties.putAll(tsdb.getConfig().getMap());
+		final Config cfg = tsdb.getConfig();
+		properties.putAll(cfg.getMap());
 		// ================  Configure Outbound Queue
-		outQueueDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_OUTQ_DIR, DEFAULT_OUTQ_DIR, properties);
+		outQueueTextFormat = metricManager.getAndSetConfig(CONFIG_OUTQ_TEXT, DEFAULT_OUTQ_TEXT, properties, cfg);
+		outQueueDirName = metricManager.getAndSetConfig(CONFIG_OUTQ_DIR, DEFAULT_OUTQ_DIR, properties, cfg); 
+				
 		outQueueDir = new File(outQueueDirName);
-		outQueueBlockSize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_OUTQ_BLOCKSIZE, DEFAULT_OUTQ_BLOCKSIZE, properties);
-		outQueueRollCycle = ConfigurationHelper.getEnumSystemThenEnvProperty(RollCycles.class, CONFIG_OUTQ_ROLLCYCLE, DEFAULT_OUTQ_ROLLCYCLE, properties);
+		outQueueBlockSize = metricManager.getAndSetConfig(CONFIG_OUTQ_BLOCKSIZE, DEFAULT_OUTQ_BLOCKSIZE, properties, cfg);
+		outQueueRollCycle = metricManager.getAndSetConfig(CONFIG_OUTQ_ROLLCYCLE, DEFAULT_OUTQ_ROLLCYCLE, properties, cfg);
 		outQueue = SingleChronicleQueueBuilder.binary(outQueueDir)
 				.blockSize(outQueueBlockSize)
 				.rollCycle(outQueueRollCycle)
 				.storeFileListener(this)
 				.onRingBufferStats(this)
-				.wireType(WireType.BINARY)
+				.wireType(outQueueTextFormat ? WireType.JSON : WireType.BINARY)
 				.build();
 
 		// ================  Configure Cache
-		tsuidCacheDbFileName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_CACHE_FILE, DEFAULT_CACHE_FILE, properties);
+		tsuidCacheDbFileName = metricManager.getAndSetConfig(CONFIG_CACHE_FILE, DEFAULT_CACHE_FILE, properties, cfg);
 		tsuidCacheDbFile = new File(tsuidCacheDbFileName);
 		tsuidCacheDbFile.getParentFile().mkdirs();
-		avgKeySize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_CACHE_AVGKEYSIZE, DEFAULT_CACHE_AVGKEYSIZE, properties);
+		avgKeySize = metricManager.getAndSetConfig(CONFIG_CACHE_AVGKEYSIZE, DEFAULT_CACHE_AVGKEYSIZE, properties, cfg);
 		maxEntries = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_CACHE_MAXKEYS, DEFAULT_CACHE_MAXKEYS, properties);
 		try {
 			cacheDb = ChronicleSetBuilder.of(byte[].class)
@@ -426,14 +464,14 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		}
 		
 		// ================  Configure RingBuffer
-		cacheRbThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_CACHERB_THREADS, DEFAULT_CACHERB_THREADS, properties);
-		dispatchRbThreads = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_DISPATCHRB_THREADS, DEFAULT_DISPATCHRB_THREADS, properties);
-		cacheRbSize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_CACHERB_SIZE, DEFAULT_CACHERB_SIZE, properties);
-		dispatchRbSize = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_DISPATCHRB_SIZE, DEFAULT_DISPATCHRB_SIZE, properties);
+		cacheRbThreads = metricManager.getAndSetConfig(CONFIG_CACHERB_THREADS, DEFAULT_CACHERB_THREADS, properties, cfg);
+		dispatchRbThreads = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_THREADS, DEFAULT_DISPATCHRB_THREADS, properties, cfg);
+		cacheRbSize = metricManager.getAndSetConfig(CONFIG_CACHERB_SIZE, DEFAULT_CACHERB_SIZE, properties, cfg);
+		dispatchRbSize = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_SIZE, DEFAULT_DISPATCHRB_SIZE, properties, cfg);
 		final Properties cacheRbWaitStratConfig = Props.extract(CONFIG_CACHERB_WAITSTRAT_PROPS, properties, true, false);
 		final Properties dispatchRbWaitStratConfig = Props.extract(CONFIG_DISPATCHRB_WAITSTRAT_PROPS, properties, true, false);
-		cacheRbWaitStrat = ConfigurationHelper.getEnumSystemThenEnvProperty(RBWaitStrategy.class, CONFIG_CACHERB_WAITSTRAT, DEFAULT_CACHERB_WAITSTRAT, properties);		
-		dispatchRbWaitStrat = ConfigurationHelper.getEnumSystemThenEnvProperty(RBWaitStrategy.class, CONFIG_DISPATCHRB_WAITSTRAT, DEFAULT_DISPATCHRB_WAITSTRAT, properties);
+		cacheRbWaitStrat = metricManager.getAndSetConfig(CONFIG_CACHERB_WAITSTRAT, DEFAULT_CACHERB_WAITSTRAT, properties, cfg);		
+		dispatchRbWaitStrat = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_WAITSTRAT, DEFAULT_DISPATCHRB_WAITSTRAT, properties, cfg);
 		cacheRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, cacheRbSize, cacheRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(cacheRbWaitStratConfig));
 		cacheRbDisruptor.setDefaultExceptionHandler(cacheLookupExceptionHandler);
 		cacheRbDisruptor.handleEventsWith(cacheLookupHandler);
@@ -530,7 +568,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final long value, final Map<String, String> tags, final byte[] tsuid) {
 		final long sequence = cacheRb.next();
 		final TSDBMetricMeta meta = cacheRb.get(sequence);
-		meta.reset().load(metric, tags, tsuid).timer(endToEndTimer.time());
+		meta.reset().load(metric, tags, tsuid).startTimer();
 		cacheRb.publish(sequence);
 		return Deferred.fromResult(null);
 	}
@@ -543,7 +581,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public Deferred<Object> publishDataPoint(final String metric, final long timestamp, final double value, final Map<String, String> tags, final byte[] tsuid) {
 		final long sequence = cacheRb.next();
 		final TSDBMetricMeta meta = cacheRb.get(sequence);
-		meta.reset().load(metric, tags, tsuid).timer(endToEndTimer.time());
+		meta.reset().load(metric, tags, tsuid).startTimer();
 		cacheRb.publish(sequence);
 		return Deferred.fromResult(null);
 	}

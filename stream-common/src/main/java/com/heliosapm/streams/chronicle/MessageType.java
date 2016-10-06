@@ -30,19 +30,19 @@ import net.openhft.chronicle.core.io.IORuntimeException;
  */
 
 public enum MessageType implements MessageTypeProvider, BytesMarshallable {
-	ANNOTATION(null){
+	ANNOTATION("A", null){
 		@Override
 		public BytesMarshallable instance() {			
 			return null;
 		}
 	},
-	DATAPOINT(DataPoint.class){
+	DATAPOINT("D", DataPoint.class){
 		@Override
 		public BytesMarshallable instance() {			
 			return DataPoint.getAndReset();
 		}
 	},
-	METRICMETA(TSDBMetricMeta.class){
+	METRICMETA("M", TSDBMetricMeta.class){
 		@Override
 		public BytesMarshallable instance() {			
 			return TSDBMetricMeta.FACTORY.newInstance();
@@ -55,7 +55,9 @@ public enum MessageType implements MessageTypeProvider, BytesMarshallable {
 	private static final byte maxValidByte = (byte)(values.length-1);
 	
 	
-	private MessageType(final Class<? extends BytesMarshallable> type) {
+	
+	private MessageType(final String shortName, final Class<? extends BytesMarshallable> type) {
+		this.shortName = shortName;
 		byteOrdinal = (byte)ordinal();
 		this.type = type;
 	}
@@ -64,6 +66,8 @@ public enum MessageType implements MessageTypeProvider, BytesMarshallable {
 	public final byte byteOrdinal;
 	/** The type supplied by this message type */
 	public final Class<? extends BytesMarshallable> type;
+	/** The short name */
+	public final String shortName;
 	
 	/**
 	 * Decodes the passed byte to the corresponding MessageType
