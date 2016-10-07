@@ -5,3 +5,4 @@ target
 /.project
 /logs/
 /dependency-reduced-pom.xml
+/bin/

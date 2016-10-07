@@ -598,8 +598,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			}
 			try {
 				final long timeout = JMXHelper.isDebugAgentLoaded() ? 10000 : scheduledPeriod;
-				final Timeout txout = timeoutService.timeout(timeout, TimeUnit.SECONDS, new Runnable(){
-					final Thread me = Thread.currentThread();
+				final Thread me = Thread.currentThread();
+				final Timeout txout = timeoutService.timeout(timeout, TimeUnit.SECONDS, new Runnable(){					
 					@Override
 					public void run() {
 						log.warn("Exec Timeout !!!\n{}", StringHelper.formatStackTrace(me));

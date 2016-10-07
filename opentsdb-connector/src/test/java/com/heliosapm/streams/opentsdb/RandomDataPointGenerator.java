@@ -1,11 +1,13 @@
 package com.heliosapm.streams.opentsdb;
 
+import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
@@ -13,6 +15,7 @@ import java.util.stream.IntStream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.codahale.metrics.Timer;
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
@@ -21,6 +24,10 @@ import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
 import net.openhft.chronicle.map.ChronicleMap;
 import net.openhft.chronicle.map.ChronicleMapBuilder;
+import net.openhft.chronicle.queue.ExcerptTailer;
+import net.openhft.chronicle.queue.RollCycle;
+import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
+import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.tsd.RTPublisher;
 import net.opentsdb.utils.Config;
@@ -72,6 +79,9 @@ public class RandomDataPointGenerator implements Runnable {
 	protected final String name;
 	/** The RTPublisher to dispatch messages to */
 	protected final RTPublisher publisher;
+	/** The out queue reader thread */
+	protected final Thread drainer;
+	protected final Timer endToEndTimer = new Timer(); 
 
 	
 	public RandomDataPointGenerator(final RTPublisher publisher, final String name, final int sampleSize, final int loops, final long sleep, final int sleepFreq, final boolean text) {
@@ -82,6 +92,47 @@ public class RandomDataPointGenerator implements Runnable {
 		this.sleepFreq = sleepFreq;
 		this.text = text;
 		this.publisher = publisher;
+		drainer = new Thread("DrainThread") {
+			public void run() {
+				log.info("Drain thread starting");
+				final File outQueueDir = ((TSDBChronicleEventPublisher)publisher).outQueueDir;
+				final RollCycle rc = ((TSDBChronicleEventPublisher)publisher).outQueueRollCycle;
+				final SingleChronicleQueue outQueue = SingleChronicleQueueBuilder.binary(outQueueDir)
+					.rollCycle(rc)
+					.build();
+				try {
+					final ExcerptTailer tailer = outQueue.createTailer();
+					final TSDBMetricMeta mm = TSDBMetricMeta.FACTORY.newInstance(); 
+					long read = 0;
+					while(keepRunning.get()) {
+						try {
+							
+							if(tailer.readBytes(mm)) {
+								mm.recordTimer(endToEndTimer);
+								read++;							
+								if(read%128000==0) {								
+									log.info("Drainer: {} messages drained\n\tMean Rate: {}\n\tMean E2E: {} ms.", read, endToEndTimer.getMeanRate(), TimeUnit.NANOSECONDS.toMillis((long)endToEndTimer.getSnapshot().getMean()));
+								}
+							} else {
+								SystemClock.sleep(10);
+							}
+						} catch (Exception ex) {
+							if(InterruptedException.class.isInstance(ex) || (ex.getCause()!=null && InterruptedException.class.isInstance(ex.getCause()))) {
+								log.info("Drain thread stopping");
+								break;
+							} else {
+								log.warn("Drain thread error", ex);
+							}
+						}
+					}
+					log.info("Drain thread stopped");
+				} finally {
+					try { outQueue.close(); } catch (Exception x) {/* No Op */};
+				}
+			}
+		};
+		drainer.setDaemon(true);
+		
 		metricMetas = ChronicleMapBuilder
 				.of(byte[].class, TSDBMetricMeta.class)
 				.maxBloatFactor(15)
@@ -162,6 +213,7 @@ public class RandomDataPointGenerator implements Runnable {
 		if(keepRunning.compareAndSet(false, true)) {
 			runThread = THREAD_FACTORY.newThread(this);
 			runThread.start();
+			drainer.start();
 		}
 	}
 	
@@ -172,6 +224,7 @@ public class RandomDataPointGenerator implements Runnable {
 	public void stop() {
 		if(keepRunning.compareAndSet(true, false)) {
 			runThread.interrupt();
+			drainer.interrupt();
 		}
 	}
 	

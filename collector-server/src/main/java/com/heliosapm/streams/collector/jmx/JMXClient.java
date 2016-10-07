@@ -298,8 +298,8 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 			synchronized(this) {
 				if(server==null) {
 					try {
-						final Timeout txout = TimeoutService.getInstance().timeout(connectTimeoutSecs, TimeUnit.SECONDS, new Runnable(){
-							final Thread me = Thread.currentThread();
+						final Thread me = Thread.currentThread();
+						final Timeout txout = TimeoutService.getInstance().timeout(connectTimeoutSecs, TimeUnit.SECONDS, new Runnable(){							
 							@Override
 							public void run() {
 								log.warn("Connect Timeout !!!\n{}", StringHelper.formatStackTrace(me));
@@ -325,6 +325,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 							server = (MBeanServerConnection)Proxy.newProxyInstance(Thread.currentThread().getContextClassLoader(), new Class[]{MBeanServerConnection.class}, new InvocationHandler(){
 								@Override
 								public Object invoke(final Object proxy, final Method method, final Object[] args) throws Throwable {
+									// FIXME: add a timeout watcher here.
 									final long start = System.currentTimeMillis();
 									try {
 										return method.invoke(conn, args); 

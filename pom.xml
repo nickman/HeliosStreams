@@ -23,6 +23,7 @@
 		<!-- <module>bosun-connector</module> -->
 		<module>collector-server</module>
 		<module>tsdb-query</module>
+		<module>sql-compiler</module>
 	</modules>
 	
     <properties>    	 
@@ -606,6 +607,14 @@
 	      <version>${guava.version}</version>
 	      <scope>provided</scope>
 	    </dependency>
+
+
+		<dependency>
+		  <groupId>org.javassist</groupId>
+		  <artifactId>javassist</artifactId>
+		  <version>${javassist.version}</version>
+		</dependency>
+
 		
 	      
 		<!-- ==========================================================
