@@ -109,6 +109,40 @@ public interface TSDBChronicleEventPublisherMBean {
 	
 	public double getEndToEndMedianElapsed();
 	
+	/**
+	 * Returns the mean rate of datapoint ingestion
+	 * @return the mean rate of datapoint ingestion
+	 */
+	public double getDataPointMeanRate();
 	
+	/**
+	 * Returns the 15 minute rate of datapoint ingestion
+	 * @return the 15 minute  rate of datapoint ingestion
+	 */
+	public double getDataPoint15mRate();
+	
+	/**
+	 * Returns the 5 minute rate of datapoint ingestion
+	 * @return the 5 minute  rate of datapoint ingestion
+	 */
+	public double getDataPoint5mRate();
+	
+	/**
+	 * Returns the 1 minute rate of datapoint ingestion
+	 * @return the 1 minute  rate of datapoint ingestion
+	 */
+	public double getDataPoint1mRate();
+
+	/**
+	 * Returns the total number of ingested datapoints
+	 * @return the total number of ingested datapoints
+	 */
+	public long getDataPointCount();	
+	
+	/**
+	 * Returns the size of the TSUID lookup cache underlying file in bytes
+	 * @return the size of the TSUID lookup cache underlying file in bytes
+	 */
+	public long getCacheLookupFileSize();
 
 }

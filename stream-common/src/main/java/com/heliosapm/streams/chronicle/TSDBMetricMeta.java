@@ -216,6 +216,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		this.metricUid = meta.metricUid;
 		this.getTagKeyUids().putAll(meta.tagKeyUids);
 		this.getTagValueUids().putAll(meta.tagValueUids);
+		this.endToEndStartTime = meta.endToEndStartTime;
 	}
 	
 	/**
@@ -314,7 +315,8 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	public TSDBMetricMeta load(final TSDBMetricMeta otherMeta) {
 		this.metricName = otherMeta.metricName;
 		this.tsuid = otherMeta.tsuid;
-		this.tags.putAll(otherMeta.tags);		
+		this.tags.putAll(otherMeta.tags);
+		this.endToEndStartTime = otherMeta.endToEndStartTime;
 		return this;
 	}
 	

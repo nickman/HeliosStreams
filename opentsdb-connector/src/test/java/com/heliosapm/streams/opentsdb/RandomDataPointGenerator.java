@@ -2,9 +2,10 @@ package com.heliosapm.streams.opentsdb;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
+import java.util.Random;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
@@ -14,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
 import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
@@ -30,8 +32,15 @@ import net.opentsdb.utils.Config;
  * <p><code>com.heliosapm.streams.opentsdb.RandomDataPointGenerator</code></p>
  */
 public class RandomDataPointGenerator implements Runnable {
+	/** A random to generate seeds for the thread local random */
+	protected static final Random R = new Random(System.currentTimeMillis());
 	/** The random used to generate random values */
-	protected static final ThreadLocalRandom RANDOM = ThreadLocalRandom.current();
+	protected static final ThreadLocal<Random> RANDOM = new ThreadLocal<Random>() {
+		@Override
+		protected Random initialValue() {
+			return new Random(R.nextLong());
+		}
+	};
 	/** The thread group runner threads will be created in */
 	protected static final ThreadGroup THREAD_GROUP = new ThreadGroup("RandomDataPointGenerator");
 	
@@ -74,7 +83,8 @@ public class RandomDataPointGenerator implements Runnable {
 		this.text = text;
 		this.publisher = publisher;
 		metricMetas = ChronicleMapBuilder
-				.of(byte[].class, TSDBMetricMeta.class)				
+				.of(byte[].class, TSDBMetricMeta.class)
+				.maxBloatFactor(15)
 				.averageKeySize(128)
 				.averageValueSize(text ? 800 : 281)
 				.entries(sampleSize)
@@ -114,10 +124,16 @@ public class RandomDataPointGenerator implements Runnable {
 	
 	public static void main(String[] args) {
 		try {
+			JMXHelper.fireUpJMXMPServer(3259);
 			final Config cfg = new Config(true);
 			final TSDB tsdb = new TSDB(cfg);
-			final TSDBChronicleEventPublisher pub = new TSDBChronicleEventPublisher();
-			final RandomDataPointGenerator r = new RandomDataPointGenerator(pub, "Test", 512000, 1, 1, 1, false);
+			final TSDBChronicleEventPublisher pub = new TSDBChronicleEventPublisher(true);
+			final int sampleSize = 128000;
+			final int loops = 100000; 
+			final long sleep = 0; //10000;
+			final int sleepFreq = 1;
+			final boolean text = false;			
+			final RandomDataPointGenerator r = new RandomDataPointGenerator(pub, "Test", sampleSize, loops, sleep, sleepFreq, text);
 			pub.setTestLookup(r.metricMetas);
 			pub.initialize(tsdb);
 			pub.clearLookupCache();
@@ -162,18 +178,36 @@ public class RandomDataPointGenerator implements Runnable {
 	public void run() {
 		log.info("Starting DP generator");		
 		try {
+			final int sz = metricMetas.size();
 			for(int i = 0; i < loops; i++) {
 				log.info("Starting loop #{}...", i);
 				final long now = System.currentTimeMillis();
-				metricMetas.values().stream().forEach(mm -> 
-					publisher.publishDataPoint(mm.getMetricName(), now, nextPosDouble(), mm.getTags(), mm.getTsuid())
+				final CountDownLatch latch = new CountDownLatch(sz);
+				final ElapsedTime et = SystemClock.startClock();
+				metricMetas.values().stream().forEach(mm -> { 
+						publisher.publishDataPoint(mm.getMetricName(), now, nextPosDouble(), mm.getTags(), mm.getTsuid());
+						latch.countDown();
+					}
 				);
-				SystemClock.sleep(sleep);
+				latch.await();
+				final String msg = et.printAvg("Dispatches", sz);
+				log.info("Dispatched [{}] message", msg);
+				if(sleep > 0) {
+					SystemClock.sleep(sleep);
+				}
+				
+				if(i>0 && i%10==0) {
+					System.err.println("========= CLEARING LOOKUP CACHE");
+					((TSDBChronicleEventPublisher)publisher).clearLookupCache();
+					//((TSDBChronicleEventPublisher)publisher).outQueue.clear();
+				}
 			}
 			log.info("Instance completed");
 		} catch (Exception ex) {
 			if(InterruptedException.class.isInstance(ex)) {
 				log.info("Stopping instance...");
+			} else {
+				log.error("Unexpected exception", ex);
 			}
 		}
 	}
@@ -185,7 +219,7 @@ public class RandomDataPointGenerator implements Runnable {
 	 * @return a random positive int
 	 */
 	public static int nextPosInt(int bound) {
-		return Math.abs(RANDOM.nextInt(bound));
+		return Math.abs(RANDOM.get().nextInt(bound));
 	}
 
 	/**
@@ -193,7 +227,7 @@ public class RandomDataPointGenerator implements Runnable {
 	 * @return a random positive long
 	 */
 	public static long nextPosLong() {
-		return Math.abs(RANDOM.nextLong());
+		return Math.abs(RANDOM.get().nextLong());
 	}
 
 	/**
@@ -201,12 +235,17 @@ public class RandomDataPointGenerator implements Runnable {
 	 * @return a random positive double
 	 */
 	public static double nextPosDouble() {
-		return Math.abs(RANDOM.nextDouble());
+		return Math.abs(RANDOM.get().nextDouble());
 	}
 	
+	/**
+	 * Generates and returns a byte array populated with random bytes
+	 * @param size The size of the byte array to generate
+	 * @return the random content byte array
+	 */
 	public static byte[] randomBytes(int size) {
 		final byte[] bytes = new byte[size];
-		RANDOM.nextBytes(bytes);
+		RANDOM.get().nextBytes(bytes);
 		return bytes;
 	}
 

@@ -19,7 +19,7 @@ under the License.
 package com.heliosapm.streams.opentsdb;
 
 import java.io.File;
-import java.io.FilenameFilter;
+import java.io.FileFilter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -37,6 +37,7 @@ import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 
 import com.codahale.metrics.Counter;
+import com.codahale.metrics.Meter;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.chronicle.MessageType;
@@ -123,11 +124,13 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	/** The config key prefix for the dispatch ringbuffer wait strategy config properties */
 	public static final String CONFIG_DISPATCHRB_WAITSTRAT_PROPS = DEFAULT_DISPATCHRB_WAITSTRAT + ".";
 
+	/** The mandatory TSUID cache db file extension */
+	public static final String CACHE_DBFILE_EXT = ".db";
 	
 	/** The config key name for the lookup cache persistent file */
 	public static final String CONFIG_CACHE_FILE = "eventpublisher.cache.file";
 	/** The default lookup cache persistent file */
-	public static final String DEFAULT_CACHE_FILE = new File(new File(System.getProperty("user.home"), ".eventpublisher"), "lookupCache.db").getAbsolutePath();
+	public static final String DEFAULT_CACHE_FILE = new File(new File(System.getProperty("user.home"), ".eventpublisher"), "lookupCache" + CACHE_DBFILE_EXT).getAbsolutePath();
 
 	/** The config key name for the lookup cache average key size in bytes */
 	public static final String CONFIG_CACHE_AVGKEYSIZE = "eventpublisher.cache.keysize";
@@ -138,6 +141,12 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	public static final String CONFIG_CACHE_MAXKEYS = "eventpublisher.cache.maxsize";
 	/** The default lookup cache maximum number of entries */
 	public static final long DEFAULT_CACHE_MAXKEYS = 100000;
+	
+	/** The config key name for the lookup cache maximum bloat factor */
+	public static final String CONFIG_CACHE_BLOAT = "eventpublisher.cache.maxbloat";
+	/** The default lookup cache maximum number of entries */
+	public static final double DEFAULT_CACHE_BLOAT = 1.0D;
+	
 	
 	/** The config key name for the outbound queue base directory */
 	public static final String CONFIG_OUTQ_DIR = "eventpublisher.outq.dir";
@@ -193,6 +202,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	/** The number of bytes in a metric uid */
 	protected short metrics_width = -1;
 	
+	/** If true, uses a test cache lookup usable outside of OpenTSDB */
+	protected final boolean testMode;
+	
 	// ===============================================================================================
 	//		Out Queue Config
 	// ===============================================================================================
@@ -214,6 +226,12 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected final Counter deletedRolledFiles = metricManager.counter("deletedRolledFiles");
 	/** A counter of rolled queue files pending deletion */
 	protected final Counter pendingRolledFiles = metricManager.counter("pendingRolledFiles");
+
+	/** A meter of incoming datapoints */
+	protected final Meter dataPoints = metricManager.meter("incomingDataPoints");
+	/** A meter of incoming datapoints */
+	protected final Meter annotations = metricManager.meter("incomingAnnotations");
+	
 	
 	/** Flag to switch off deletion thread on shutdown */
 	protected final AtomicBoolean keepRunning = new AtomicBoolean(IS_WIN);
@@ -261,6 +279,8 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	protected int avgKeySize = -1;	
 	/** The TSUID lookup cache max entries */
 	protected long maxEntries = -1;
+	/** The TSUID lookup cache max bloat factor */
+	protected double maxBloatFactor = -1D;
 	/** The TSUID lookup cache instance */
 	protected ChronicleSet<byte[]> cacheDb = null;
 	
@@ -327,45 +347,46 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			System.exit(-1);
-		}
+		}	
 	}
 	
 	
-//	/** The cache lookup handler */
-//	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
-//		@Override
-//		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
-//			final Context ctx = cacheLookupHandlerTimer.time();
-//			try {
-//				if(!cacheDb.contains(meta.getTsuid())) {
-//					// We have to clone here since the incoming meta gets recycled back to the cacheRb.
-//					// Alternatively, the resolveUID could be synchronous. 
-//					final TSDBMetricMeta metaClone = meta.clone();
-////					FIXME: temporarilly calling this just so we can compare elapsed times
-////					FIXED: getTSMetaAsync is approx 20-30 slower than resolveUIDsAsync 
-////					getTSMetaAsync(meta);
-//					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
-//						@Override
-//						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
-//							metaClone.resolved(
-//									map.get(UniqueIdType.METRIC).values().iterator().next(), 
-//									map.get(UniqueIdType.TAGK), 
-//									map.get(UniqueIdType.TAGV)
-//							);
-//							final long seq = dispatchRb.next();
-//							final TSDBMetricMeta meta = dispatchRb.get(seq);
-//							meta.load(metaClone).resolved(metaClone);
-//							dispatchRb.publish(seq);										
-//							return null;
-//						}
-//					});
-//				}
-//			} finally {
-//				meta.reset();
-//				ctx.close();
-//			}
-//		}
-//	};
+	/** The cache lookup handler */
+	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
+		@Override
+		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
+			dataPoints.mark();
+			final Context ctx = cacheLookupHandlerTimer.time();
+			try {
+				if(!cacheDb.contains(meta.getTsuid())) {
+					// We have to clone here since the incoming meta gets recycled back to the cacheRb.
+					// Alternatively, the resolveUID could be synchronous. 
+					final TSDBMetricMeta metaClone = meta.clone();
+//					FIXME: temporarilly calling this just so we can compare elapsed times
+//					FIXED: getTSMetaAsync is approx 20-30 slower than resolveUIDsAsync 
+//					getTSMetaAsync(meta);
+					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
+						@Override
+						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
+							metaClone.resolved(
+									map.get(UniqueIdType.METRIC).values().iterator().next(), 
+									map.get(UniqueIdType.TAGK), 
+									map.get(UniqueIdType.TAGV)
+							);
+							final long seq = dispatchRb.next();
+							final TSDBMetricMeta meta = dispatchRb.get(seq);
+							meta.load(metaClone).resolved(metaClone);
+							dispatchRb.publish(seq);										
+							return null;
+						}
+					});
+				}
+			} finally {
+				meta.reset();
+				ctx.close();
+			}
+		}
+	};
 	
 	protected ChronicleMap<byte[], TSDBMetricMeta> metricMetas = null;
 	public void setTestLookup(final ChronicleMap<byte[], TSDBMetricMeta> metricMetas) {
@@ -373,18 +394,21 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	}
 	
 	public Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>> testLookup(final TSDBMetricMeta meta) {
+		final Context ctx = resolveUidsTimer.time();
 		final EnumMap<UniqueIdType, Map<String, byte[]>> map = new EnumMap<UniqueIdType, Map<String, byte[]>>(UniqueIdType.class);
 		final TSDBMetricMeta m = metricMetas.get(meta.getTsuid());
 		map.put(UniqueIdType.METRIC, Collections.singletonMap(m.getMetricName(), m.getMetricUid()));
 		map.put(UniqueIdType.TAGK, m.getTagKeyUids());
 		map.put(UniqueIdType.TAGV, m.getTagValueUids());
+		ctx.close();
 		return Deferred.fromResult(map);
 	}
 	
-	/** The cache lookup handler */
-	protected final EventHandler<TSDBMetricMeta> cacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
+	/** This a test cache lookup handler to be used for testing outside of TSDB */
+	protected final EventHandler<TSDBMetricMeta> testCacheLookupHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
 		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
+			dataPoints.mark();
 			final Context ctx = cacheLookupHandlerTimer.time();
 			try {
 				if(!cacheDb.contains(meta.getTsuid())) {
@@ -467,8 +491,19 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 * Creates a new TSDBChronicleEventPublisher
 	 */
 	public TSDBChronicleEventPublisher() {
+		testMode = false;
 		log.info("Created TSDBChronicleEventPublisher instance");
 	}
+	
+	/**
+	 * Creates a new TSDBChronicleEventPublisher
+	 * @param testMode true for test mode, false otherwise
+	 */
+	public TSDBChronicleEventPublisher(final boolean testMode) {
+		this.testMode = testMode;
+		log.info("Created TSDBChronicleEventPublisher instance. TestMode: {}", this.testMode);
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -502,12 +537,14 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		tsuidCacheDbFileName = metricManager.getAndSetConfig(CONFIG_CACHE_FILE, DEFAULT_CACHE_FILE, properties, cfg);
 		tsuidCacheDbFile = new File(tsuidCacheDbFileName);
 		tsuidCacheDbFile.getParentFile().mkdirs();
+		maxBloatFactor = metricManager.getAndSetConfig(CONFIG_CACHE_BLOAT, DEFAULT_CACHE_BLOAT, properties, cfg);
 		avgKeySize = metricManager.getAndSetConfig(CONFIG_CACHE_AVGKEYSIZE, DEFAULT_CACHE_AVGKEYSIZE, properties, cfg);
 		maxEntries = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_CACHE_MAXKEYS, DEFAULT_CACHE_MAXKEYS, properties);
 		try {
 			cacheDb = ChronicleSetBuilder.of(byte[].class)
 				.averageKeySize(avgKeySize)
-				.entries(maxEntries)				
+				.entries(maxEntries)
+				.maxBloatFactor(maxBloatFactor)
 				.createOrRecoverPersistedTo(tsuidCacheDbFile);
 			log.info("TSUID Lookup Cache Initialized. Initial Size: {}", cacheDb.size());
 		} catch (Exception ex) {
@@ -527,7 +564,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		dispatchRbWaitStrat = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_WAITSTRAT, DEFAULT_DISPATCHRB_WAITSTRAT, properties, cfg);
 		cacheRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, cacheRbSize, cacheRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(cacheRbWaitStratConfig));
 		cacheRbDisruptor.setDefaultExceptionHandler(cacheLookupExceptionHandler);
-		cacheRbDisruptor.handleEventsWith(cacheLookupHandler);
+		cacheRbDisruptor.handleEventsWith(testMode ? testCacheLookupHandler : cacheLookupHandler);
 		dispatchRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, dispatchRbSize, dispatchRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(dispatchRbWaitStratConfig));
 		dispatchRbDisruptor.setDefaultExceptionHandler(dispatchExceptionHandler);
 		dispatchRbDisruptor.handleEventsWith(dispatchHandler);
@@ -705,7 +742,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			@Override
 			public Void call(final ArrayList<byte[]> arg) throws Exception {
 				final long elapsed = ctx.stop();
-				log.info("UID Resolution Elapsed: {} ms.", TimeUnit.NANOSECONDS.toMillis(elapsed));
+				if(log.isDebugEnabled()) log.debug("UID Resolution Elapsed: {} ms.", TimeUnit.NANOSECONDS.toMillis(elapsed));
 				resultDef.callback(resolvedMap);
 				return null;
 			}
@@ -808,10 +845,10 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 * FIXME: Always returns 0
 	 */
 	public int getOutQueueFileCount() {
-		return outQueueDir.listFiles(new FilenameFilter(){
+		return outQueueDir.listFiles(new FileFilter(){
 			@Override
-			public boolean accept(final File f, final String name) {				
-				return f.isFile() && name.toLowerCase().endsWith(".cq4");
+			public boolean accept(final File f) {
+				return f.isFile() && f.getName().toLowerCase().endsWith(".cq4");				
 			}
 		}).length;
 	}
@@ -823,16 +860,29 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 */
 	public long getOutQueueFileSize() {
 		return Arrays.stream(
-			outQueueDir.listFiles(new FilenameFilter(){
+			outQueueDir.listFiles(new FileFilter(){
 				@Override
-				public boolean accept(final File f, final String name) {				
-					return f.isFile() && name.toLowerCase().endsWith(".cq4");
+				public boolean accept(final File f) {
+					return f.isFile() && f.getName().toLowerCase().endsWith(".cq4");				
 				}
 			})
 		).mapToLong(f -> f.length()).sum();
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getCacheLookupFileSize()
+	 */
+	@Override
+	public long getCacheLookupFileSize() {
+		return (tsuidCacheDbFile!=null && tsuidCacheDbFile.isFile()) ? tsuidCacheDbFile.length() : -1L;
+	}
 
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getAvgKeySize()
+	 */
+	@Override
 	public int getAvgKeySize() {
 		return avgKeySize;
 	}
@@ -954,6 +1004,49 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		return endToEndTimer.getSnapshot().getMedian();
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getDataPointMeanRate()
+	 */
+	@Override
+	public double getDataPointMeanRate() {
+		return dataPoints.getMeanRate();
+	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getDataPoint15mRate()
+	 */
+	@Override
+	public double getDataPoint15mRate() {
+		return dataPoints.getFifteenMinuteRate();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getDataPoint5mRate()
+	 */
+	@Override
+	public double getDataPoint5mRate() {
+		return dataPoints.getFiveMinuteRate();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getDataPoint1mRate()
+	 */
+	@Override
+	public double getDataPoint1mRate() {
+		return dataPoints.getOneMinuteRate();
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#getDataPointCount()
+	 */
+	@Override
+	public long getDataPointCount() {
+		return dataPoints.getCount();
+	}
 	
 }

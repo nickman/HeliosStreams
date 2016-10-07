@@ -99,6 +99,13 @@ public class PluginMetricManager {
 		return v;
 	}
 	
+	public double getAndSetConfig(final String key, final double defaultValue, final Properties p, final Config cfg) {
+		final double v = ConfigurationHelper.getDoubleSystemThenEnvProperty(key, defaultValue, p);
+		cfg.overrideConfig(key, "" + v);
+		return v;
+	}
+	
+	
 	public boolean getAndSetConfig(final String key, final boolean defaultValue, final Properties p, final Config cfg) {
 		final boolean v = ConfigurationHelper.getBooleanSystemThenEnvProperty(key, defaultValue, p);
 		cfg.overrideConfig(key, "" + v);
