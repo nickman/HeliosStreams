@@ -19,6 +19,7 @@ under the License.
 package com.heliosapm.streams.sqlbinder;
 
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 import javax.management.ObjectName;
 
@@ -43,6 +44,14 @@ public interface PreparedStatementBinder {
 	 * @param args The arguments to bind
 	 */
 	public void bind(PreparedStatement ps, Object...args);
+	
+	/**
+	 * Unbinds the current row of the passed result set to an object array
+	 * @param rset The ResultSet to extract the object array from
+	 * @return the Object array
+	 */
+	public Object[] unbind(ResultSet rset);
+	
 	
 	/**
 	 * Returns the elapsed time that the specified percentage of executions fall within in ms.

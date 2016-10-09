@@ -115,6 +115,8 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	
 	public abstract void doBind(final PreparedStatement ps, final Object... args);
 	
+	
+	
 	public void registerOutputParameter(final PreparedStatement ps, final int index, final int type) {
 		try {
 			ORA_PS_REGOUT.invoke(ps, index, type);

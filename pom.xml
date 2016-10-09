@@ -64,7 +64,7 @@
 		<curator.version>2.10.0</curator.version>
 		<curator-discovery.version>2.10.0</curator-discovery.version>
 		<h2.version>1.4.187</h2.version>
-		<hikari.version>2.3.8</hikari.version>		
+		<hikari.version>2.5.1</hikari.version>		
 		<jexl.version>3.0</jexl.version>
 		<disruptor.version>3.3.5</disruptor.version>
 		<hystrix-core.version>1.5.3</hystrix-core.version>
@@ -552,7 +552,7 @@
 
 			<dependency>
 			    <groupId>com.zaxxer</groupId>
-			    <artifactId>HikariCP-java6</artifactId>
+			    <artifactId>HikariCP</artifactId>
 			    <version>${hikari.version}</version>
 			</dependency>
 
@@ -1017,11 +1017,6 @@
 
 
 
-<dependency>
-  <groupId>com.zaxxer</groupId>
-  <artifactId>HikariCP</artifactId>
-  <version>2.4.7</version>
-</dependency>
 
 <dependency>
   <groupId>org.apache.commons</groupId>

@@ -162,7 +162,7 @@ public class SQLWorker {
 		 * @param rset The result set at the next logical row
 		 * @return true to contine processing, false otherwise
 		 */
-		public boolean onRow(int rowId, ResultSet rset);
+		public boolean onRow(int rowId, BigDecimal x);
 	}
 	
 	/**
@@ -1135,10 +1135,17 @@ public class SQLWorker {
 			Connection conn = null;
 			PreparedStatement ps = null;
 			AbstractPreparedStatementBinder psb = null;
+			ResultSet rset = null;
+			final boolean isQuery = false;
 			try {
 				final String className = "PreparedStatementBinder" + serial.incrementAndGet();
 				conn = ds.getConnection();				
 				ps = conn.prepareStatement(sqlText);//.unwrap(AbstractPreparedStatementBinder.ORA_PS_CLASS);
+				try {
+					rset = ps.getResultSet();
+				} catch (Exception ex) {
+					
+				}
 				log.info("UNMODIFIED PMD: {}", dumpParameterMetaData(ps.getParameterMetaData()));
 				final ParameterMetaData pmd;
 				final int returningBinds;

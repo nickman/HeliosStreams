@@ -565,7 +565,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		cacheRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, cacheRbSize, cacheRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(cacheRbWaitStratConfig));
 		cacheRbDisruptor.setDefaultExceptionHandler(cacheLookupExceptionHandler);
 		cacheRbDisruptor.handleEventsWith(testMode ? testCacheLookupHandler : cacheLookupHandler);
-		dispatchRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, dispatchRbSize, dispatchRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(dispatchRbWaitStratConfig));
+		dispatchRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, dispatchRbSize, dispatchRbThreadFactory, ProducerType.MULTI, dispatchRbWaitStrat.waitStrategy(dispatchRbWaitStratConfig));
 		dispatchRbDisruptor.setDefaultExceptionHandler(dispatchExceptionHandler);
 		dispatchRbDisruptor.handleEventsWith(dispatchHandler);
 		cacheRb = cacheRbDisruptor.start();

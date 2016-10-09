@@ -9,9 +9,12 @@
 --  The Sequences driving synthetic primary keys
 -- ===========================================================================================
 
---SET @FQN_SEQ_SIZE=500;
---SET @FQN_TP_SEQ_SIZE=500;
---SET @ANN_SEQ_SIZE=500;
+SET @FQN_SEQ_SIZE=${da.fqn.seq.size:500};
+SET @FQN_TP_SEQ_SIZE=${da.fqn.tpseq.size:500};
+SET @ANN_SEQ_SIZE=${da.ann.size:500};
+
+
+CREATE ALIAS IF NOT EXISTS DOUBLE_NAN FOR "com.heliosapm.streams.tsdb.listener.H2Support.DOUBLE_NAN";
 
 
 
@@ -112,8 +115,8 @@ CREATE TABLE IF NOT EXISTS TSD_TSMETA (
 	TSUID VARCHAR(120) NOT NULL COMMENT 'The TSUID as a hex encoded string',
 	CREATED TIMESTAMP NOT NULL DEFAULT SYSTIME COMMENT 'The timestamp of the creation of the TSMeta',
 	LAST_UPDATE TIMESTAMP NOT NULL DEFAULT SYSDATE COMMENT 'The timestamp of the last update of the TSMETA',
-	MAX_VALUE DOUBLE DEFAULT DOUBLE_NAN COMMENT 'Optional max value for the timeseries',
-	MIN_VALUE DOUBLE DEFAULT DOUBLE_NAN COMMENT 'Optional min value for the timeseries',
+	MAX_VALUE DOUBLE DEFAULT DOUBLE_NAN() COMMENT 'Optional max value for the timeseries',
+	MIN_VALUE DOUBLE DEFAULT DOUBLE_NAN() COMMENT 'Optional min value for the timeseries',
 	DATA_TYPE VARCHAR(20) COMMENT 'An optional and arbitrary data type designation for the time series, e.g. COUNTER or GAUGE',
 	DESCRIPTION VARCHAR(60) COMMENT 'An optional description for the time-series',
 	DISPLAY_NAME VARCHAR(60) COMMENT 'An optional name for the time-series',
@@ -195,11 +198,11 @@ ORDER BY 2 DESC;
 -- ==============================================================================================
 
 
-CREATE TRIGGER IF NOT EXISTS TSD_METRIC_UPDATED_A_TRG BEFORE UPDATE ON TSD_METRIC FOR EACH ROW CALL "com.heliosapm.tsdbex.sqlcat.impls.h2.triggers.LastUpdateTSTrigger";
-CREATE TRIGGER IF NOT EXISTS TSD_TAGK_UPDATED_A_TRG BEFORE UPDATE ON TSD_TAGK FOR EACH ROW CALL "com.heliosapm.tsdbex.sqlcat.impls.h2.triggers.LastUpdateTSTrigger";
-CREATE TRIGGER IF NOT EXISTS TSD_TAGV_UPDATED_A_TRG BEFORE UPDATE ON TSD_TAGV FOR EACH ROW CALL "com.heliosapm.tsdbex.sqlcat.impls.h2.triggers.LastUpdateTSTrigger";
-CREATE TRIGGER IF NOT EXISTS TSD_METRIC_UPDATED_A_TRG BEFORE UPDATE ON TSD_METRIC FOR EACH ROW CALL "com.heliosapm.tsdbex.sqlcat.impls.h2.triggers.LastUpdateTSTrigger";
-CREATE TRIGGER IF NOT EXISTS TSD_TSMETA_UPDATED_A_TRG BEFORE UPDATE ON TSD_TSMETA FOR EACH ROW CALL "com.heliosapm.tsdbex.sqlcat.impls.h2.triggers.LastUpdateTSTrigger";
+CREATE TRIGGER IF NOT EXISTS TSD_METRIC_UPDATED_A_TRG BEFORE UPDATE ON TSD_METRIC FOR EACH ROW CALL "com.heliosapm.streams.tsdb.listener.triggers.LastUpdateTSTrigger";
+CREATE TRIGGER IF NOT EXISTS TSD_TAGK_UPDATED_A_TRG BEFORE UPDATE ON TSD_TAGK FOR EACH ROW CALL "com.heliosapm.streams.tsdb.listener.triggers.LastUpdateTSTrigger";
+CREATE TRIGGER IF NOT EXISTS TSD_TAGV_UPDATED_A_TRG BEFORE UPDATE ON TSD_TAGV FOR EACH ROW CALL "com.heliosapm.streams.tsdb.listener.triggers.LastUpdateTSTrigger";
+CREATE TRIGGER IF NOT EXISTS TSD_METRIC_UPDATED_A_TRG BEFORE UPDATE ON TSD_METRIC FOR EACH ROW CALL "com.heliosapm.streams.tsdb.listener.triggers.LastUpdateTSTrigger";
+CREATE TRIGGER IF NOT EXISTS TSD_TSMETA_UPDATED_A_TRG BEFORE UPDATE ON TSD_TSMETA FOR EACH ROW CALL "com.heliosapm.streams.tsdb.listener.triggers.LastUpdateTSTrigger";
 
 
 
@@ -215,44 +218,44 @@ CREATE TRIGGER IF NOT EXISTS TSD_TSMETA_UPDATED_A_TRG BEFORE UPDATE ON TSD_TSMET
 --  User Defined Functions
 -- ==============================================================================================
 
-CREATE ALIAS IF NOT EXISTS SLEEP FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.sleep";
+CREATE ALIAS IF NOT EXISTS SLEEP FOR "com.heliosapm.streams.tsdb.listener.H2Support.sleep";
 
-CREATE ALIAS IF NOT EXISTS TAGVNAME FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagvName";
-CREATE ALIAS IF NOT EXISTS TAGKNAME FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagkName";
-CREATE ALIAS IF NOT EXISTS METRICNAME FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.metricName";
+CREATE ALIAS IF NOT EXISTS TAGVNAME FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagvName";
+CREATE ALIAS IF NOT EXISTS TAGKNAME FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagkName";
+CREATE ALIAS IF NOT EXISTS METRICNAME FOR "com.heliosapm.streams.tsdb.listener.H2Support.metricName";
 
-CREATE ALIAS IF NOT EXISTS TAGVUID FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagvUid";
-CREATE ALIAS IF NOT EXISTS TAGKUID FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagkUid";
-CREATE ALIAS IF NOT EXISTS METRICUID FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.metricUid";
+CREATE ALIAS IF NOT EXISTS TAGVUID FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagvUid";
+CREATE ALIAS IF NOT EXISTS TAGKUID FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagkUid";
+CREATE ALIAS IF NOT EXISTS METRICUID FOR "com.heliosapm.streams.tsdb.listener.H2Support.metricUid";
 
-CREATE ALIAS IF NOT EXISTS TAGPAIRN FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagPairUidByName";
-CREATE ALIAS IF NOT EXISTS TAGPAIRU FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagPairUidByNames";
+CREATE ALIAS IF NOT EXISTS TAGPAIRN FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagPairUidByName";
+CREATE ALIAS IF NOT EXISTS TAGPAIRU FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagPairUidByNames";
 
-CREATE ALIAS IF NOT EXISTS TAGPAIRKEY FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagPairKeyNameByUid";
-CREATE ALIAS IF NOT EXISTS TAGPAIRVALUE FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tagPairValueNameByUid";
+CREATE ALIAS IF NOT EXISTS TAGPAIRKEY FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagPairKeyNameByUid";
+CREATE ALIAS IF NOT EXISTS TAGPAIRVALUE FOR "com.heliosapm.streams.tsdb.listener.H2Support.tagPairValueNameByUid";
 
-CREATE ALIAS IF NOT EXISTS FQNID FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.fqnId";
-CREATE ALIAS IF NOT EXISTS TSUID FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.tsuid";
-CREATE ALIAS IF NOT EXISTS ANNID FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.annotationId";
+CREATE ALIAS IF NOT EXISTS FQNID FOR "com.heliosapm.streams.tsdb.listener.H2Support.fqnId";
+CREATE ALIAS IF NOT EXISTS TSUID FOR "com.heliosapm.streams.tsdb.listener.H2Support.tsuid";
+CREATE ALIAS IF NOT EXISTS ANNID FOR "com.heliosapm.streams.tsdb.listener.H2Support.annotationId";
 
-CREATE ALIAS IF NOT EXISTS JSONGET FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.jsonGet";
-CREATE ALIAS IF NOT EXISTS JSONKEYS FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.jsonKeys";
-CREATE ALIAS IF NOT EXISTS JSONVALUES FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.jsonValues";
-CREATE ALIAS IF NOT EXISTS JSONPAIRS FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.jsonPairs";
-CREATE ALIAS IF NOT EXISTS JSONSET FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.jsonSet";
-CREATE ALIAS IF NOT EXISTS JSONINCRINT FOR "com.heliosapm.tsdbex.json.JSONMapSupport.incrementInt";
+CREATE ALIAS IF NOT EXISTS JSONGET FOR "com.heliosapm.streams.tsdb.listener.H2Support.jsonGet";
+CREATE ALIAS IF NOT EXISTS JSONKEYS FOR "com.heliosapm.streams.tsdb.listener.H2Support.jsonKeys";
+CREATE ALIAS IF NOT EXISTS JSONVALUES FOR "com.heliosapm.streams.tsdb.listener.H2Support.jsonValues";
+CREATE ALIAS IF NOT EXISTS JSONPAIRS FOR "com.heliosapm.streams.tsdb.listener.H2Support.jsonPairs";
+CREATE ALIAS IF NOT EXISTS JSONSET FOR "com.heliosapm.streams.tsdb.listener.H2Support.jsonSet";
+CREATE ALIAS IF NOT EXISTS JSONINCRINT FOR "com.heliosapm.streams.tsdb.listener.JSONMapSupport.incrementInt";
 
-CREATE ALIAS IF NOT EXISTS TOTS FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.toTimestamp";
-CREATE ALIAS IF NOT EXISTS TOUTC FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.toUTC";
+CREATE ALIAS IF NOT EXISTS TOTS FOR "com.heliosapm.streams.tsdb.listener.H2Support.toTimestamp";
+CREATE ALIAS IF NOT EXISTS TOUTC FOR "com.heliosapm.streams.tsdb.listener.H2Support.toUTC";
 
 
 
-CREATE ALIAS IF NOT EXISTS JMXID FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.getMBeanServerId";
+CREATE ALIAS IF NOT EXISTS JMXID FOR "com.heliosapm.streams.tsdb.listener.H2Support.getMBeanServerId";
 
-CREATE ALIAS IF NOT EXISTS FQN FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.getMetricNameForFQN";
-CREATE ALIAS IF NOT EXISTS TPN FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.getNameForTagPair";
+CREATE ALIAS IF NOT EXISTS FQN FOR "com.heliosapm.streams.tsdb.listener.H2Support.getMetricNameForFQN";
+CREATE ALIAS IF NOT EXISTS TPN FOR "com.heliosapm.streams.tsdb.listener.H2Support.getNameForTagPair";
 
-CREATE ALIAS IF NOT EXISTS SYNCSTATUS FOR "com.heliosapm.tsdbex.sqlcat.impls.h2.H2Support.getTSDBSyncStatus";
+CREATE ALIAS IF NOT EXISTS SYNCSTATUS FOR "com.heliosapm.streams.tsdb.listener.H2Support.getTSDBSyncStatus";
 CREATE VIEW IF NOT EXISTS SYNCSTATUS AS SELECT *, MAX_LAST_UPDATED > LAST_SYNC AS PENDING FROM SYNCSTATUS();
 
 CREATE VIEW IF NOT EXISTS VERSIONS AS
