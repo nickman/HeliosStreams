@@ -156,9 +156,9 @@ public class TagPredicateCache {
 
 
 		@Override
-		public boolean onRow(int rowId, ResultSet rset) {
+		public boolean onRow(final int rowId, final Object...columnValues) {
 			try {
-				results.add(rset.getString(1));
+				results.add((String)columnValues[0]);
 			} catch (Exception ex) {
 				ex.printStackTrace(System.err);
 			}

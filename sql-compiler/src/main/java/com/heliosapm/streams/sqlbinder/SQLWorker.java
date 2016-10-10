@@ -28,6 +28,7 @@ import java.sql.Connection;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.RowId;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -159,10 +160,10 @@ public class SQLWorker {
 		 * Callback on the next row. Implementations should not call {@link ResultSet#next()} unless 
 		 * it is intended to skip rows.
 		 * @param rowId The row sequence id, starting at zero.
-		 * @param rset The result set at the next logical row
+		 * @param columns The unbound row
 		 * @return true to contine processing, false otherwise
 		 */
-		public boolean onRow(int rowId, BigDecimal x);
+		public boolean onRow(int rowId, Object... columns);
 	}
 	
 	/**
@@ -366,8 +367,8 @@ public class SQLWorker {
 			binder.bind(ps, args);
 			int rowId = 0;
 			rset = executeQuery(ps, binder);
-			while(rset.next()) {
-				if(!rowHandler.onRow(rowId, rset)) break;
+			while(rset.next()) {				
+				if(!rowHandler.onRow(rowId, binder.unbind(rset))) break;
 			}
 			return rowId+1;
 		} catch (Exception ex) {
@@ -1049,6 +1050,8 @@ public class SQLWorker {
 		protected final DataSource ds;
 		
 		
+		
+		
 		/** The size of the sliding window tracking SQLWorker execution times */
 		protected final int windowSize;
 		
@@ -1064,11 +1067,17 @@ public class SQLWorker {
 		/** The AtomicLong ctclass */
 		protected final CtClass atomicL;
 		
+		/** Array of NVPs ctclass */
+		protected final CtClass nvpArr;
+		
 		/** The Object ctclass */
 		protected final CtClass obj;
 		
 		/** The PreparedStatementBinder bind CtMethod */
 		protected final CtMethod bindMethod;
+		/** The PreparedStatementBinder unbind CtMethod */
+		protected final CtMethod unbindMethod;
+		
 		/** The AbstractPreparedStatementBinder parent class CtClass */
 		protected final CtClass parentClass;
 		
@@ -1093,12 +1102,14 @@ public class SQLWorker {
 				binderIface = classPool.get(PreparedStatementBinder.class.getName());
 				parentClass = classPool.get(AbstractPreparedStatementBinder.class.getName());
 				bindMethod = parentClass.getDeclaredMethod("doBind");
+				unbindMethod = parentClass.getDeclaredMethod("doUnbind");
 				
 				sqlEx = new CtClass[] {classPool.get(SQLException.class.getName())};
 				str = classPool.get(String.class.getName());
 				obj = classPool.get(Object.class.getName());
+				nvpArr = classPool.get(NVP[].class.getName());
 				atomicL = classPool.get(AtomicLong.class.getName());
-				parentCtorSig = new CtClass[]{str, CtClass.intType};
+				parentCtorSig = new CtClass[]{str, CtClass.intType, nvpArr};
 			} catch (Exception ex) {
 				throw new RuntimeException("Failed to create PreparedStatementBinder CtClass IFace", ex);
 			} finally {
@@ -1131,19 +1142,32 @@ public class SQLWorker {
 		 * @param sqlText The SQL statement to create a binder for
 		 * @return the built PreparedStatementBinder instance
 		 */
+		@SuppressWarnings("unchecked")
 		protected AbstractPreparedStatementBinder buildBinder(final String sqlText) {
 			Connection conn = null;
 			PreparedStatement ps = null;
 			AbstractPreparedStatementBinder psb = null;
 			ResultSet rset = null;
-			final boolean isQuery = false;
+			ResultSetMetaData rsmd = null;
+			NVP<Boolean, Class<?>>[] resultSetTypes = null;
+			boolean isQuery = false;
 			try {
 				final String className = "PreparedStatementBinder" + serial.incrementAndGet();
 				conn = ds.getConnection();				
 				ps = conn.prepareStatement(sqlText);//.unwrap(AbstractPreparedStatementBinder.ORA_PS_CLASS);
 				try {
 					rset = ps.getResultSet();
+					isQuery = true;
+					rsmd = rset.getMetaData();
+					final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+					final int colCount = rsmd.getColumnCount();
+					resultSetTypes = new NVP[colCount];
+					for(int i = 0; i < colCount; i++) {
+						resultSetTypes[i] = new NVP<Boolean, Class<?>>(rsmd.isNullable(i+1)!=ResultSetMetaData.columnNoNulls, Class.forName(rsmd.getColumnClassName(i+1), true, classLoader));
+					}
 				} catch (Exception ex) {
+					/* No Op */
+				} finally {
 					
 				}
 				log.info("UNMODIFIED PMD: {}", dumpParameterMetaData(ps.getParameterMetaData()));
@@ -1157,14 +1181,7 @@ public class SQLWorker {
 					returningBinds = 0;
 					pmd = ps.getParameterMetaData();
 				}
-				
-				
-				
-				
-				
 				CtClass binderClazz = classPool.makeClass(className, parentClass);
-				
-				
 //				
 //				CtMethod getm = CtNewMethod.copy(getSqlMethod, binderClazz, null);
 //				getm.setBody("{ return sqltext; }");
@@ -1172,6 +1189,7 @@ public class SQLWorker {
 //				binderClazz.addMethod(getm);
 				
 				CtMethod bindm = CtNewMethod.copy(bindMethod, binderClazz, null);
+				CtMethod unbindm = CtNewMethod.copy(unbindMethod, binderClazz, null);
 //				CtNewMethod.copy(bindMethod, binderClazz, null);
 //				bindm.setExceptionTypes(sqlEx);
 				StringBuilder b = new StringBuilder("{ execCounter.incrementAndGet(); ");
@@ -1203,7 +1221,7 @@ public class SQLWorker {
 				binderClazz.writeFile(SAVE_DIR);
 				Class<AbstractPreparedStatementBinder> javaClazz = binderClazz.toClass(SQLWorker.class.getClassLoader(), SQLWorker.class.getProtectionDomain());
 				
-				psb = javaClazz.getConstructor(String.class, int.class).newInstance(sqlText, windowSize);
+				psb = javaClazz.getConstructor(String.class, int.class, Class[].class).newInstance(sqlText, windowSize, resultSetTypes);
 				JMXHelper.registerMBean(psb, psb.getObjectName());
 				binderClazz.detach();
 				return psb;

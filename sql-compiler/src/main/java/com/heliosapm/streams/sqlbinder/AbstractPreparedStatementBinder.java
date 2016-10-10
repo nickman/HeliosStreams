@@ -20,12 +20,14 @@ package com.heliosapm.streams.sqlbinder;
 
 import java.lang.reflect.Method;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.management.ObjectName;
 
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.tuples.NVP;
 import com.heliosapm.utils.unsafe.collections.ConcurrentLongSlidingWindow;
 
 /**
@@ -52,7 +54,11 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	/** A sliding window of ps batch size in statements batched */
 	protected final ConcurrentLongSlidingWindow batchSizes;
 	/** The JMX ObjectName for this binder */
-	final ObjectName objectName;
+	protected final ObjectName objectName;
+	/** An array of Classes describing the SQLType data types of the result set if the statement is a query */
+	protected final NVP<Boolean, Class<?>>[] resultSetSQLTypes;
+	/** The number of columns in the result set if this is a query */
+	protected final int colCount;
 	
 	/** The lowest threshold of milliseconds at which a long value is considered to be in milliseconds 
 	 * rather than seconds.This means that millisecond based timestamps will only
@@ -60,6 +66,9 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	 *  or a long value of <b><code>17179869184</code></b>. This also the lowest long value where 
 	 *  {@link Long#numberOfLeadingZeros(long)} is less than <b><code>30</code></b> */
 	public static final long LOWEST_MS_TIME = 17179869184L; //30;
+	
+	/** An empty object array const */
+	public static final Object[] EMPTY_OBJ_ARR = {};
 	
 	public static final Class<? extends PreparedStatement> ORA_PS_CLASS;
 	public static final Method ORA_PS_REGOUT;
@@ -81,9 +90,12 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	 * Creates a new AbstractPreparedStatementBinder
 	 * @param sqltext The underlying SQL statement
 	 * @param windowSize The size of the sliding windows tracking ps execution times
+	 * @param sqlTypes An array of classes describing the SQLType data types of the result set if the statement is a query
 	 */
-	public AbstractPreparedStatementBinder(final String sqltext, final int windowSize) {
+	public AbstractPreparedStatementBinder(final String sqltext, final int windowSize, final NVP<Boolean, Class<?>>[] sqlTypes) {
 		this.sqltext = sqltext;
+		resultSetSQLTypes = sqlTypes;
+		colCount = resultSetSQLTypes==null ? 0 : resultSetSQLTypes.length;
 		execTimes = new ConcurrentLongSlidingWindow(windowSize);
 		batchExecTimes = new ConcurrentLongSlidingWindow(windowSize);
 		batchSizes = new ConcurrentLongSlidingWindow(windowSize);
@@ -113,7 +125,31 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 		}
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.sqlbinder.PreparedStatementBinder#unbind(java.sql.ResultSet)
+	 */
+	@Override
+	public Object[] unbind(final ResultSet rset) {
+		if(colCount==0) return EMPTY_OBJ_ARR;
+		final Object[] row = new Object[colCount];
+		try {
+			for(int i = 0; i < colCount; i++) {
+				final NVP<Boolean, Class<?>> colType = resultSetSQLTypes[i];
+				row[i] = rset.getObject(i+1, colType.getValue());
+				if(colType.getKey() && rset.wasNull()) {
+					row[i] = null;
+				}
+			}
+			return row;
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to unbind result set", ex);
+		}
+	}
+	
 	public abstract void doBind(final PreparedStatement ps, final Object... args);
+	
+	public abstract Object[] doUnbind(final ResultSet rset);
 	
 	
 	
