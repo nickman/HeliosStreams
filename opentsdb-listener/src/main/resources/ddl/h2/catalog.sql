@@ -9,9 +9,9 @@
 --  The Sequences driving synthetic primary keys
 -- ===========================================================================================
 
-SET @FQN_SEQ_SIZE=${da.fqn.seq.size:500};
-SET @FQN_TP_SEQ_SIZE=${da.fqn.tpseq.size:500};
-SET @ANN_SEQ_SIZE=${da.ann.size:500};
+SET @FQN_SEQ_SIZE=${da.fqn.seq.size:1};
+SET @FQN_TP_SEQ_SIZE=${da.fqn.tpseq.size:1};
+SET @ANN_SEQ_SIZE=${da.ann.size:1};
 
 
 CREATE ALIAS IF NOT EXISTS DOUBLE_NAN FOR "com.heliosapm.streams.tsdb.listener.H2Support.DOUBLE_NAN";
@@ -108,12 +108,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS TSD_FQN_TAGPAIR_IND ON TSD_FQN_TAGPAIR (FQNID,
 ALTER TABLE TSD_FQN_TAGPAIR ADD CONSTRAINT IF NOT EXISTS TSD_FQN_TAGPAIR_FK FOREIGN KEY(XUID) REFERENCES TSD_TAGPAIR ( XUID ) ON DELETE CASCADE;
 
 CREATE TABLE IF NOT EXISTS TSD_TSMETA (
-	FQNID BIGINT NOT NULL COMMENT 'A synthetic unique identifier for each individual TSMeta/TimeSeries entry',
-	VERSION INT NOT NULL COMMENT 'The version of this instance',
+	FQNID BIGINT NOT NULL DEFAULT FQN_SEQ.NEXTVAL COMMENT 'A synthetic unique identifier for each individual TSMeta/TimeSeries entry',
+	VERSION INT NOT NULL DEFAULT 1 COMMENT 'The version of this instance',
 	METRIC_UID CHAR(6) NOT NULL COMMENT 'The unique identifier of the metric name associated with this TSMeta',
 	FQN VARCHAR(4000) NOT NULL COMMENT 'The fully qualified metric name',
 	TSUID VARCHAR(120) NOT NULL COMMENT 'The TSUID as a hex encoded string',
-	CREATED TIMESTAMP NOT NULL DEFAULT SYSTIME COMMENT 'The timestamp of the creation of the TSMeta',
+	CREATED TIMESTAMP NOT NULL DEFAULT SYSDATE COMMENT 'The timestamp of the creation of the TSMeta',
 	LAST_UPDATE TIMESTAMP NOT NULL DEFAULT SYSDATE COMMENT 'The timestamp of the last update of the TSMETA',
 	MAX_VALUE DOUBLE DEFAULT DOUBLE_NAN() COMMENT 'Optional max value for the timeseries',
 	MIN_VALUE DOUBLE DEFAULT DOUBLE_NAN() COMMENT 'Optional min value for the timeseries',

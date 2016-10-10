@@ -19,6 +19,7 @@ import com.codahale.metrics.Timer;
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
@@ -146,18 +147,18 @@ public class RandomDataPointGenerator implements Runnable {
 			try {
 				final ByteBuffer buff = ByteBuffer.allocate(8);
 				final HashMap<String, String> tags = new HashMap<String, String>(4);
-				final HashMap<String, byte[]> tagKeys = new HashMap<String, byte[]>(4);
-				final HashMap<String, byte[]> tagValues = new HashMap<String, byte[]>(4);
+				final HashMap<String, String> tagKeys = new HashMap<String, String>(4);
+				final HashMap<String, String> tagValues = new HashMap<String, String>(4);
 				for(int x = 0; x < 4; x++) {
 					final String key = getRandomFragment();
 					final String value = getRandomFragment();
 					tags.put(key, value);
-					tagKeys.put(key, key.getBytes());
-					tagValues.put(value, value.getBytes());
+					tagKeys.put(key, StringHelper.bytesToHex(randomBytes(2)));
+					tagValues.put(value, StringHelper.bytesToHex(randomBytes(2)));
 				}
 				final String metricName = getRandomFragment();
-				final byte[] muid = metricName.getBytes();
-				final byte[] tsuid = randomBytes(128);
+				final String muid = StringHelper.bytesToHex(randomBytes(2));
+				final byte[] tsuid = randomBytes(24);
 				if(i==0) {
 					log.info("TSUID Size: {}", tsuid.length);
 				}

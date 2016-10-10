@@ -49,6 +49,7 @@ import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.ExceptionHandler;
 import com.lmax.disruptor.RingBuffer;
@@ -336,6 +337,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		try {
 			final Config cfg = new Config(true);
 			final TSDB tsdb = new TSDB(cfg);
+//			PrivateAccessor.setFieldValue(tsdb, "rt_publisher", value);
 			final TSDBChronicleEventPublisher pub = new TSDBChronicleEventPublisher();
 			pub.initialize(tsdb);
 			StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
@@ -365,9 +367,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 //					FIXME: temporarilly calling this just so we can compare elapsed times
 //					FIXED: getTSMetaAsync is approx 20-30 slower than resolveUIDsAsync 
 //					getTSMetaAsync(meta);
-					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
+					resolveUIDsAsync(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,String>>>() {
 						@Override
-						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
+						public Void call(final EnumMap<UniqueIdType, Map<String, String>> map) throws Exception {
 							metaClone.resolved(
 									map.get(UniqueIdType.METRIC).values().iterator().next(), 
 									map.get(UniqueIdType.TAGK), 
@@ -393,9 +395,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		this.metricMetas = metricMetas;
 	}
 	
-	public Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>> testLookup(final TSDBMetricMeta meta) {
+	public Deferred<EnumMap<UniqueIdType, Map<String, String>>> testLookup(final TSDBMetricMeta meta) {
 		final Context ctx = resolveUidsTimer.time();
-		final EnumMap<UniqueIdType, Map<String, byte[]>> map = new EnumMap<UniqueIdType, Map<String, byte[]>>(UniqueIdType.class);
+		final EnumMap<UniqueIdType, Map<String, String>> map = new EnumMap<UniqueIdType, Map<String, String>>(UniqueIdType.class);
 		final TSDBMetricMeta m = metricMetas.get(meta.getTsuid());
 		map.put(UniqueIdType.METRIC, Collections.singletonMap(m.getMetricName(), m.getMetricUid()));
 		map.put(UniqueIdType.TAGK, m.getTagKeyUids());
@@ -418,9 +420,9 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 //					FIXME: temporarilly calling this just so we can compare elapsed times
 //					FIXED: getTSMetaAsync is approx 20-30 slower than resolveUIDsAsync 
 //					getTSMetaAsync(meta);
-					testLookup(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,byte[]>>>() {
+					testLookup(metaClone).addCallback(new Callback<Void, EnumMap<UniqueIdType,Map<String,String>>>() {
 						@Override
-						public Void call(final EnumMap<UniqueIdType, Map<String, byte[]>> map) throws Exception {
+						public Void call(final EnumMap<UniqueIdType, Map<String, String>> map) throws Exception {
 							metaClone.resolved(
 									map.get(UniqueIdType.METRIC).values().iterator().next(), 
 									map.get(UniqueIdType.TAGK), 
@@ -521,7 +523,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		// ================  Configure Outbound Queue
 		outQueueTextFormat = metricManager.getAndSetConfig(CONFIG_OUTQ_TEXT, DEFAULT_OUTQ_TEXT, properties, cfg);
 		outQueueDirName = metricManager.getAndSetConfig(CONFIG_OUTQ_DIR, DEFAULT_OUTQ_DIR, properties, cfg); 
-				
+		log.info("OutQueue: [{}]", outQueueDirName);
 		outQueueDir = new File(outQueueDirName);
 		outQueueBlockSize = metricManager.getAndSetConfig(CONFIG_OUTQ_BLOCKSIZE, DEFAULT_OUTQ_BLOCKSIZE, properties, cfg);
 		outQueueRollCycle = metricManager.getAndSetConfig(CONFIG_OUTQ_ROLLCYCLE, DEFAULT_OUTQ_ROLLCYCLE, properties, cfg);
@@ -705,17 +707,18 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 * @param meta The meta to resolve the UIDs for
 	 * @return A deferred handle to a map of name to UID pairs within a map keyed by uniqueidtypes (metricname, tag key, tag value)
 	 */
-	protected Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>> resolveUIDsAsync(final TSDBMetricMeta meta) {
+	protected Deferred<EnumMap<UniqueIdType, Map<String, String>>> resolveUIDsAsync(final TSDBMetricMeta meta) {
 		final Context ctx = resolveUidsTimer.time();
 		final int tsize = meta.getTags().size();
-		final Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>> resultDef = new Deferred<EnumMap<UniqueIdType, Map<String, byte[]>>>();
-		final EnumMap<UniqueIdType, Map<String, byte[]>> resolvedMap = new EnumMap<UniqueIdType, Map<String, byte[]>>(UniqueIdType.class);
+		final Deferred<EnumMap<UniqueIdType, Map<String, String>>> resultDef = new Deferred<EnumMap<UniqueIdType, Map<String, String>>>();
+		final EnumMap<UniqueIdType, Map<String, String>> resolvedMap = new EnumMap<UniqueIdType, Map<String, String>>(UniqueIdType.class);
 		final byte[] metricUid = new byte[metrics_width];
 		System.arraycopy(meta.getTsuid(), 0, metricUid, 0, metrics_width);
-		resolvedMap.put(UniqueIdType.METRIC, Collections.singletonMap(meta.getMetricName(), metricUid));
-		resolvedMap.put(UniqueIdType.TAGK, new HashMap<String, byte[]>(tsize));
-		resolvedMap.put(UniqueIdType.TAGV, new HashMap<String, byte[]>(tsize));
-		final ArrayList<Deferred<byte[]>> completion = new ArrayList<Deferred<byte[]>>((tsize * 2));		
+		resolvedMap.put(UniqueIdType.METRIC, Collections.singletonMap(meta.getMetricName(), UniqueId.uidToString(metricUid)));
+		resolvedMap.put(UniqueIdType.TAGK, new HashMap<String, String>(tsize));
+		resolvedMap.put(UniqueIdType.TAGV, new HashMap<String, String>(tsize));
+		final ArrayList<Deferred<byte[]>> completion = new ArrayList<Deferred<byte[]>>((tsize * 2));
+		
 		for (final Map.Entry<String, String> entry : meta.getTags().entrySet()) {
 			final String tagKey = entry.getKey();
 			final String tagValue = entry.getValue();
@@ -723,7 +726,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			tagKeyDef.addCallback(new Callback<Void, byte[]>(){
 				@Override
 				public Void call(final byte[] uid) throws Exception {
-					resolvedMap.get(UniqueIdType.TAGK).put(tagKey, uid);
+					resolvedMap.get(UniqueIdType.TAGK).put(tagKey, UniqueId.uidToString(uid));
 					return null;
 				}
 			});
@@ -732,7 +735,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 			tagValueDef.addCallback(new Callback<Void, byte[]>(){
 				@Override
 				public Void call(final byte[] uid) throws Exception {
-					resolvedMap.get(UniqueIdType.TAGV).put(tagValue, uid);
+					resolvedMap.get(UniqueIdType.TAGV).put(tagValue, UniqueId.uidToString(uid));
 					return null;
 				}
 			});
@@ -756,7 +759,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 * @param timeout The timeout on the operation in ms.
 	 * @return A map of name to UID pairs within a map keyed by uniqueidtypes (metricname, tag key, tag value)
 	 */
-	protected EnumMap<UniqueIdType, Map<String, byte[]>> resolveUIDs(final TSDBMetricMeta meta, final long timeout) {
+	protected EnumMap<UniqueIdType, Map<String, String>> resolveUIDs(final TSDBMetricMeta meta, final long timeout) {
 		try {
 			return resolveUIDsAsync(meta).join(timeout);
 		} catch (Exception ex) {
@@ -770,7 +773,7 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 * @param meta The meta to resolve the UIDs for
 	 * @return A map of name to UID pairs within a map keyed by uniqueidtypes (metricname, tag key, tag value)
 	 */
-	protected EnumMap<UniqueIdType, Map<String, byte[]>> resolveUIDs(final TSDBMetricMeta meta) {
+	protected EnumMap<UniqueIdType, Map<String, String>> resolveUIDs(final TSDBMetricMeta meta) {
 		return resolveUIDs(meta, 5000);
 	}
 	

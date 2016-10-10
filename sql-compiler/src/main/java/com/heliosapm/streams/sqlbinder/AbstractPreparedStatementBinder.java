@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.sqlbinder;
 
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -46,6 +47,8 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	protected final AtomicLong execCounter = new AtomicLong(0L);	
 	/** The error counter */
 	protected final AtomicLong errorCounter = new AtomicLong(0L);
+	/** The retrieved row counter */
+	protected final AtomicLong rowCounter = new AtomicLong(0L);
 
 	/** A sliding window of ps execution elapsed times in ns. */
 	protected final ConcurrentLongSlidingWindow execTimes;
@@ -80,7 +83,7 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 			tmpClass = (Class<? extends PreparedStatement>) Class.forName("oracle.jdbc.OraclePreparedStatement");
 			tmpMethod = tmpClass.getDeclaredMethod("registerReturnParameter", int.class, int.class);
 		} catch (Exception ex) {
-			ex.printStackTrace(System.err);
+//			ex.printStackTrace(System.err);
 		}
 		ORA_PS_CLASS = tmpClass;
 		ORA_PS_REGOUT = tmpMethod;
@@ -118,7 +121,7 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	@Override
 	public void bind(final PreparedStatement ps, final Object... args) {		
 		try {
-			doBind(ps.unwrap(ORA_PS_CLASS), args);
+			doBind(ps, args);
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			throw new RuntimeException(ex);
@@ -131,20 +134,22 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	 */
 	@Override
 	public Object[] unbind(final ResultSet rset) {
+//		if(colCount==0) return EMPTY_OBJ_ARR;
+//		final Object[] row = new Object[colCount];
+//		try {
+//			for(int i = 0; i < colCount; i++) {
+//				final NVP<Boolean, Class<?>> colType = resultSetSQLTypes[i];
+//				row[i] = rset.getObject(i+1, colType.getValue());
+//				if(colType.getKey() && rset.wasNull()) {
+//					row[i] = null;
+//				}
+//			}
+//			return row;
+//		} catch (Exception ex) {
+//			throw new RuntimeException("Failed to unbind result set", ex);
+//		}
 		if(colCount==0) return EMPTY_OBJ_ARR;
-		final Object[] row = new Object[colCount];
-		try {
-			for(int i = 0; i < colCount; i++) {
-				final NVP<Boolean, Class<?>> colType = resultSetSQLTypes[i];
-				row[i] = rset.getObject(i+1, colType.getValue());
-				if(colType.getKey() && rset.wasNull()) {
-					row[i] = null;
-				}
-			}
-			return row;
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to unbind result set", ex);
-		}
+		return doUnbind(rset);
 	}
 	
 	public abstract void doBind(final PreparedStatement ps, final Object... args);
@@ -161,6 +166,8 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 			throw new RuntimeException(ex);			
 		}
 	}
+	
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -204,6 +211,7 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	public long getExecutionCount() {
 		return execCounter.get();
 	}
+	
 	
 	/**
 	 * {@inheritDoc}

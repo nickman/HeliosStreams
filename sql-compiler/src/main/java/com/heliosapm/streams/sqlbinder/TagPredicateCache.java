@@ -155,10 +155,14 @@ public class TagPredicateCache {
 
 
 
+		/**
+		 * {@inheritDoc}
+		 * @see com.heliosapm.streams.sqlbinder.SQLWorker.ResultSetHandler#onRow(int, int, java.lang.Object[])
+		 */
 		@Override
-		public boolean onRow(final int rowId, final Object...columnValues) {
+		public boolean onRow(final int rowId, final int columnCount, final ResultSet rset) {
 			try {
-				results.add((String)columnValues[0]);
+				results.add(rset.getString(1));
 			} catch (Exception ex) {
 				ex.printStackTrace(System.err);
 			}

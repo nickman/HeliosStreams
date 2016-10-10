@@ -25,6 +25,7 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Connection;
+import java.sql.JDBCType;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -160,11 +161,32 @@ public class SQLWorker {
 		 * Callback on the next row. Implementations should not call {@link ResultSet#next()} unless 
 		 * it is intended to skip rows.
 		 * @param rowId The row sequence id, starting at zero.
-		 * @param columns The unbound row
+		 * @param columnCount The number of columns
+		 * @param rset the result set, prenavigated to the current row
 		 * @return true to contine processing, false otherwise
 		 */
-		public boolean onRow(int rowId, Object... columns);
+		public boolean onRow(int rowId, int columnCount, ResultSet rset);
 	}
+	
+	/**
+	 * <p>Title: ResultSetRowDataHandler</p>
+	 * <p>Description: Defines an object that can be passed into a SQLWorker query and handle the unbound result row.</p> 
+	 * <p>Company: Helios Development Group LLC</p>
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>net.opentsdb.catalog.SQLWorker.ResultSetHandler</code></p>
+	 */
+	public static interface ResultSetRowDataHandler {
+		/**
+		 * Callback on the next row. Implementations should not call {@link ResultSet#next()} unless 
+		 * it is intended to skip rows.
+		 * @param rowId The row sequence id, starting at zero.
+		 * @param columnCount The number of columns
+		 * @param columnValues An array of objects representing the current row
+		 * @return true to contine processing, false otherwise
+		 */
+		public boolean onRow(int rowId, int columnCount, Object...columnValues);
+	}
+	
 	
 	/**
 	 * Creates a ResultSet proxy that will close the parent statement and connection when the result set is closed.
@@ -368,7 +390,7 @@ public class SQLWorker {
 			int rowId = 0;
 			rset = executeQuery(ps, binder);
 			while(rset.next()) {				
-				if(!rowHandler.onRow(rowId, binder.unbind(rset))) break;
+				if(!rowHandler.onRow(rowId, binder.colCount,  rset)) break;
 			}
 			return rowId+1;
 		} catch (Exception ex) {
@@ -381,6 +403,41 @@ public class SQLWorker {
 	}
 	
 	/**
+	 * Executes a query with a {@link ResultSetHandler} that handles the returned rows.
+	 * @param conn An optional connection. If not supplied, a new connection will be acquired, and closed when used.
+	 * @param sqlText The SQL query
+	 * @param rowHandler The row handler to handle the rows returned
+	 * @param args The bind variables
+	 * @return the number of rows retrieved
+	 */
+	public int executeQuery(Connection conn, String sqlText, ResultSetRowDataHandler rowDataHandler, Object...args) {
+		PreparedStatement ps = null;
+		ResultSet rset = null;
+		final boolean newConn = conn==null;
+		try {
+			final AbstractPreparedStatementBinder binder = binderFactory.getBinder(sqlText);
+			if(newConn) {
+				conn = dataSource.getConnection();
+			}
+			ps = conn.prepareStatement(sqlText);
+			binder.bind(ps, args);
+			int rowId = 0;
+			rset = executeQuery(ps, binder);
+			while(rset.next()) {				
+				if(!rowDataHandler.onRow(rowId, binder.colCount,  binder.unbind(rset))) break;
+			}
+			return rowId+1;
+		} catch (Exception ex) {
+			throw new RuntimeException("SQL Query Failure [" + sqlText + "]", ex);
+		} finally {
+			if(rset!=null) try { rset.close(); } catch (Exception x) { /* No Op */ }
+			if(ps!=null) try { ps.close(); } catch (Exception x) { /* No Op */ }
+			if(newConn && conn!=null) try { conn.close(); } catch (Exception x) { /* No Op */ }				
+		}		
+	}
+	
+	
+	/**
 	 * Executes a query using a new connection with a {@link ResultSetHandler} that handles the returned rows.
 	 * @param sqlText The SQL query
 	 * @param rowHandler The row handler to handle the rows returned
@@ -390,6 +447,18 @@ public class SQLWorker {
 	public int executeQuery(String sqlText, ResultSetHandler rowHandler, Object...args) {
 		return executeQuery(null, sqlText, rowHandler, args);
 	}
+	
+	/**
+	 * Executes a query using a new connection with a {@link ResultSetHandler} that handles the returned rows.
+	 * @param sqlText The SQL query
+	 * @param rowHandler The row handler to handle the rows returned
+	 * @param args The bind variables
+	 * @return the number of rows retrieved
+	 */
+	public int executeQuery(String sqlText, ResultSetRowDataHandler rowDataHandler, Object...args) {
+		return executeQuery(null, sqlText, rowDataHandler, args);
+	}
+	
 	
 	/**
 	 * Executes the passed query and returns a result set
@@ -632,7 +701,7 @@ public class SQLWorker {
 	 * @return The string from the first column of the first row
 	 */
 	public String sqlForString(String sqlText, Object...args) {		
-		return sqlForString(null, sqlText, args);
+		return sqlForString((Connection)null, sqlText, args);
 	}
 	
 	/**
@@ -665,7 +734,9 @@ public class SQLWorker {
 				conn = dataSource.getConnection();			
 			}
 			ps = conn.prepareStatement(sqlText);
-			binder.bind(ps, args);
+			if(args!=null && args.length>0) {
+				binder.bind(ps, args);
+			}
 			rset = executeQuery(ps, binder);
 			if(!rset.next()) {
 				if(defaultValue==null) throw new RuntimeException("Query [" + sqlText + "] returned no rows but default value was null");
@@ -823,6 +894,7 @@ public class SQLWorker {
 	public double sqlForDouble(final Double defaultValue, final String sqlText, final Object...args) {
 		return sqlForDouble(null, defaultValue, sqlText, args);
 	}
+	
 	
 	
 	/**
@@ -1101,6 +1173,7 @@ public class SQLWorker {
 				classPool.appendClassPath(new LoaderClassPath(st.getClass().getClassLoader()));
 				binderIface = classPool.get(PreparedStatementBinder.class.getName());
 				parentClass = classPool.get(AbstractPreparedStatementBinder.class.getName());
+				classPool.importPackage("com.heliosapm.utils.tuples");
 				bindMethod = parentClass.getDeclaredMethod("doBind");
 				unbindMethod = parentClass.getDeclaredMethod("doUnbind");
 				
@@ -1150,20 +1223,24 @@ public class SQLWorker {
 			ResultSet rset = null;
 			ResultSetMetaData rsmd = null;
 			NVP<Boolean, Class<?>>[] resultSetTypes = null;
+			JDBCType[] rsetTypes = null;
 			boolean isQuery = false;
 			try {
 				final String className = "PreparedStatementBinder" + serial.incrementAndGet();
 				conn = ds.getConnection();				
 				ps = conn.prepareStatement(sqlText);//.unwrap(AbstractPreparedStatementBinder.ORA_PS_CLASS);
 				try {
-					rset = ps.getResultSet();
-					isQuery = true;
-					rsmd = rset.getMetaData();
-					final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
-					final int colCount = rsmd.getColumnCount();
-					resultSetTypes = new NVP[colCount];
-					for(int i = 0; i < colCount; i++) {
-						resultSetTypes[i] = new NVP<Boolean, Class<?>>(rsmd.isNullable(i+1)!=ResultSetMetaData.columnNoNulls, Class.forName(rsmd.getColumnClassName(i+1), true, classLoader));
+					rsmd = ps.getMetaData();
+					isQuery = rsmd!=null;
+					if(isQuery) {
+						final ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+						final int colCount = rsmd.getColumnCount();
+						rsetTypes = new JDBCType[colCount];
+						resultSetTypes = new NVP[colCount];
+						for(int i = 0; i < colCount; i++) {
+							rsetTypes[i] = JDBCType.valueOf(rsmd.getColumnType(i+1));
+							resultSetTypes[i] = new NVP<Boolean, Class<?>>(rsmd.isNullable(i+1)!=ResultSetMetaData.columnNoNulls, Class.forName(rsmd.getColumnClassName(i+1), true, classLoader));
+						}
 					}
 				} catch (Exception ex) {
 					/* No Op */
@@ -1193,11 +1270,136 @@ public class SQLWorker {
 //				CtNewMethod.copy(bindMethod, binderClazz, null);
 //				bindm.setExceptionTypes(sqlEx);
 				StringBuilder b = new StringBuilder("{ execCounter.incrementAndGet(); ");
+				StringBuilder ub = new StringBuilder();
 				final int inBinds = pmd.getParameterCount();
 				for(int i = 0; i < returningBinds; i++) {
 					// registerOutputParameter(final PreparedStatement ps, final int index, final int type) 
 					b.append("registerOutputParameter($1, ").append(i+1 + inBinds).append(", ").append(Types.VARCHAR).append(");");
 				}
+				if(isQuery && resultSetTypes.length > 0) {
+					final int colCount = resultSetTypes.length;
+					ub.append("{ rowCounter.incrementAndGet(); final Object[] row = new Object[colCount]; try { ");
+					for(int i = 0; i < colCount; i++) { 
+						final NVP<Boolean, Class<?>> colType = resultSetTypes[i];
+						switch(rsetTypes[i]) {
+						case ARRAY:
+							ub.append("\n\trow[" + i + "] = $1.getArray(" + (i+1) + ").getArray();");
+							break;
+						case BIGINT:
+							ub.append("\n\trow[" + i + "] = $1.getBigDecimal(" + (i+1) + ");");
+							break;
+						case BINARY:
+							ub.append("\n\trow[" + i + "] = $1.getBinaryStream(" + (i+1) + ");");
+							break;
+						case BLOB:
+							ub.append("\n\trow[" + i + "] = $1.getBlob(" + (i+1) + ");");
+							break;
+						case BOOLEAN:
+							ub.append("\n\trow[" + i + "] = $1.getBoolean(" + (i+1) + ");");
+							break;
+						case CHAR:
+							ub.append("\n\trow[" + i + "] = $1.getString(" + (i+1) + ");");
+							break;
+						case CLOB:
+							ub.append("\n\trow[" + i + "] = $1.getClob(" + (i+1) + ");");
+							break;
+						case DATE:
+							ub.append("\n\trow[" + i + "] = $1.getDate(" + (i+1) + ");");
+							break;
+						case DECIMAL:
+							ub.append("\n\trow[" + i + "] = ($w)$1.getDouble(" + (i+1) + ");");
+							break;
+						case DOUBLE:
+							ub.append("\n\trow[" + i + "] = ($w)$1.getDouble(" + (i+1) + ");");
+							break;
+						case FLOAT:
+							ub.append("\n\trow[" + i + "] = ($w)$1.getFloat(" + (i+1) + ");");
+							break;
+						case INTEGER:
+							ub.append("\n\trow[" + i + "] = ($w)$1.getInt(" + (i+1) + ");");
+							break;
+						case JAVA_OBJECT:
+							ub.append("\n\trow[" + i + "] = $1.getObject(" + (i+1) + ");");
+							break;
+						case LONGNVARCHAR:
+							ub.append("\n\trow[" + i + "] = $1.getString(" + (i+1) + ");");
+							break;
+						case LONGVARBINARY:
+							ub.append("\n\trow[" + i + "] = $1.getBinaryStream(" + (i+1) + ");");
+							break;
+						case LONGVARCHAR:
+							ub.append("\n\trow[" + i + "] = $1.getString(" + (i+1) + ");");
+							break;
+						case NCHAR:
+							ub.append("\n\trow[" + i + "] = $1.getString(" + (i+1) + ");");
+							break;
+						case NCLOB:
+							ub.append("\n\trow[" + i + "] = $1.getNClob(" + (i+1) + ");");
+							break;
+						case NULL:
+							ub.append("\n\trow[" + i + "] = null;");
+							break;
+						case NUMERIC:
+							ub.append("\n\trow[" + i + "] = ($w)$1.getDouble(" + (i+1) + ");");
+							break;
+						case NVARCHAR:
+							ub.append("\n\trow[" + i + "] = $1.getNString(" + (i+1) + ");");
+							break;
+						case REF:
+							ub.append("\n\trow[" + i + "] = $1.getRef(" + (i+1) + ");");
+							break;
+						case ROWID:
+							ub.append("\n\trow[" + i + "] = $1.getRowId(" + (i+1) + ");");
+							break;
+						case SMALLINT:
+							ub.append("\n\trow[" + i + "] = ($w)$1.getShort(" + (i+1) + ");");
+							break;
+						case SQLXML:
+							ub.append("\n\trow[" + i + "] = $1.getSQLXML(" + (i+1) + ");");
+							break;
+						case STRUCT:
+							ub.append("\n\trow[" + i + "] = $1.getObject(" + (i+1) + ");");
+							break;
+						case TIME:
+							ub.append("\n\trow[" + i + "] = $1.getTime(" + (i+1) + ");");
+							break;
+						case TIMESTAMP:
+						case TIMESTAMP_WITH_TIMEZONE:
+						case TIME_WITH_TIMEZONE:
+							ub.append("\n\trow[" + i + "] = $1.getTimestamp(" + (i+1) + ");");
+							break;
+						case TINYINT:
+							ub.append("\n\trow[" + i + "] = ($w)$1.getShort(" + (i+1) + ");");
+							break;
+						case VARBINARY:
+							ub.append("\n\trow[" + i + "] = $1.getBinaryStream(" + (i+1) + ");");
+							break;
+						case VARCHAR:
+							ub.append("\n\trow[" + i + "] = $1.getString(" + (i+1) + ");");
+							break;
+						default:
+							ub.append("\n\trow[" + i + "] = $1.getObject(" + (i+1) + ");");
+							break;							
+						}
+						if(colType.getKey()) {
+							ub.append("\n\tif($1.wasNull()) row[" + i + "] = null;");
+						}
+					}
+//					"	for(int i = 0; i < colCount; i++) { " +
+//					"		final NVP<Boolean, Class<?>> colType = resultSetSQLTypes[i]; " +
+//					"		row[i] = $1.getObject(i+1, colType.getValue()); " +
+//					"		if(colType.getKey() && rset.wasNull()) { " +
+//					"			row[i] = null; " +
+//					"		} " +
+//					"	} " +
+					
+					ub.append("	return row; } catch (Exception ex) { throw new RuntimeException(\"Failed to unbind result set\", ex); }}");
+				} else {
+					ub.append("return EMPTY_OBJ_ARR;");
+				}
+				unbindm.setBody(ub.toString());
+				binderClazz.addMethod(unbindm);
+				
 				for(int i = 0; i < inBinds; i++) {
 					final int sqlType = pmd.getParameterType(i+1);
 					String objRef = new StringBuilder("$2[").append(i).append("]").toString();
@@ -1221,7 +1423,7 @@ public class SQLWorker {
 				binderClazz.writeFile(SAVE_DIR);
 				Class<AbstractPreparedStatementBinder> javaClazz = binderClazz.toClass(SQLWorker.class.getClassLoader(), SQLWorker.class.getProtectionDomain());
 				
-				psb = javaClazz.getConstructor(String.class, int.class, Class[].class).newInstance(sqlText, windowSize, resultSetTypes);
+				psb = javaClazz.getConstructor(String.class, int.class, NVP[].class).newInstance(sqlText, windowSize, resultSetTypes);
 				JMXHelper.registerMBean(psb, psb.getObjectName());
 				binderClazz.detach();
 				return psb;
@@ -1307,6 +1509,56 @@ public class SQLWorker {
 			throw new RuntimeException(ex);
 		}
 	}
+	
+	/**
+	 * Executes the passed query statement and returns the first column of the first row as a String
+	 * @param conn An optional connection. If not supplied, a new connection will be acquired, and closed when used.
+	 * @param defaultValue The default value to return if no rows are found. Ignored if null, but if so, 
+	 * and no rows are returned, will throw an exception.
+	 * @param sqlText The query SQL text
+	 * @param args The bind arguments
+	 * @return The String from the first column of the first row
+	 */
+	public String sqlForString(Connection conn, final String defaultValue, final String sqlText, final Object...args) {
+		PreparedStatement ps = null;
+		ResultSet rset = null;
+		boolean newConn = conn==null;
+		try {
+			final AbstractPreparedStatementBinder binder = binderFactory.getBinder(sqlText);
+			if(newConn) {
+				conn = dataSource.getConnection();			
+			}
+			ps = conn.prepareStatement(sqlText);
+			binder.bind(ps, args);
+			rset = executeQuery(ps, binder);
+			if(!rset.next()) {
+				return defaultValue;
+			}
+			return rset.getString(1);
+		} catch (Exception ex) {
+			throw new RuntimeException("SQL Query Failure [" + sqlText + "]", ex);
+		} finally {
+			if(rset!=null) try { rset.close(); } catch (Exception x) { /* No Op */ }
+			if(ps!=null) try { ps.close(); } catch (Exception x) { /* No Op */ }
+			if(newConn && conn!=null) try { conn.close(); } catch (Exception x) { /* No Op */ }
+		}
+	}
+	
+
+	
+	/**
+	 * Executes the passed query statement and returns the first column of the first row as a String
+	 * @param defaultValue The default value to return if no rows are found. Ignored if null, but if so, 
+	 * and no rows are returned, will throw an exception.
+	 * @param sqlText The query SQL text
+	 * @param args The bind arguments
+	 * @return The String from the first column of the first row
+	 */
+	public String sqlForString(final String defaultValue, final String sqlText, final Object...args) {
+		return sqlForString(null, defaultValue, sqlText, args);
+	}
+	
+	
 	
 	/**
 	 * Determines if the passed {@link java.sql.Types} type code can 

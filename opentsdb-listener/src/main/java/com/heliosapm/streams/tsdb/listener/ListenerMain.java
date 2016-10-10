@@ -21,8 +21,12 @@ package com.heliosapm.streams.tsdb.listener;
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
-import java.sql.ResultSet;
+import java.sql.Connection;
+import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -37,12 +41,17 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
+import com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisher;
 import com.heliosapm.streams.opentsdb.ringbuffer.RBWaitStrategy;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
-import com.heliosapm.streams.sqlbinder.SQLWorker.ResultSetHandler;
+import com.heliosapm.streams.sqlbinder.SQLWorker.ResultSetRowDataHandler;
+import com.heliosapm.streams.tracing.TagKeySorter;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
+import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
+import com.heliosapm.utils.lang.StringHelper;
+import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import com.lmax.disruptor.EventHandler;
@@ -52,10 +61,13 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
 import net.openhft.chronicle.queue.ChronicleQueue;
+import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.RollCycle;
 import net.openhft.chronicle.queue.RollCycles;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
 import net.openhft.chronicle.wire.WireType;
+import net.opentsdb.core.TSDB;
+import net.opentsdb.utils.Config;
 
 /**
  * <p>Title: ListenerMain</p>
@@ -115,7 +127,15 @@ public class ListenerMain implements Closeable, Runnable {
 	/** The default tag value pk lookup cache spec */
 	public static final String DEFAULT_TAGV_CACHE = String.format("concurrencyLevel=%s,initialCapacity=%s,maximumSize=%s,recordStats", 
 			CORES, 2048, 1048 * 5
+	);
+	
+	/** The config key name for the metric name pk lookup cache spec */
+	public static final String CONFIG_METRIC_CACHE = "listener.cachespec.metric";
+	/** The default metric name pk lookup cache spec */
+	public static final String DEFAULT_METRIC_CACHE = String.format("concurrencyLevel=%s,initialCapacity=%s,maximumSize=%s,recordStats", 
+			CORES, 2048, 1048 * 5
 	); 
+	
 	
 	/** The config key name for the tag pair pk lookup cache spec */
 	public static final String CONFIG_TAGPAIR_CACHE = "listener.cachespec.tagpair";
@@ -129,6 +149,9 @@ public class ListenerMain implements Closeable, Runnable {
 	
 	/** The SQLWorker providing JDBC services to save meta to the DB */
 	protected final SQLWorker sqlWorker;
+	/** The Datasource providing connections to save meta to the DB */
+	protected final DefaultDataSource ds;
+	
 	
 	/** Instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
@@ -150,6 +173,9 @@ public class ListenerMain implements Closeable, Runnable {
 	/** Counter of uncaught exceptions in the dispatch handler */
 	protected final Counter dispatchExceptions = SharedMetricsRegistry.getInstance().counter("dispatchExceptions");
 	
+	/** The run thread */
+	protected Thread runThread = null;
+	
 	// ===============================================================================================
 	//		Guava Cache Config
 	// ===============================================================================================
@@ -157,8 +183,11 @@ public class ListenerMain implements Closeable, Runnable {
 	protected Cache<String, String> tagKeyCache;
 	/** The tag value cache */
 	protected Cache<String, String> tagValueCache;
+	/** The metric name cache */
+	protected Cache<String, String> tagMetricCache;	
 	/** The tag pair cache */
 	protected Cache<String, String> tagPairCache;
+	
 	
 	// ===============================================================================================
 	//		In Queue Config
@@ -217,14 +246,45 @@ public class ListenerMain implements Closeable, Runnable {
 		}
 	};
 	
+	// FQN_SEQ.NEXTVAL
+	
+	public static final String TSMETA_INSERT_SQL =
+		"INSERT INTO TSD_TSMETA " +
+		"(METRIC_UID,FQN,TSUID) VALUES " +
+		"(?,?,?) ";
+		
+		
+	
 	/** The dispatch handler */
 	protected final EventHandler<TSDBMetricMeta> dispatchHandler = new EventHandler<TSDBMetricMeta>() {
 		@Override
 		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
 			final Context ctx = dispatchHandlerTimer.time();
+			Connection conn = null;
 			try {
-				// TODO
+				log.info("Processing {}:{}...",  meta.getMetricName(), meta.getTags());
+				conn = ds.getConnection();
+				final String metricUid = tagMetricCache.get(meta.getMetricName(), uIDLoader("TSD_METRIC", meta.getMetricName(), meta.getMetricUid(), conn));
+				final Map<String, String> tagUids = new TreeMap<String, String>(TagKeySorter.INSTANCE);
+				
+				for(Map.Entry<String, String> tag: meta.getTags().entrySet()) {
+					final String tagKey = tag.getKey();
+					final String tagValue = tag.getValue();
+					final String tagKeyUid = meta.getTagKeyUids().get(tagKey);
+					final String tagValueUid = meta.getTagValueUids().get(tagValue);
+					final String tagPairUid = tagPairCache.get(tagKey + "=" + tagValue, 
+							tagPairLoader(tagKey, tagKeyUid, tagValue, tagValueUid, conn)
+						);
+ 
+					tagUids.put(tagKey, tagPairUid);
+				}
+				
+				sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, meta.getMetricName() + ":" + meta.getTags(), StringHelper.bytesToHex(meta.getTsuid()));
+				int porder = 1;
+				// insert fqn tagpairs
+				conn.commit();
 			} finally {
+				if(conn!=null) try { conn.close(); } catch (Exception x) {/* No Op */}
 				meta.reset();
 				ctx.stop();
 			}
@@ -236,9 +296,10 @@ public class ListenerMain implements Closeable, Runnable {
 	public ListenerMain(final Properties properties) {
 		log.info(">>>>> Starting TSDB Event Listener...");
 		
-		// ================  Configure Tag Caches
+		// ================  Configure Tag Caches		
 		tagKeyCache = CacheBuilder.from(statEnableSpec(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_TAGK_CACHE, DEFAULT_TAGK_CACHE, properties))).build();
 		tagValueCache = CacheBuilder.from(statEnableSpec(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_TAGV_CACHE, DEFAULT_TAGV_CACHE, properties))).build();
+		tagMetricCache = CacheBuilder.from(statEnableSpec(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_METRIC_CACHE, DEFAULT_METRIC_CACHE, properties))).build();
 		tagPairCache = CacheBuilder.from(statEnableSpec(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_TAGPAIR_CACHE, DEFAULT_TAGPAIR_CACHE, properties))).build();
 
 		// ================  Configure Outbound Queue
@@ -272,18 +333,55 @@ public class ListenerMain implements Closeable, Runnable {
 		dispatchRbWaitStrat = ConfigurationHelper.getEnumSystemThenEnvProperty(RBWaitStrategy.class, CONFIG_DISPATCHRB_WAITSTRAT, DEFAULT_DISPATCHRB_WAITSTRAT, properties);
 		dispatchRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, dispatchRbSize, dispatchRbThreadFactory, ProducerType.SINGLE, dispatchRbWaitStrat.waitStrategy(dispatchRbWaitStratConfig));
 		dispatchRbDisruptor.setDefaultExceptionHandler(dispatchExceptionHandler);
-		dispatchRbDisruptor.handleEventsWith(dispatchHandler);
-		dispatchRb = dispatchRbDisruptor.start();
+		dispatchRbDisruptor.handleEventsWith(dispatchHandler);		
 		log.info("Started MetricDispatch RingBuffer");
 		
-		sqlWorker = DefaultDataSource.getInstance().getSQLWorker();
+		ds = DefaultDataSource.getInstance();
+		sqlWorker = SQLWorker.getInstance(ds.getDataSource());
+		
+		final CountDownLatch keyLoadLatch = asynchLoadUIDCache("tagKeyCache", tagKeyCache, "SELECT XUID, NAME FROM TSD_TAGK");
+		final CountDownLatch valueLoadLatch = asynchLoadUIDCache("tagValueCache", tagValueCache, "SELECT XUID, NAME FROM TSD_TAGV");
+		asynchLoadUIDCache("tagMetricCache", tagMetricCache, "SELECT XUID, NAME FROM TSD_METRIC");
+		asynchLoadUIDCache("tagPairCache", tagPairCache, "SELECT XUID, NAME FROM TSD_TAGPAIR", keyLoadLatch, valueLoadLatch);
 		
 		
 		log.info("<<<<< TSDB Event Listener Ready");
 	}
 	
+	public void start() {
+		log.info(">>>>> Starting Listener....");
+		runThread = new Thread("RunThread") {
+			public void run() {
+				final ExcerptTailer tailer = inQueue.createTailer();
+				final TSDBMetricMeta meta = TSDBMetricMeta.FACTORY.newInstance(); 
+				while(running.get()) {
+					try {
+						while(tailer.readBytes(meta.reset())) {
+							long sequence = dispatchRb.next();
+							TSDBMetricMeta event = dispatchRb.get(sequence);
+							event.load(meta).resolved(meta);
+							dispatchRb.publish(sequence);
+						}
+					} catch (Exception ex) {
+						log.error("RunThread Error", ex);
+					}
+				}
+			}
+		};
+		runThread.setDaemon(true);
+		running.set(true);
+		dispatchRb = dispatchRbDisruptor.start();
+		runThread.start();
+		
+		
+		
+		
+		log.info("<<<<< Listener Started.");
+	}
+	
+	
 	private static String statEnableSpec(final String spec) {
-		if(spec.toLowerCase().indexOf("recordStats")==-1) {
+		if(spec.indexOf("recordStats")==-1) {
 			return spec + "," + "recordStats";
 		}
 		return spec;
@@ -298,27 +396,110 @@ public class ListenerMain implements Closeable, Runnable {
 	}
 	
 	
-	protected void asynchLoadCache(final String cacheName, final Cache<String, String> cache, final String loadingSql) {
+	/**
+	 * Loads the passed cache from the DB at startup
+	 * @param cacheName The cache name
+	 * @param cache The cache instance
+	 * @param loadingSql The SQL for which the results will be used to populate the cache
+	 * @param latches An optional array of latches to wait on before starting the load
+	 * @return a completion latch on this load
+	 */
+	protected CountDownLatch asynchLoadUIDCache(final String cacheName, final Cache<String, String> cache, final String loadingSql, final CountDownLatch...latches) {
+		final CountDownLatch latch = new CountDownLatch(1);
 		dispatchRbThreadFactory.newThread(new Runnable(){
 			public void run() {
+				if(latches!=null && latches.length > 0) {
+					for(CountDownLatch cdl: latches) {
+						try {
+							cdl.await();
+						} catch (Exception ex) {
+							log.error("Failed waiting on latches for cache [{}]", cacheName, ex);
+						}
+					}
+					log.info("Finished waiting on latches. Starting to load cache [{}]", cacheName);
+				}
+				log.info("Loading Cache [{}]", cacheName);
 				final ElapsedTime et = SystemClock.startClock();
-				sqlWorker.executeQuery(loadingSql, new ResultSetHandler(){
+				final int[] rowCount = new int[1];
+				sqlWorker.executeQuery(loadingSql, new ResultSetRowDataHandler(){
 					@Override
-					public boolean onRow(final int rowId, final ResultSet rset) {
-						// TODO Auto-generated method stub
-						return false;
+					public boolean onRow(final int rowId, final int colCount, final Object...rowData) {
+						cache.put((String)rowData[1], (String)rowData[0]);
+						rowCount[0] = rowId;
+						return true;
 					}
 				});
+				log.info("Loaded {} rows into {} cache: {}", rowCount[0], cacheName, et.printAvg("Rows", rowCount[0]));
+				latch.countDown();
 			}
+			
 		}).start();
+		return latch;
 	}
+	
+	
+	// ===============================================================================================
+	//		Guava Cache Loader Callables
+	// ===============================================================================================
+	/** The tag cache loader  */
+	protected Callable<String> uIDLoader(final String tableName, final String name, final String xuid, final Connection conn) {
+		final String SELECT_SQL = String.format("SELECT XUID FROM %s WHERE NAME = ?", tableName);
+		final String INSERT_SQL = String.format("INSERT INTO %s (XUID, VERSION, NAME, CREATED) VALUES(?,?,?,?)", tableName);		
+		return new Callable<String>() {
+			@Override
+			public String call() throws Exception {
+				if(sqlWorker.sqlForString(conn, null, SELECT_SQL, name)==null) {
+					sqlWorker.execute(conn, INSERT_SQL, xuid, 1, name, System.currentTimeMillis());
+				}
+				return xuid;
+			}
+		};
+	}
+
+	
+	
+	/** The tag pair loader callable */
+	protected Callable<String> tagPairLoader(final String tagKey, final String tagKeyUid, final String tagValue, final String tagValueUid, final Connection conn) {
+		final String SELECT_SQL = "SELECT XUID FROM TSD_TAGPAIR WHERE TAGK = ? AND TAGV = ?";
+		final String INSERT_SQL = "INSERT INTO TSD_TAGPAIR (XUID, TAGK, TAGV, NAME) VALUES(?,?,?,?)";		
+		return new Callable<String>() {
+			@Override
+			public String call() throws Exception {
+				final String name = StringHelper.fastConcat(tagKey, "=", tagValue);
+				final String xuid = StringHelper.fastConcat(tagKeyUid, tagValueUid);				
+				if(sqlWorker.sqlForString(conn, null, SELECT_SQL, tagKeyUid, tagValueUid)==null) {
+					tagKeyCache.get(tagKey, uIDLoader("TSD_TAGK", tagKey, tagKeyUid, conn));
+					tagValueCache.get(tagValue, uIDLoader("TSD_TAGV", tagValue, tagValueUid, conn));
+					sqlWorker.execute(conn, INSERT_SQL, xuid, tagKeyUid, tagValueUid, name);
+				}
+				return xuid;
+			}
+		};
+	}
+
+	
+	
 
 	
 	/**
 	 * @param args
 	 */
 	public static void main(String[] args) {
+		try {
+			final ListenerMain lm = new ListenerMain(new Properties());
+			lm.start();
+			StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
+				public void run() {
+					lm.stop();
+					System.exit(0);
+				}
+			}).run();
+		} catch (Exception ex) {
+			ex.printStackTrace(System.err);
+			System.exit(-1);
+		}	
 	}
+		
 	
 	public void stop() {
 	}
@@ -329,8 +510,6 @@ public class ListenerMain implements Closeable, Runnable {
 	}
 	
 	
-	public void start() {
-	}
 
 
 	/**

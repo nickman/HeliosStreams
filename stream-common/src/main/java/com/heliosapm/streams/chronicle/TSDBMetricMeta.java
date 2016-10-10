@@ -18,35 +18,24 @@ under the License.
  */
 package com.heliosapm.streams.chronicle;
 
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 import java.util.TreeMap;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import javax.xml.bind.DatatypeConverter;
 
 import com.codahale.metrics.Timer;
 import com.heliosapm.streams.tracing.TagKeySorter;
+import com.heliosapm.utils.lang.StringHelper;
 import com.lmax.disruptor.EventFactory;
-import com.stumbleupon.async.Callback;
-import com.stumbleupon.async.Deferred;
 
 import net.openhft.chronicle.bytes.BytesIn;
 import net.openhft.chronicle.bytes.BytesMarshallable;
 import net.openhft.chronicle.bytes.BytesOut;
-import net.openhft.chronicle.bytes.MappedBytes;
 import net.openhft.chronicle.core.io.IORuntimeException;
-import net.openhft.chronicle.wire.JSONWire;
 import net.openhft.chronicle.wire.Marshallable;
 import net.openhft.chronicle.wire.WireIn;
 import net.openhft.chronicle.wire.WireOut;
-import scala.util.parsing.json.JSONObject;
 
 
 /**
@@ -63,141 +52,29 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	/** The metric name */
 	protected String metricName = null;
 	/** The metric uid */
-	protected byte[] metricUid = null;
+	protected String metricUid = null;
 	
 	/** The metric tsuid */
 	protected byte[] tsuid = null;	
 	/** The metric tags */
 	protected final TreeMap<String, String> tags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
 	/** The tag key UIDs */
-	protected final MarshallableUIDMap tagKeyUids = new MarshallableUIDMap(8);
+	protected final TreeMap<String, String>  tagKeyUids = new TreeMap<String, String>(TagKeySorter.INSTANCE);
 	/** The tag value UIDs */
-	protected final MarshallableUIDMap tagValueUids = new MarshallableUIDMap(8);
+	protected final TreeMap<String, String>  tagValueUids = new TreeMap<String, String>(TagKeySorter.INSTANCE);
 	
 	/** The end to end timer start time in ms. */
 	protected long endToEndStartTime = -1L;
 	
-	/** A random value generator */
-	protected static final Random RANDOM = new Random(System.currentTimeMillis());
-	public static byte[] randomBytes(int size) {
-		final byte[] bytes = new byte[size];
-		RANDOM.nextBytes(bytes);
-		return bytes;
-	}
-	/**
-	 * Generates an array of random strings created from splitting a randomly generated UUID.
-	 * @return an array of random strings
-	 */
-	public static String[] getRandomFragments() {
-		return UUID.randomUUID().toString().split("-");
-	}
-	/**
-	 * Generates a random string made up from a UUID.
-	 * @return a random string
-	 */
-	public static String getRandomFragment() {
-		return UUID.randomUUID().toString();
-	}
-	/**
-	 * Returns a random positive int within the bound
-	 * @param bound the bound on the random number to be returned. Must be positive. 
-	 * @return a random positive int
-	 */
-	public static int nextPosInt(int bound) {
-		return Math.abs(RANDOM.nextInt(bound));
-	}
-	
 	
 
 	
-	public static void main(String[] args) {
-		log("TSDBMetricMeta Test");
-		final boolean TEXT = false;
-		File tmp = null;
-		MappedBytes bytes = null;
-		
-		try {
-			tmp = File.createTempFile("tsdbmetricmeta", ".bytes");
-			bytes = MappedBytes.mappedBytes(tmp, 2048);
-			final JSONWire jw = new JSONWire(bytes);
-			final long startPos = bytes.writePosition();
-			log("Bytes Pos:" + startPos);
-			final TSDBMetricMeta m = TSDBMetricMeta.FACTORY.newInstance();
-			final String mn = getRandomFragment();
-			final HashMap<String, String> tags = new HashMap<String, String>(4);
-			
-			final HashMap<String, byte[]> tagKeys = new HashMap<String, byte[]>(4);
-			final HashMap<String, byte[]> tagValues = new HashMap<String, byte[]>(4);
-			for(int y = 0; y < 4; y++) {
-				String[] keys = getRandomFragments();
-				String[] values = getRandomFragments();
-				tags.put(keys[0], values[0]);
-				tagKeys.put(keys[0], randomBytes(6));
-				tagValues.put(values[0], randomBytes(6));
-			}
-			byte[] tsuid = randomBytes(nextPosInt(60) + 4);
-			m.load(mn, tags, tsuid);
-			m.metricUidCallback.call(randomBytes(6));
-			m.tagKeyUids.putAll(tagKeys);
-			m.tagValueUids.putAll(tagValues);
-			m.startTimer();
-			if(TEXT) {				
-				m.writeMarshallable(jw);				
-			} else {
-				m.writeMarshallable(bytes);
-			}
-			
-			final long endPos = bytes.writePosition();
-			if(TEXT) {
-				log("JSON:\n==============================================================\n" + jw.toString());
-			}
-			log("M1:\n==============================================================\n" + m);
-			if(TEXT) {
-				m.reset().readMarshallable(jw);
-			} else {
-				m.reset().readMarshallable(bytes);
-			}
-			log("M2:\n==============================================================\n" + m);
-			log("Size:" + (endPos - startPos));
-//			log("Content:\n" + jw.toString());
-		} catch (Exception ex) {
-			ex.printStackTrace(System.err);
-		} finally {
-			if(bytes!=null) try { bytes.close(); } catch (Exception x) {/* No Op */}
-			if(tmp!=null) tmp.delete();
-		}
-	}
 	
 	public static void log(final Object msg) {
 		System.out.println(msg);
 	}
 	
 	
-	public final Callback<Deferred<Void>, byte[]> metricUidCallback = new Callback<Deferred<Void>, byte[]>() {
-		/**
-		 * Callback with the metric uid
-		 * {@inheritDoc}
-		 * @see com.stumbleupon.async.Callback#call(java.lang.Object)
-		 */
-		@Override
-		public Deferred<Void> call(final byte[] uid) throws Exception {
-			metricUid = uid;
-			return null;
-		}
-	};
-	
-	public final Callback<Void, ArrayList<byte[]>> tagUidsCallback = new Callback<Void, ArrayList<byte[]>>() {
-		/**
-		 * Callback with tags uids in tagk1, tagv1, .. tagkn, tagvn
-		 * {@inheritDoc}
-		 * @see com.stumbleupon.async.Callback#call(java.lang.Object)
-		 */
-		@Override
-		public Void call(final ArrayList<byte[]> tagUids) throws Exception {
-			
-			return null;
-		}
-	};
 	
 	/**
 	 * Creates a new TSDBMetricMeta
@@ -279,15 +156,15 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	public String toString() {
 		final StringBuilder b = new StringBuilder("TSDBMetricMeta: [");
 		b.append("\n\tTSUID:").append(tsuid==null ? "<null>" : DatatypeConverter.printHexBinary(tsuid));
-		b.append("\n\tMetric Name:").append(metricName).append("/").append(metricUid==null ? "<null>" : DatatypeConverter.printHexBinary(metricUid));
+		b.append("\n\tMetric Name:").append(metricName).append("/").append(metricUid==null ? "<null>" : metricUid);
 		b.append("\n\tTags: [");
 		for(Map.Entry<String, String> tag: tags.entrySet()) {
 			final String key = tag.getKey();
-			final byte[] keyUid = tagKeyUids.get(key);
+			final String keyUid = tagKeyUids.get(key);
 			final String value = tag.getValue();
-			final byte[] valueUid = tagValueUids.get(value);
-			b.append("\n\tKey:").append(tag.getKey()).append("/").append(keyUid==null ? "<null>" : DatatypeConverter.printHexBinary(keyUid)).append(", Value:")
-				.append(value).append("/").append(valueUid==null ? "<null>" : DatatypeConverter.printHexBinary(valueUid));
+			final String valueUid = tagValueUids.get(value);
+			b.append("\n\tKey:").append(tag.getKey()).append("/").append(keyUid==null ? "<null>" : keyUid).append(", Value:")
+				.append(value).append("/").append(valueUid==null ? "<null>" : valueUid);
 		}
 		b.append("\n\t]");
 		return b.append("\n]").toString();
@@ -328,7 +205,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 * @param tagValueUids The tag value UIDs keyed by the tag value value
 	 * @return this instance
 	 */
-	public TSDBMetricMeta resolved(final byte[] metricUid, final Map<String, byte[]> tagKeyUids, final Map<String, byte[]> tagValueUids) {
+	public TSDBMetricMeta resolved(final String metricUid, final Map<String, String> tagKeyUids, final Map<String, String> tagValueUids) {
 		this.metricUid = metricUid;
 		this.getTagKeyUids().putAll(tagKeyUids);
 		this.getTagValueUids().putAll(tagValueUids);
@@ -369,20 +246,17 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		bytes.writeShort((short)tsuid.length);
 		bytes.write(tsuid);
 
-		bytes.writeByte((byte)metricUid.length);
-		bytes.write(metricUid);
+		bytes.writeUtf8(metricUid);
 		
 		// tag key uids: HashMap<String, byte[]> tagKeyUids
-		for(Map.Entry<String, byte[]> uid: tagKeyUids.entrySet()) {
+		for(Map.Entry<String, String> uid: tagKeyUids.entrySet()) {
 			bytes.writeUtf8(uid.getKey());
-			bytes.writeByte((byte)uid.getValue().length);
-			bytes.write(uid.getValue());
+			bytes.writeUtf8(uid.getValue());
 		}
 		// tag value uids: HashMap<String, byte[]> tagValueUids 
-		for(Map.Entry<String, byte[]> uid: tagValueUids.entrySet()) {
+		for(Map.Entry<String, String> uid: tagValueUids.entrySet()) {
 			bytes.writeUtf8(uid.getKey());
-			bytes.writeByte((byte)uid.getValue().length);
-			bytes.write(uid.getValue());
+			bytes.writeUtf8(uid.getValue());
 		}
 		// end to end start time in ms.
 		bytes.writeLong(endToEndStartTime);
@@ -397,14 +271,10 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		wire
 		.write("mn").text(metricName)
 		.write("tags").marshallable(tags, String.class, String.class, true)
-		.write("tsuid").text(bytesToHex(tsuid))
-		.write("muid").text(bytesToHex(metricUid))
-		.write("tkuid")
-			.object(tagKeyUids)
-//			.marshallable(tagKeyUids, String.class, byte[].class, true)
-		.write("tvuid")
-			.object(tagValueUids)
-//			.marshallable(tagValueUids, String.class, byte[].class, true)
+		.write("tsuid").text(StringHelper.bytesToHex(tsuid))
+		.write("muid").text(metricUid)
+		.write("tkuid").marshallable(tagKeyUids, String.class, String.class, true)
+		.write("tvuid").marshallable(tagValueUids, String.class, String.class, true)
 		.write("e2e").int64(endToEndStartTime);
 	}
 	
@@ -416,75 +286,15 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	public void readMarshallable(final WireIn wire) throws IORuntimeException {
 		metricName = wire.read("mn").text();
 		tags.putAll(wire.read("tags").marshallableAsMap(String.class, String.class));
-		tsuid = hexToBytes(wire.read("tsuid").text());
-		metricUid = hexToBytes(wire.read("muid").text());
-		wire.read("tkuid").marshallable((Marshallable)tagKeyUids);
-		wire.read("tvuid").marshallable((Marshallable)tagValueUids);
-//		tagKeyUids.putAll((Map<String, byte[]>)wire.read("tkuid").object());
-//		tagValueUids.putAll((Map<String, byte[]>)wire.read("tvuid").object());				
+		tsuid = StringHelper.hexToBytes(wire.read("tsuid").text());
+		metricUid = wire.read("muid").text();
+		tagKeyUids.putAll(wire.read("tkuid").marshallableAsMap(String.class, String.class));
+		tagValueUids.putAll(wire.read("tvuid").marshallableAsMap(String.class, String.class));
 		endToEndStartTime = wire.read("e2e").int64();
 	}
 	
-	/**
-	 * <p>Title: MarshallableUIDMap</p>
-	 * <p>Description: A marshallable map of strings to byte arrays</p> 
-	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
-	 * <p><code>com.heliosapm.streams.chronicle.TSDBMetricMeta.MarshallableUIDMap</code></p>
-	 */
-	static class MarshallableUIDMap extends HashMap<String, byte[]> implements Marshallable {
-		/**  */
-		private static final long serialVersionUID = 3250838014971886072L;
-
-		/**
-		 * Creates a new MarshallableUIDMap
-		 * @param initialCapacity The initial capacity of the map
-		 */
-		public MarshallableUIDMap(final int initialCapacity) {
-			super(initialCapacity);
-		}
-
-		/**
-		 * {@inheritDoc}
-		 * @see net.openhft.chronicle.wire.Marshallable#writeMarshallable(net.openhft.chronicle.wire.WireOut)
-		 */
-		@Override
-		public void writeMarshallable(final WireOut wire) {
-			if(!isEmpty()) {
-				final ConcurrentHashMap<String, String> tmp = new ConcurrentHashMap<String, String>(size());
-				entrySet().parallelStream().forEach(e -> tmp.put(e.getKey(), bytesToHex(e.getValue())));
-				wire.writeAllAsMap(String.class, String.class, tmp);
-			}
-		}
-		
-		/**
-		 * {@inheritDoc}
-		 * @see net.openhft.chronicle.wire.Marshallable#readMarshallable(net.openhft.chronicle.wire.WireIn)
-		 */
-		@Override
-		public void readMarshallable(final WireIn wire) throws IORuntimeException {
-			final ConcurrentHashMap<String, String> tmp = new ConcurrentHashMap<String, String>(8);
-			wire.readAllAsMap(String.class, String.class, tmp);
-			if(!tmp.isEmpty()) {				
-				tmp.entrySet().parallelStream().forEach(e -> put(e.getKey(), hexToBytes(e.getValue())));
-			}
-		}
-	}
 	
 	
-	private static String bytesToHex(final byte[] bytes) {
-		return bytes==null ? "" : DatatypeConverter.printHexBinary(bytes);
-	}
-	
-	private static byte[] hexToBytes(final String s) {
-		if (s == null || s.isEmpty()) {
-			return null;
-		}
-		String id = s;
-		if(id.length() % 2 > 0) {
-			id = "0" + id;
-		}	      
-		return DatatypeConverter.parseHexBinary(id);		
-	}
 	
 	
 	/**
@@ -501,14 +311,14 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 			tags.put(bytes.readUtf8(), bytes.readUtf8());
 		}
 		tsuid = readShortSizedBytes(bytes);
-		metricUid = readByteSizedBytes(bytes);
+		metricUid = bytes.readUtf8();
 		// tag key uids: HashMap<String, byte[]> tagKeyUids		
 		for(int i = 0; i < tagCount; i++) {
-			tagKeyUids.put(bytes.readUtf8(), readByteSizedBytes(bytes));
+			tagKeyUids.put(bytes.readUtf8(), bytes.readUtf8());
 		}
 		// tag value uids: HashMap<String, byte[]> tagValueUids
 		for(int i = 0; i < tagCount; i++) {
-			tagValueUids.put(bytes.readUtf8(), readByteSizedBytes(bytes));
+			tagValueUids.put(bytes.readUtf8(), bytes.readUtf8());
 		}		
 		endToEndStartTime = bytes.readLong();
 	}
@@ -554,7 +364,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 * Returns the resolved tag key UID map
 	 * @return the resolved tag key UID map
 	 */
-	public HashMap<String, byte[]> getTagKeyUids() {
+	public Map<String, String> getTagKeyUids() {
 		return tagKeyUids;
 	}
 
@@ -562,7 +372,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 * Returns the resolved tag value UID map
 	 * @return the resolved tag value UID map
 	 */
-	public HashMap<String, byte[]> getTagValueUids() {
+	public Map<String, String> getTagValueUids() {
 		return tagValueUids;
 	}
 	
@@ -570,7 +380,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 * Returns the resolved metric uid
 	 * @return the resolved metric uid
 	 */
-	public byte[] getMetricUid() {
+	public String getMetricUid() {
 		return metricUid;
 	}
 	
