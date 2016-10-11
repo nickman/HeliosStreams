@@ -22,6 +22,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
@@ -249,9 +250,28 @@ public class ListenerMain implements Closeable, Runnable {
 	// FQN_SEQ.NEXTVAL
 	
 	public static final String TSMETA_INSERT_SQL =
-		"INSERT INTO TSD_TSMETA " +
+		"KEYS:INSERT INTO TSD_TSMETA " +
 		"(METRIC_UID,FQN,TSUID) VALUES " +
 		"(?,?,?) ";
+	public static final String TSMETA_COUNT_SQL =
+			"SELECT COUNT(*) FROM TSD_TSMETA " +
+			"WHERE FQN = ? " + 
+			"AND TSUID = ?";
+	
+	public static final String FQN_TAGPAIR_INSERT_SQL =
+			"INSERT INTO TSD_FQN_TAGPAIR " +
+			"(FQNID,XUID,PORDER,NODE) VALUES " +
+			"(?,?,?,?) ";
+	
+	
+//	CREATE TABLE IF NOT EXISTS TSD_FQN_TAGPAIR (
+//			FQN_TP_ID BIGINT NOT NULL COMMENT 'Synthetic primary key of an association between an FQN and a Tag Pair',
+//			FQNID BIGINT NOT NULL COMMENT 'The ID of the parent FQN',
+//			XUID CHAR(12) NOT NULL COMMENT 'The ID of a child tag key/value pair',
+//			PORDER TINYINT NOT NULL COMMENT 'The order of the tags in the FQN',
+//			NODE CHAR(1) NOT NULL COMMENT 'Indicates if this tagpair is a Branch (B) or a Leaf (L)' CHECK NODE IN ('B', 'L')
+//		); COMMENT ON TABLE TSD_FQN_TAGPAIR IS 'Associative table between TSD_TSMETA and TSD_TAGPAIR, or the TSMeta and the Tag keys and values of the UIDMetas therein';
+
 		
 		
 	
@@ -261,6 +281,7 @@ public class ListenerMain implements Closeable, Runnable {
 		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
 			final Context ctx = dispatchHandlerTimer.time();
 			Connection conn = null;
+			PreparedStatement ps = null;
 			try {
 				log.info("Processing {}:{}...",  meta.getMetricName(), meta.getTags());
 				conn = ds.getConnection();
@@ -278,12 +299,25 @@ public class ListenerMain implements Closeable, Runnable {
  
 					tagUids.put(tagKey, tagPairUid);
 				}
+				final String fqn = meta.getMetricName() + ":" + meta.getTags();
+				final String tsuid = StringHelper.bytesToHex(meta.getTsuid());
+				if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
+					final Object[] keys = sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, fqn, tsuid);
+					final long tsuidKey = (Long)keys[0];
+					int porder = 1;
+					final int last = tagUids.size();
+					ps = null;
+					for(final String tagPairUid: tagUids.values()) {
+						// FQNID,XUID,PORDER,NODE
+						ps = sqlWorker.batch(conn, ps, FQN_TAGPAIR_INSERT_SQL, tsuidKey, tagPairUid, porder, porder==last ? "B" : "L");
+					}
+					ps.executeBatch();
+				}
 				
-				sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, meta.getMetricName() + ":" + meta.getTags(), StringHelper.bytesToHex(meta.getTsuid()));
-				int porder = 1;
 				// insert fqn tagpairs
 				conn.commit();
 			} finally {
+				if(ps!=null) try { ps.close(); } catch (Exception x) {/* No Op */}
 				if(conn!=null) try { conn.close(); } catch (Exception x) {/* No Op */}
 				meta.reset();
 				ctx.stop();
@@ -486,6 +520,7 @@ public class ListenerMain implements Closeable, Runnable {
 	 */
 	public static void main(String[] args) {
 		try {
+			
 			final ListenerMain lm = new ListenerMain(new Properties());
 			lm.start();
 			StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){

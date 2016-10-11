@@ -94,6 +94,12 @@ public interface AbstractPreparedStatementBinderMBean {
 	 * Returns the average batch execution time in the metric window in ns.
 	 * @return the average batch execution time in the metric window in ns.
 	 */
-	public long getAvgBatchExecTime();	
+	public long getAvgBatchExecTime();
+	
+	/**
+	 * Indicates if this statement should return auto gen keys
+	 * @return true if this statement should return auto gen keys, false otherwise
+	 */
+	public boolean isAutoKeys();
 	
 }

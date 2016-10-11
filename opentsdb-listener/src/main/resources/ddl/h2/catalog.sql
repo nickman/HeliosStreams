@@ -95,7 +95,7 @@ CREATE INDEX IF NOT EXISTS TSD_TAGPAIR_NAME_IDX ON TSD_TAGPAIR (NAME ASC);
 
 
 CREATE TABLE IF NOT EXISTS TSD_FQN_TAGPAIR (
-	FQN_TP_ID BIGINT NOT NULL COMMENT 'Synthetic primary key of an association between an FQN and a Tag Pair',
+	FQN_TP_ID BIGINT NOT NULL DEFAULT FQN_TP_SEQ.NEXTVAL COMMENT 'Synthetic primary key of an association between an FQN and a Tag Pair',
 	FQNID BIGINT NOT NULL COMMENT 'The ID of the parent FQN',
 	XUID CHAR(12) NOT NULL COMMENT 'The ID of a child tag key/value pair',
 	PORDER TINYINT NOT NULL COMMENT 'The order of the tags in the FQN',

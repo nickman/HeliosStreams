@@ -43,6 +43,8 @@ import com.heliosapm.utils.unsafe.collections.ConcurrentLongSlidingWindow;
 public abstract class AbstractPreparedStatementBinder implements AbstractPreparedStatementBinderMBean, PreparedStatementBinder {
 	/** The underlying SQL */
 	protected final String sqltext;
+	/** Indicates if this statement should return auto gen keys */
+	protected final boolean autoKeys;
 	/** The execution counter */
 	protected final AtomicLong execCounter = new AtomicLong(0L);	
 	/** The error counter */
@@ -92,11 +94,13 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	/**
 	 * Creates a new AbstractPreparedStatementBinder
 	 * @param sqltext The underlying SQL statement
+	 * @param autoKeys true if this statement should return auto gen keys, false otherwise
 	 * @param windowSize The size of the sliding windows tracking ps execution times
 	 * @param sqlTypes An array of classes describing the SQLType data types of the result set if the statement is a query
 	 */
-	public AbstractPreparedStatementBinder(final String sqltext, final int windowSize, final NVP<Boolean, Class<?>>[] sqlTypes) {
+	public AbstractPreparedStatementBinder(final String sqltext, final boolean autoKeys, final int windowSize, final NVP<Boolean, Class<?>>[] sqlTypes) {
 		this.sqltext = sqltext;
+		this.autoKeys = autoKeys;
 		resultSetSQLTypes = sqlTypes;
 		colCount = resultSetSQLTypes==null ? 0 : resultSetSQLTypes.length;
 		execTimes = new ConcurrentLongSlidingWindow(windowSize);
@@ -372,6 +376,14 @@ public abstract class AbstractPreparedStatementBinder implements AbstractPrepare
 	 */
 	public static boolean isSeconds(final long value) {
 		return value < LOWEST_MS_TIME;
+	}
+
+	/**
+	 * Indicates if this statement should return auto gen keys
+	 * @return true if this statement should return auto gen keys, false otherwise
+	 */
+	public boolean isAutoKeys() {
+		return autoKeys;
 	}	
 	
 		

@@ -527,22 +527,35 @@ public class SQLWorker {
 	 * @param conn An optional connection. If not supplied, a new connection will be acquired, and closed when used.
 	 * @param sqlText The update SQL text
 	 * @param args The bind arguments
+	 * @return The auto generated keys which will be empty if none are available
 	 */
-	public void execute(Connection conn, String sqlText, Object...args) {		
+	public Object[] execute(Connection conn, String sqlText, Object...args) {		
 		PreparedStatement ps = null;
+		ResultSet rset = null;
+		Object[] autoKeys = {};
 		boolean newConn = conn==null;		
 		try {
 			final AbstractPreparedStatementBinder binder = binderFactory.getBinder(sqlText);
 			if(newConn) {
 				conn = dataSource.getConnection();
 			}
-			ps = conn.prepareStatement(sqlText);
+			ps = binder.isAutoKeys() ? conn.prepareStatement(sqlText, Statement.RETURN_GENERATED_KEYS) : conn.prepareStatement(sqlText); 
 			binder.bind(ps, args);
 			execute(ps, binder);
+			if(binder.isAutoKeys()) {
+				rset = ps.getGeneratedKeys();
+				final int cols = rset.getMetaData().getColumnCount();
+				autoKeys = new Object[cols];
+				for(int i = 0; i < cols; i++) {
+					autoKeys[i] = rset.getObject(i+1);
+				}
+			}
 			if(newConn) conn.commit();
+			return autoKeys;
 		} catch (Exception ex) {
 			throw new RuntimeException("SQL Update Failure [" + sqlText + "]", ex);
 		} finally {
+			if(rset!=null) try { rset.close(); } catch (Exception x) { /* No Op */ }
 			if(ps!=null) try { ps.close(); } catch (Exception x) { /* No Op */ }
 			if(newConn && conn!=null) try { conn.close(); } catch (Exception x) { /* No Op */ }
 		}		
@@ -1182,7 +1195,7 @@ public class SQLWorker {
 				obj = classPool.get(Object.class.getName());
 				nvpArr = classPool.get(NVP[].class.getName());
 				atomicL = classPool.get(AtomicLong.class.getName());
-				parentCtorSig = new CtClass[]{str, CtClass.intType, nvpArr};
+				parentCtorSig = new CtClass[]{str, CtClass.booleanType, CtClass.intType, nvpArr};
 			} catch (Exception ex) {
 				throw new RuntimeException("Failed to create PreparedStatementBinder CtClass IFace", ex);
 			} finally {
@@ -1216,7 +1229,7 @@ public class SQLWorker {
 		 * @return the built PreparedStatementBinder instance
 		 */
 		@SuppressWarnings("unchecked")
-		protected AbstractPreparedStatementBinder buildBinder(final String sqlText) {
+		protected AbstractPreparedStatementBinder buildBinder(final String sql) {
 			Connection conn = null;
 			PreparedStatement ps = null;
 			AbstractPreparedStatementBinder psb = null;
@@ -1225,6 +1238,9 @@ public class SQLWorker {
 			NVP<Boolean, Class<?>>[] resultSetTypes = null;
 			JDBCType[] rsetTypes = null;
 			boolean isQuery = false;
+			final StringBuilder bSql = new StringBuilder(sql.trim());
+			final boolean hasKeys = hasGeneratedKeys(bSql);
+			final String sqlText = bSql.toString();
 			try {
 				final String className = "PreparedStatementBinder" + serial.incrementAndGet();
 				conn = ds.getConnection();				
@@ -1423,7 +1439,7 @@ public class SQLWorker {
 				binderClazz.writeFile(SAVE_DIR);
 				Class<AbstractPreparedStatementBinder> javaClazz = binderClazz.toClass(SQLWorker.class.getClassLoader(), SQLWorker.class.getProtectionDomain());
 				
-				psb = javaClazz.getConstructor(String.class, int.class, NVP[].class).newInstance(sqlText, windowSize, resultSetTypes);
+				psb = javaClazz.getConstructor(String.class, boolean.class, int.class, NVP[].class).newInstance(sqlText, hasKeys, windowSize, resultSetTypes);
 				JMXHelper.registerMBean(psb, psb.getObjectName());
 				binderClazz.detach();
 				return psb;
@@ -1434,9 +1450,23 @@ public class SQLWorker {
 				if(conn!=null) try { conn.close(); } catch (Exception x) { /* No Op */ }				
 			}
 		}
-		
 	}
 	
+	
+	/** The SQL prefix indicating that generated keys should be retrieved */
+	public static final String GET_KEYS_PREFIX = "KEYS:";
+	/** The length of the keys prefix */
+	public static final int GET_KEYS_LEN = GET_KEYS_PREFIX.length();
+	
+	protected static boolean hasGeneratedKeys(final StringBuilder sqlText) {
+		final String _sqlText = sqlText.toString().trim();
+		final boolean hasKeys = _sqlText.toUpperCase().indexOf(GET_KEYS_PREFIX)==0;
+		if(hasKeys) {
+			sqlText.setLength(0);
+			sqlText.append(_sqlText.substring(GET_KEYS_LEN));
+		}
+		return hasKeys;
+	}
 	
 	/** The directory to save compiled classes in */
 	public static final String SAVE_DIR = (System.getProperty("java.io.tmpdir") + File.separator + "sqlWorker" + File.separator).replace(File.separator + File.separator,  File.separator);

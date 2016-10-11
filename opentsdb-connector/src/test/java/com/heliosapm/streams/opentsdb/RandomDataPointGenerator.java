@@ -9,6 +9,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
 
@@ -69,6 +70,12 @@ public class RandomDataPointGenerator implements Runnable {
 	/** Instance logger */
 	protected final Logger log;
 	protected final ChronicleMap<byte[], TSDBMetricMeta> metricMetas;
+	protected final ChronicleMap<String, String> tagKeyUids;
+	protected final ChronicleMap<String, String> tagValueUids;
+	protected final ChronicleMap<String, String> metricUids;
+	protected final AtomicInteger tagKeyUidSeed = new AtomicInteger(0);
+	protected final AtomicInteger tagValueUidSeed = new AtomicInteger(0);
+	protected final AtomicInteger metricUidSeed = new AtomicInteger(0);
 	protected final int loops;
 	protected final long sleep;
 	protected final int sleepFreq; 
@@ -84,6 +91,7 @@ public class RandomDataPointGenerator implements Runnable {
 	protected final Thread drainer;
 	protected final Timer endToEndTimer = new Timer(); 
 
+	static final String PLACEHOLDER = "¥©¿";
 	
 	public RandomDataPointGenerator(final RTPublisher publisher, final String name, final int sampleSize, final int loops, final long sleep, final int sleepFreq, final boolean text) {
 		this.name = (name==null || name.trim().isEmpty()) ? ("RDPG@" + System.identityHashCode(this)) : name;
@@ -134,30 +142,79 @@ public class RandomDataPointGenerator implements Runnable {
 		};
 		drainer.setDaemon(true);
 		
+		
+		
 		metricMetas = ChronicleMapBuilder
 				.of(byte[].class, TSDBMetricMeta.class)
-				.maxBloatFactor(15)
-				.averageKeySize(128)
+				.maxBloatFactor(10)
+				.averageKeySize(24)
 				.averageValueSize(text ? 800 : 281)
 				.entries(sampleSize)
 				.create();
+		tagKeyUids = ChronicleMapBuilder
+				.of(String.class, String.class)
+				.maxBloatFactor(10)
+				.averageKey(getRandomFragment())
+				.averageValueSize(8)
+				.entries(sampleSize)
+				.create();
+		tagValueUids = ChronicleMapBuilder
+				.of(String.class, String.class)
+				.maxBloatFactor(10)
+				.averageKey(getRandomFragment())
+				.averageValueSize(8)
+				.entries(sampleSize)
+				.create();
+		metricUids = ChronicleMapBuilder
+				.of(String.class, String.class)
+				.maxBloatFactor(10)
+				.averageKey(getRandomFragment())
+				.averageValueSize(8)
+				.entries(sampleSize)
+				.create();
+		
 		log.info("Generator [{}] created. Generating Meta Samples...", this.name);
 		final ElapsedTime et = SystemClock.startClock();
 		IntStream.range(0, sampleSize).parallel().forEach(i -> {
 			try {
-				final ByteBuffer buff = ByteBuffer.allocate(8);
+				final ByteBuffer buff = ByteBuffer.allocate(4);
 				final HashMap<String, String> tags = new HashMap<String, String>(4);
 				final HashMap<String, String> tagKeys = new HashMap<String, String>(4);
 				final HashMap<String, String> tagValues = new HashMap<String, String>(4);
-				for(int x = 0; x < 4; x++) {
+				while(tags.size()<4) {
 					final String key = getRandomFragment();
 					final String value = getRandomFragment();
-					tags.put(key, value);
-					tagKeys.put(key, StringHelper.bytesToHex(randomBytes(2)));
-					tagValues.put(value, StringHelper.bytesToHex(randomBytes(2)));
+					tags.put(key, value);					
+					String keyUid = tagKeyUids.putIfAbsent(key, PLACEHOLDER);
+					if(keyUid==null || keyUid==PLACEHOLDER) {
+						int uid = tagKeyUidSeed.incrementAndGet();
+						buff.putInt(0, uid);
+						byte[] uidBytes = buff.array();
+						keyUid = trimHex(StringHelper.bytesToHex(uidBytes));
+						tagKeyUids.replace(key, PLACEHOLDER, keyUid);						
+					} 
+					tagKeys.put(key, keyUid);
+					
+					String valueUid = tagValueUids.putIfAbsent(value, PLACEHOLDER);
+					if(valueUid==null || valueUid==PLACEHOLDER) {
+						int uid = tagValueUidSeed.incrementAndGet();
+						buff.putInt(0, uid);
+						byte[] uidBytes = buff.array();
+						valueUid = trimHex(StringHelper.bytesToHex(uidBytes));
+						tagValueUids.replace(value, PLACEHOLDER, valueUid);						
+					} 
+					tagValues.put(value, valueUid);					
 				}
 				final String metricName = getRandomFragment();
-				final String muid = StringHelper.bytesToHex(randomBytes(2));
+				String metricUid = metricUids.putIfAbsent(metricName, PLACEHOLDER);
+				if(metricUid==null || metricUid==PLACEHOLDER) {
+					int uid = metricUidSeed.incrementAndGet();
+					buff.putInt(0, uid);
+					byte[] uidBytes = buff.array();
+					metricUid = trimHex(StringHelper.bytesToHex(uidBytes));
+					metricUids.replace(metricName, PLACEHOLDER, metricUid);						
+				} 
+				final String muid = metricUid;					
 				final byte[] tsuid = randomBytes(24);
 				if(i==0) {
 					log.info("TSUID Size: {}", tsuid.length);
@@ -174,13 +231,21 @@ public class RandomDataPointGenerator implements Runnable {
 		log.info("Loaded [{}] samples: {}, Cache Size: {}", sampleSize, et.printAvg("Sample Load Rate", sampleSize), metricMetas.size());		
 	}
 	
+	public static String trimHex(final String value) {
+		// 000001D7
+		if(value.length()>6 && value.indexOf("00")==0) {
+			return value.substring(2);
+		}
+		return value;
+	}
+	
 	public static void main(String[] args) {
 		try {
 			JMXHelper.fireUpJMXMPServer(3259);
 			final Config cfg = new Config(true);
 			final TSDB tsdb = new TSDB(cfg);
 			final TSDBChronicleEventPublisher pub = new TSDBChronicleEventPublisher(true);
-			final int sampleSize = 128000;
+			final int sampleSize = 1024;
 			final int loops = 100000; 
 			final long sleep = 0; //10000;
 			final int sleepFreq = 1;
