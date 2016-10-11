@@ -65,6 +65,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import com.heliosapm.streams.collector.jmx.protocol.tunnel.ClientProvider;
+import com.heliosapm.streams.collector.ssh.SSHTunnelManager;
 import com.heliosapm.streams.collector.timeout.TimeoutService;
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.hystrix.HystrixCommandFactory;
@@ -236,8 +237,15 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 		this.jmxUrl = jmxUrl;
 		this.connectTimeoutSecs = connectTimeoutSecs;
 		env.put(ClientProvider.RECONNECT_TIMEOUT_KEY, this.connectTimeoutSecs);
-		jmxServiceUrl = JMXHelper.serviceUrl(jmxUrl);
-		log = LogManager.getLogger(getClass().getName() + "-" + jmxServiceUrl.getHost().replace('.', '_') + "-" + jmxServiceUrl.getPort());
+		JMXServiceURL jurl = JMXHelper.serviceUrl(jmxUrl);
+		final String rhost = jurl.getHost();
+		final int rport = jurl.getPort();
+		if("tunnel".equals(jurl.getProtocol())) {
+			final int localPort = SSHTunnelManager.getInstance().getPortForward(rhost, rport);
+			jurl = JMXHelper.serviceUrl("service:jmx:jmxmp://localhost:" + localPort);
+		}
+		jmxServiceUrl = jurl;
+		log = LogManager.getLogger(getClass().getName() + "-" + rhost.replace('.', '_') + "-" + rport);
 		if(credentials!=null && credentials.length > 1) {
 			final String[] creds = new String[2];
 			System.arraycopy(credentials, 0, creds, 0, 2);
@@ -352,7 +360,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 							}
 						}
 					} catch (Exception ex) {
-						throw new RuntimeException("Failed to get MBeanServerConnection for [" + jmxServiceUrl + "]");
+						throw new RuntimeException("Failed to get MBeanServerConnection for [" + jmxServiceUrl + "]", ex);
 					}
 				}
 			}

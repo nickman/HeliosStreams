@@ -29,6 +29,7 @@ import java.util.TreeMap;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.logging.log4j.LogManager;
@@ -58,6 +59,7 @@ import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.ExceptionHandler;
 import com.lmax.disruptor.RingBuffer;
+import com.lmax.disruptor.TimeoutException;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
@@ -273,7 +275,7 @@ public class ListenerMain implements Closeable, Runnable {
 //		); COMMENT ON TABLE TSD_FQN_TAGPAIR IS 'Associative table between TSD_TSMETA and TSD_TAGPAIR, or the TSMeta and the Tag keys and values of the UIDMetas therein';
 
 		
-		
+	private long lastBatchEnd = 0L; 
 	
 	/** The dispatch handler */
 	protected final EventHandler<TSDBMetricMeta> dispatchHandler = new EventHandler<TSDBMetricMeta>() {
@@ -283,7 +285,11 @@ public class ListenerMain implements Closeable, Runnable {
 			Connection conn = null;
 			PreparedStatement ps = null;
 			try {
-				log.info("Processing {}:{}...",  meta.getMetricName(), meta.getTags());
+				if(endOfBatch) {
+					final long batchSize = sequence - lastBatchEnd;
+					lastBatchEnd = sequence;
+					log.info("Processing TSDB Metric: {}/{}. Batch Size: {}", sequence, endOfBatch, batchSize);
+				}				
 				conn = ds.getConnection();
 				final String metricUid = tagMetricCache.get(meta.getMetricName(), uIDLoader("TSD_METRIC", meta.getMetricName(), meta.getMetricUid(), conn));
 				final Map<String, String> tagUids = new TreeMap<String, String>(TagKeySorter.INSTANCE);
@@ -302,8 +308,8 @@ public class ListenerMain implements Closeable, Runnable {
 				final String fqn = meta.getMetricName() + ":" + meta.getTags();
 				final String tsuid = StringHelper.bytesToHex(meta.getTsuid());
 				if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
-					final Object[] keys = sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, fqn, tsuid);
-					final long tsuidKey = (Long)keys[0];
+					final Object[][] keys = sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, fqn, tsuid);
+					final long tsuidKey = (Long)keys[0][0];
 					int porder = 1;
 					final int last = tagUids.size();
 					ps = null;
@@ -338,7 +344,8 @@ public class ListenerMain implements Closeable, Runnable {
 
 		// ================  Configure Outbound Queue
 		inQueueTextFormat = ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_INQ_TEXT, DEFAULT_INQ_TEXT, properties);
-		inQueueDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_INQ_DIR, DEFAULT_INQ_DIR, properties);		
+		inQueueDirName = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_INQ_DIR, DEFAULT_INQ_DIR, properties);
+		log.info("InQueue Directory: [{}]", inQueueDirName);
 		inQueueDir = new File(inQueueDirName);
 		
 		
@@ -400,6 +407,7 @@ public class ListenerMain implements Closeable, Runnable {
 						log.error("RunThread Error", ex);
 					}
 				}
+				log.info("Run Thread Ended");
 			}
 		};
 		runThread.setDaemon(true);
@@ -537,7 +545,41 @@ public class ListenerMain implements Closeable, Runnable {
 		
 	
 	public void stop() {
+		log.info(">>>>> Stopping EventListener....");
+		running.set(false);
+		if(runThread!=null) {
+			runThread.interrupt();
+		}
+		try { 
+			inQueue.close();
+			log.info("InboundQueue Closed");
+		} catch (Exception ex) {
+			log.warn("Error closing InboundQueue: {}", ex);
+		}		
+		stopDisruptor("Dispatch", dispatchRbDisruptor);		
+		log.info("<<<<< EventListener Stopped.");
+		
 	}
+	
+	/**
+	 * Executes a controlled shutdown of the passed disruptor
+	 * @param name The name of the disruptor for logging
+	 * @param disruptor The disruptor to stop
+	 */
+	protected void stopDisruptor(final String name, final Disruptor<?> disruptor) {
+		final long start = System.currentTimeMillis();
+		try {			
+			disruptor.shutdown(5000, TimeUnit.MILLISECONDS);
+			final long elapsed = System.currentTimeMillis() - start;
+			log.info("{} Disruptor stopped normally in {} ms.", name, elapsed);
+		} catch (TimeoutException tex) {
+			final long elapsed = System.currentTimeMillis() - start;
+			log.warn("{} Disruptor failed to stop normally after {} ms. Halting....", name, elapsed);
+			disruptor.halt();
+			log.warn("{} Disruptor halted");
+		}
+	}
+	
 
 	
 	public void run() {

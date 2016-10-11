@@ -641,7 +641,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 				return ms;
 			} catch (CompilationFailedException cex) {
 				errMsg = "Failed to compile source ["+ source + "]\n\t!!!!!!!!!!!!!!!!!!\n" + bSource.getPrejectedSource() + "\n!!!!!!!!!";
-				
+				log.error("Compilation Failure", cex);
 				cex.printStackTrace(System.err);
 				printClassLoadersFor("org.codehaus.groovy.transform.BaseScriptASTTransformation");
 				printClassLoadersFor("org.codehaus.groovy.transform.GroovyASTTransformation");

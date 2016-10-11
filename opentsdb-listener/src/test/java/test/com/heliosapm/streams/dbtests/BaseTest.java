@@ -66,12 +66,12 @@ import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.rules.TestName;
 
-import com.heliosapm.streams.metrics.StreamedMetric;
-import com.heliosapm.streams.metrics.StreamedMetricValue;
-import com.heliosapm.streams.opentsdb.mocks.UniqueIdRegistry;
-import com.heliosapm.streams.opentsdb.mocks.datapoints.DataPoint;
-import com.heliosapm.streams.opentsdb.mocks.datapoints.DoubleDataPoint;
-import com.heliosapm.streams.opentsdb.mocks.datapoints.LongDataPoint;
+//import com.heliosapm.streams.metrics.StreamedMetric;
+//import com.heliosapm.streams.metrics.StreamedMetricValue;
+//import com.heliosapm.streams.opentsdb.mocks.UniqueIdRegistry;
+//import com.heliosapm.streams.opentsdb.mocks.datapoints.DataPoint;
+//import com.heliosapm.streams.opentsdb.mocks.datapoints.DoubleDataPoint;
+//import com.heliosapm.streams.opentsdb.mocks.datapoints.LongDataPoint;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.time.SystemClock;
@@ -184,22 +184,22 @@ public class BaseTest {
 	}
 	
 	
-	/**
-	 * Publishes a data point to the current test TSDB
-	 * @param dp The data point to publish
-	 */
-	public void publishDataPoint(DataPoint dp) {
-		try {
-			RTPublisher pub = (RTPublisher)sinkDataPointField.get(tsdb);
-			if(dp instanceof LongDataPoint) {
-				pub.publishDataPoint(dp.metricName, dp.timestamp, dp.longValue(), dp.tags, dp.getKey().getBytes());
-			} else {
-				pub.publishDataPoint(dp.metricName, dp.timestamp, dp.doubleValue(), dp.tags, dp.getKey().getBytes());
-			}
-		} catch (Exception ex) {
-			throw new RuntimeException(ex);
-		}
-	}
+//	/**
+//	 * Publishes a data point to the current test TSDB
+//	 * @param dp The data point to publish
+//	 */
+//	public void publishDataPoint(DataPoint dp) {
+//		try {
+//			RTPublisher pub = (RTPublisher)sinkDataPointField.get(tsdb);
+//			if(dp instanceof LongDataPoint) {
+//				pub.publishDataPoint(dp.metricName, dp.timestamp, dp.longValue(), dp.tags, dp.getKey().getBytes());
+//			} else {
+//				pub.publishDataPoint(dp.metricName, dp.timestamp, dp.doubleValue(), dp.tags, dp.getKey().getBytes());
+//			}
+//		} catch (Exception ex) {
+//			throw new RuntimeException(ex);
+//		}
+//	}
 	
 	/**
 	 * Returns a random positive long
@@ -413,32 +413,32 @@ public class BaseTest {
 	
 	
 
-	/**
-	 * Creates a new test TSDB
-	 * @param configName The config name to configure with
-	 * @return the created test TSDB
-	 */
-	public static TSDB newTSDB(String configName)  {		
-		try {
-			tsdb = new TSDB(getConfig(configName));
-			tsdb.getConfig().overrideConfig("helios.config.name", configName);
-			Config config = tsdb.getConfig();
-			StringBuilder b = new StringBuilder("\n\t=============================================\n\tTSDB Config\n\t=============================================");
-			for(Map.Entry<String, String> entry: config.getMap().entrySet()) {
-				b.append("\n\t").append(entry.getKey()).append("\t:[").append(entry.getValue()).append("]");
-			}
-			b.append("\n\t=============================================\n");
-//			log(b.toString());
-			tsdb.initializePlugins(true);
-			final UniqueIdRegistry reg = UniqueIdRegistry.getInstance(tsdb);
-			tagKunik = reg.getTagKUniqueId();
-			tagVunik = reg.getTagVUniqueId();
-			tagMunik = reg.getMetricsUniqueId();
-			return tsdb;
-		} catch (Exception e) {
-			throw new RuntimeException("Failed to get test TSDB [" + configName + "]", e);
-		}		
-	}
+//	/**
+//	 * Creates a new test TSDB
+//	 * @param configName The config name to configure with
+//	 * @return the created test TSDB
+//	 */
+//	public static TSDB newTSDB(String configName)  {		
+//		try {
+//			tsdb = new TSDB(getConfig(configName));
+//			tsdb.getConfig().overrideConfig("helios.config.name", configName);
+//			Config config = tsdb.getConfig();
+//			StringBuilder b = new StringBuilder("\n\t=============================================\n\tTSDB Config\n\t=============================================");
+//			for(Map.Entry<String, String> entry: config.getMap().entrySet()) {
+//				b.append("\n\t").append(entry.getKey()).append("\t:[").append(entry.getValue()).append("]");
+//			}
+//			b.append("\n\t=============================================\n");
+////			log(b.toString());
+//			tsdb.initializePlugins(true);
+//			final UniqueIdRegistry reg = UniqueIdRegistry.getInstance(tsdb);
+//			tagKunik = reg.getTagKUniqueId();
+//			tagVunik = reg.getTagVUniqueId();
+//			tagMunik = reg.getMetricsUniqueId();
+//			return tsdb;
+//		} catch (Exception e) {
+//			throw new RuntimeException("Failed to get test TSDB [" + configName + "]", e);
+//		}		
+//	}
 	
 	/**
 	 * Adds a notification listener to an MBean and waits for a number of notifications
@@ -566,51 +566,51 @@ public class BaseTest {
 		return tags;
 	}
 	
-	/**
-	 * Creates and returns a new random data point
-	 * @return a data point
-	 */
-	public static DataPoint randomDataPoint() {
-		if(nextBoolean()) {
-			return randomDoubleDataPoint();
-		}
-		return randomLongDataPoint();
-	}
+//	/**
+//	 * Creates and returns a new random data point
+//	 * @return a data point
+//	 */
+//	public static DataPoint randomDataPoint() {
+//		if(nextBoolean()) {
+//			return randomDoubleDataPoint();
+//		}
+//		return randomLongDataPoint();
+//	}
+//	
+//	
+//	/**
+//	 * Creates and returns a new random double data point
+//	 * @return a double data point
+//	 */
+//	public static DataPoint randomDoubleDataPoint() {
+//		final double d = nextPosLong() + nextPosDouble();
+//		return new DoubleDataPoint(d, getRandomFragment(), randomTags(nextPosInt(6)+1), System.currentTimeMillis()); 		
+//	}
 	
-	
-	/**
-	 * Creates and returns a new random double data point
-	 * @return a double data point
-	 */
-	public static DataPoint randomDoubleDataPoint() {
-		final double d = nextPosLong() + nextPosDouble();
-		return new DoubleDataPoint(d, getRandomFragment(), randomTags(nextPosInt(6)+1), System.currentTimeMillis()); 		
-	}
-	
-	/**
-	 * Creates and returns a new random long data point
-	 * @return a long data point
-	 */
-	public static DataPoint randomLongDataPoint() {
-		return new LongDataPoint(nextPosLong(), getRandomFragment(), randomTags(nextPosInt(6)+1), System.currentTimeMillis()); 		
-	}
-	
-	/**
-	 * Determines if the passed data points are logically equal
-	 * @param a A data point
-	 * @param b Another data point
-	 * @return true if they are equal, false otherwise
-	 */
-	public static boolean equal(final DataPoint a, final DataPoint b) {
-		if(a==null || b==null) return false;
-		if(a==b) return true;
-		if(a.isInteger()!=b.isInteger()) return false;
-		if(!a.getValue().equals(b.getValue())) return false;
-		if(!a.metricName.equals(b.metricName)) return false;
-		if(equal(a.tags, b.tags)) return false;
-		if(a.timestamp!=b.timestamp) return false;
-		return true;		
-	}
+//	/**
+//	 * Creates and returns a new random long data point
+//	 * @return a long data point
+//	 */
+//	public static DataPoint randomLongDataPoint() {
+//		return new LongDataPoint(nextPosLong(), getRandomFragment(), randomTags(nextPosInt(6)+1), System.currentTimeMillis()); 		
+//	}
+//	
+//	/**
+//	 * Determines if the passed data points are logically equal
+//	 * @param a A data point
+//	 * @param b Another data point
+//	 * @return true if they are equal, false otherwise
+//	 */
+//	public static boolean equal(final DataPoint a, final DataPoint b) {
+//		if(a==null || b==null) return false;
+//		if(a==b) return true;
+//		if(a.isInteger()!=b.isInteger()) return false;
+//		if(!a.getValue().equals(b.getValue())) return false;
+//		if(!a.metricName.equals(b.metricName)) return false;
+//		if(equal(a.tags, b.tags)) return false;
+//		if(a.timestamp!=b.timestamp) return false;
+//		return true;		
+//	}
 	
 	
 	/**
@@ -836,45 +836,45 @@ public class BaseTest {
 		return UUID.randomUUID().toString();
 	}
 	
-	/**
-	 * Starts the periodic generation of data point events using randomly generated values for UIDs.
-	 * @param tsdb The TSDB to push the annotations to
-	 * @param quantity The total number of data points to push
-	 * @param tagCount The number of custom map entries per annotation
-	 * @param period The frequency of publication in ms. Frequencies of less than 1 ms. will push out the entire quantity at once.
-	 * @return a map of the generated data points.
-	 */
-	public Map<String, DataPoint> startDataPointStream(final TSDB tsdb, int quantity, int tagCount, final long period) {
-		final Map<String, DataPoint> dataPoints = new LinkedHashMap<String, DataPoint>(quantity);
-		for(int i = 0; i < quantity; i++) {
-			HashMap<String, String> tags = new LinkedHashMap<String, String>(tagCount);
-			for(int c = 0; c < tagCount; c++) {
-				String[] frags = getRandomFragments();
-				tags.put(frags[0], frags[1]);
-			}
-			DataPoint a = DataPoint.newDataPoint(nextPosDouble(), getRandomFragment(), tags);
-			dataPoints.put(a.getKey(), a);
-		}
-		Runnable r = new Runnable() {
-			@Override
-			public void run() {
-				try {
-					for(DataPoint dp: dataPoints.values()) {	
-						publishDataPoint(dp);
-						//dp.publish(tsdb);
-						if(period>0) {
-							Thread.currentThread().join(period);
-						}
-					}
-				} catch (Exception ex) {
-					ex.printStackTrace(System.err);
-					return;
-				}
-			}
-		};
-		startStream(r, "DataPointStream");
-		return dataPoints;
-	}
+//	/**
+//	 * Starts the periodic generation of data point events using randomly generated values for UIDs.
+//	 * @param tsdb The TSDB to push the annotations to
+//	 * @param quantity The total number of data points to push
+//	 * @param tagCount The number of custom map entries per annotation
+//	 * @param period The frequency of publication in ms. Frequencies of less than 1 ms. will push out the entire quantity at once.
+//	 * @return a map of the generated data points.
+//	 */
+//	public Map<String, DataPoint> startDataPointStream(final TSDB tsdb, int quantity, int tagCount, final long period) {
+//		final Map<String, DataPoint> dataPoints = new LinkedHashMap<String, DataPoint>(quantity);
+//		for(int i = 0; i < quantity; i++) {
+//			HashMap<String, String> tags = new LinkedHashMap<String, String>(tagCount);
+//			for(int c = 0; c < tagCount; c++) {
+//				String[] frags = getRandomFragments();
+//				tags.put(frags[0], frags[1]);
+//			}
+//			DataPoint a = DataPoint.newDataPoint(nextPosDouble(), getRandomFragment(), tags);
+//			dataPoints.put(a.getKey(), a);
+//		}
+//		Runnable r = new Runnable() {
+//			@Override
+//			public void run() {
+//				try {
+//					for(DataPoint dp: dataPoints.values()) {	
+//						publishDataPoint(dp);
+//						//dp.publish(tsdb);
+//						if(period>0) {
+//							Thread.currentThread().join(period);
+//						}
+//					}
+//				} catch (Exception ex) {
+//					ex.printStackTrace(System.err);
+//					return;
+//				}
+//			}
+//		};
+//		startStream(r, "DataPointStream");
+//		return dataPoints;
+//	}
 	
 
 	/**
@@ -1017,35 +1017,35 @@ public class BaseTest {
 	
 	
 	
-	/**
-	 * Joins the passed tags into a comma separated key value pair flat string
-	 * @param offset The offset in the array to start at
-	 * @param tags The tags to join
-	 * @return the comma separated key value pair flat string
-	 */
-	public static String joinTags(final int offset, final String...tags) {
-		final int len = tags.length - offset;
-		if(len<1) return "";
-		final String[] arr = new String[len];
-		System.arraycopy(tags, offset, arr, 0, len);
-		return joinTags(arr);
-	}
+//	/**
+//	 * Joins the passed tags into a comma separated key value pair flat string
+//	 * @param offset The offset in the array to start at
+//	 * @param tags The tags to join
+//	 * @return the comma separated key value pair flat string
+//	 */
+//	public static String joinTags(final int offset, final String...tags) {
+//		final int len = tags.length - offset;
+//		if(len<1) return "";
+//		final String[] arr = new String[len];
+//		System.arraycopy(tags, offset, arr, 0, len);
+//		return joinTags(arr);
+//	}
 	
 
-	/**
-	 * Joins the passed tags into a comma separated key value pair flat string
-	 * @param tags The tags to join
-	 * @return the comma separated key value pair flat string
-	 */
-	public static String joinTags(final String...tags) {
-		final Map<String, String> map = StreamedMetric.tagsFromArray(tags);
-		if(map.isEmpty()) return "";
-		final StringBuilder b = new StringBuilder(",");
-		for(Map.Entry<String, String> entry: map.entrySet()) {
-			b.append(entry.getKey()).append("=").append(entry.getValue()).append(",");
-		}		
-		return b.deleteCharAt(b.length()-1).toString();
-	}
+//	/**
+//	 * Joins the passed tags into a comma separated key value pair flat string
+//	 * @param tags The tags to join
+//	 * @return the comma separated key value pair flat string
+//	 */
+//	public static String joinTags(final String...tags) {
+//		final Map<String, String> map = StreamedMetric.tagsFromArray(tags);
+//		if(map.isEmpty()) return "";
+//		final StringBuilder b = new StringBuilder(",");
+//		for(Map.Entry<String, String> entry: map.entrySet()) {
+//			b.append(entry.getKey()).append("=").append(entry.getValue()).append(",");
+//		}		
+//		return b.deleteCharAt(b.length()-1).toString();
+//	}
 	
 	
 	/** The directed valueless format: [value type],[timestamp],[metric name], [host], [app], [flat tags] */ 
@@ -1057,64 +1057,64 @@ public class BaseTest {
 	/** The undirected value format: [timestamp],[value],[metric name], [host], [app], [flat tags] */ 
 	public static final String UNDIRECTED_VALUE_FMT = "%s,%s,%s,%s,%s%s";
 	
-	public static String splitJoin(final String format, final int offset, final String...values) {
-		final int len = offset + 1;
-		final String[] vars = new String[len +1];
-		System.arraycopy(values, 0, vars, 0, len);
-		vars[len] = joinTags(len, values);
-		return String.format(format, vars);
-	}
+//	public static String splitJoin(final String format, final int offset, final String...values) {
+//		final int len = offset + 1;
+//		final String[] vars = new String[len +1];
+//		System.arraycopy(values, 0, vars, 0, len);
+//		vars[len] = joinTags(len, values);
+//		return String.format(format, vars);
+//	}
+//	
+//	
+//	public static String directedValueless(final String valueType, final long timestamp,  final String metricName, final String host, final String app, final String...tags) {
+//		return String.format(DIRECTED_VALUELESS_FMT, valueType, timestamp, metricName, host, app, joinTags(tags));
+//	}
+//	
+//	public static String undirectedValueless(final long timestamp, final String metricName, final String host, final String app, final String...tags) {
+//		return String.format(UNDIRECTED_VALUELESS_FMT, timestamp, metricName, host, app, joinTags(tags));
+//	}
+//	
+//	public static String directedValue(final String valueType, final long timestamp, final Number value, final String metricName, final String host, final String app, final String...tags) {
+//		return String.format(DIRECTED_VALUE_FMT, valueType, timestamp, value, metricName, host, app, joinTags(tags));
+//	}
+//	
+//	public static String undirectedValue(final long timestamp, final Number value, final String metricName, final String host, final String app, final String...tags) {
+//		return String.format(UNDIRECTED_VALUE_FMT, timestamp, value, metricName, host, app, joinTags(tags));
+//	}
 	
 	
-	public static String directedValueless(final String valueType, final long timestamp,  final String metricName, final String host, final String app, final String...tags) {
-		return String.format(DIRECTED_VALUELESS_FMT, valueType, timestamp, metricName, host, app, joinTags(tags));
-	}
-	
-	public static String undirectedValueless(final long timestamp, final String metricName, final String host, final String app, final String...tags) {
-		return String.format(UNDIRECTED_VALUELESS_FMT, timestamp, metricName, host, app, joinTags(tags));
-	}
-	
-	public static String directedValue(final String valueType, final long timestamp, final Number value, final String metricName, final String host, final String app, final String...tags) {
-		return String.format(DIRECTED_VALUE_FMT, valueType, timestamp, value, metricName, host, app, joinTags(tags));
-	}
-	
-	public static String undirectedValue(final long timestamp, final Number value, final String metricName, final String host, final String app, final String...tags) {
-		return String.format(UNDIRECTED_VALUE_FMT, timestamp, value, metricName, host, app, joinTags(tags));
-	}
-	
-	
-	/**
-	 * Validates that the passed {@link StreamedMetric}s are equal
-	 * @param tr1 One trace
-	 * @param tr2 Another trace
-	 */
-	public static void assertEquals(final StreamedMetric tr1, final StreamedMetric tr2) {
-		Assert.assertNotNull("tr1 was null", tr1);
-		Assert.assertNotNull("tr2 was null", tr2);
-		if(tr1==tr2) return;
-		Assert.assertEquals("types not equal", tr1.getClass(), tr2.getClass());
-		Assert.assertEquals("metricNames not equal", tr1.getMetricName(), tr2.getMetricName());
-		Assert.assertEquals("metricKeys not equal", tr1.metricKey(), tr2.metricKey());
-		Assert.assertEquals("tags not equal", tr1.getTags(), tr2.getTags());
-		Assert.assertEquals("timestamps not equal", tr1.getTimestamp(), tr2.getTimestamp());
-		if(tr1.getValueType()==null) {
-			Assert.assertNull("tr1 vtype was null, but tr2 was not", tr2.getValueType());
-		} else {
-			Assert.assertNotNull("tr1 vtype was not null, but tr2 was", tr2.getValueType());
-			Assert.assertEquals("value types not equal", tr1.getValueType(), tr2.getValueType());
-		}
-		if(tr1.isValued()) {
-			final StreamedMetricValue tr1v = (StreamedMetricValue)tr1;
-			final StreamedMetricValue tr2v = (StreamedMetricValue)tr2;
-			Assert.assertEquals("dataTypes not equal", tr1v.isDoubleValue(), tr2v.isDoubleValue());
-			if(tr1v.isDoubleValue()) {
-				Assert.assertEquals("double values are not equal", tr1v.getDoubleValue(), tr2v.getDoubleValue(), 0D);
-			} else {
-				Assert.assertEquals("long values are not equal", tr1v.getLongValue(), tr2v.getLongValue());
-			}
-		}
-	}
-	
+//	/**
+//	 * Validates that the passed {@link StreamedMetric}s are equal
+//	 * @param tr1 One trace
+//	 * @param tr2 Another trace
+//	 */
+//	public static void assertEquals(final StreamedMetric tr1, final StreamedMetric tr2) {
+//		Assert.assertNotNull("tr1 was null", tr1);
+//		Assert.assertNotNull("tr2 was null", tr2);
+//		if(tr1==tr2) return;
+//		Assert.assertEquals("types not equal", tr1.getClass(), tr2.getClass());
+//		Assert.assertEquals("metricNames not equal", tr1.getMetricName(), tr2.getMetricName());
+//		Assert.assertEquals("metricKeys not equal", tr1.metricKey(), tr2.metricKey());
+//		Assert.assertEquals("tags not equal", tr1.getTags(), tr2.getTags());
+//		Assert.assertEquals("timestamps not equal", tr1.getTimestamp(), tr2.getTimestamp());
+//		if(tr1.getValueType()==null) {
+//			Assert.assertNull("tr1 vtype was null, but tr2 was not", tr2.getValueType());
+//		} else {
+//			Assert.assertNotNull("tr1 vtype was not null, but tr2 was", tr2.getValueType());
+//			Assert.assertEquals("value types not equal", tr1.getValueType(), tr2.getValueType());
+//		}
+//		if(tr1.isValued()) {
+//			final StreamedMetricValue tr1v = (StreamedMetricValue)tr1;
+//			final StreamedMetricValue tr2v = (StreamedMetricValue)tr2;
+//			Assert.assertEquals("dataTypes not equal", tr1v.isDoubleValue(), tr2v.isDoubleValue());
+//			if(tr1v.isDoubleValue()) {
+//				Assert.assertEquals("double values are not equal", tr1v.getDoubleValue(), tr2v.getDoubleValue(), 0D);
+//			} else {
+//				Assert.assertEquals("long values are not equal", tr1v.getLongValue(), tr2v.getLongValue());
+//			}
+//		}
+//	}
+//	
 	
 	
 	

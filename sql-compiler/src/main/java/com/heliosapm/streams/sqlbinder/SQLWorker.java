@@ -35,7 +35,9 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -65,6 +67,8 @@ import javassist.LoaderClassPath;
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.sqlbinder.SQLWorker</code></p>
+ * TODO: always get SQL from the binder incase SQL is modified during compilation.
+ * TODO: implement KEYS: in all execute and executeUpdate ops.
  */
 
 public class SQLWorker {
@@ -522,6 +526,8 @@ public class SQLWorker {
 		return executeUpdate(null, sqlText, args);
 	}
 	
+	public static final Object[][] EMPTY_AUTOKEYS_ARR = {{}};
+	
 	/**
 	 * Executes the passed statement
 	 * @param conn An optional connection. If not supplied, a new connection will be acquired, and closed when used.
@@ -529,29 +535,33 @@ public class SQLWorker {
 	 * @param args The bind arguments
 	 * @return The auto generated keys which will be empty if none are available
 	 */
-	public Object[] execute(Connection conn, String sqlText, Object...args) {		
+	public Object[][] execute(Connection conn, String sqlText, Object...args) {		
 		PreparedStatement ps = null;
 		ResultSet rset = null;
 		Object[] autoKeys = {};
+		final Set<Object[]> autoKeyRows = new LinkedHashSet<Object[]>();
 		boolean newConn = conn==null;		
 		try {
 			final AbstractPreparedStatementBinder binder = binderFactory.getBinder(sqlText);
 			if(newConn) {
 				conn = dataSource.getConnection();
 			}
-			ps = binder.isAutoKeys() ? conn.prepareStatement(sqlText, Statement.RETURN_GENERATED_KEYS) : conn.prepareStatement(sqlText); 
+			ps = binder.isAutoKeys() ? conn.prepareStatement(binder.getSQL(), Statement.RETURN_GENERATED_KEYS) : conn.prepareStatement(binder.getSQL()); 
 			binder.bind(ps, args);
 			execute(ps, binder);
 			if(binder.isAutoKeys()) {
 				rset = ps.getGeneratedKeys();
 				final int cols = rset.getMetaData().getColumnCount();
-				autoKeys = new Object[cols];
-				for(int i = 0; i < cols; i++) {
-					autoKeys[i] = rset.getObject(i+1);
+				while(rset.next()) {
+					autoKeys = new Object[cols];
+					for(int i = 0; i < cols; i++) {
+						autoKeys[i] = rset.getObject(i+1);
+					}
+					autoKeyRows.add(autoKeys);
 				}
 			}
 			if(newConn) conn.commit();
-			return autoKeys;
+			return !binder.isAutoKeys() ? EMPTY_AUTOKEYS_ARR : autoKeyRows.toArray(new Object[autoKeyRows.size()][]);
 		} catch (Exception ex) {
 			throw new RuntimeException("SQL Update Failure [" + sqlText + "]", ex);
 		} finally {
@@ -1233,12 +1243,11 @@ public class SQLWorker {
 			Connection conn = null;
 			PreparedStatement ps = null;
 			AbstractPreparedStatementBinder psb = null;
-			ResultSet rset = null;
 			ResultSetMetaData rsmd = null;
 			NVP<Boolean, Class<?>>[] resultSetTypes = null;
 			JDBCType[] rsetTypes = null;
 			boolean isQuery = false;
-			final StringBuilder bSql = new StringBuilder(sql.trim());
+			final StringBuilder bSql = new StringBuilder(sql);
 			final boolean hasKeys = hasGeneratedKeys(bSql);
 			final String sqlText = bSql.toString();
 			try {
