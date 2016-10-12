@@ -12,6 +12,15 @@ CREATE SEQUENCE FQN_TP_SEQ START WITH 1 INCREMENT BY 100;
 CREATE SEQUENCE ANN_SEQ START WITH 1 INCREMENT BY 20;
 CREATE SEQUENCE QID_SEQ START WITH 1 INCREMENT BY 20;
 
+--ALTER TABLE tsd_tsmeta ALTER COLUMN FQNID SET DEFAULT nextval('fqn_seq')
+--ALTER TABLE tsd_fqn_tagpair ALTER COLUMN FQN_TP_ID SET DEFAULT nextval('fqn_tp_seq')
+--ALTER TABLE tsd_tagk ALTER COLUMN version SET DEFAULT 1;
+--ALTER TABLE tsd_tagv ALTER COLUMN version SET DEFAULT 1;
+--ALTER TABLE tsd_metric ALTER COLUMN version SET DEFAULT 1;
+--ALTER TABLE tsd_tsmeta ALTER COLUMN version SET DEFAULT 1;
+
+
+
 -- =================================================================
 -- TAG KEYS
 -- =================================================================

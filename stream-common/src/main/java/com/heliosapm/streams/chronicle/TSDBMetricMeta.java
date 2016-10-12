@@ -49,6 +49,17 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	/** The factory to create new instances of TSDBMetricMeta */
 	public static final EventFactory<TSDBMetricMeta> FACTORY = new TSDBMetricMetaEventFactory();
 	
+	/** First byte of of a marshalled TSDBMetricMeta indicating it has not been processed */
+	public static final byte META_PENDING = 1;
+	/** First byte of of a marshalled TSDBMetricMeta indicating it has been processed */
+	public static final byte META_PROCESSED = 2;
+	
+	/** Byte indicating if meta has been processed (2) or not (1) */
+	protected byte pending = META_PENDING;
+	
+	/** The index of this meta in the chroinicle queue. Not persisted. */
+	protected long index = -1;
+	
 	/** The metric name */
 	protected String metricName = null;
 	/** The metric uid */
@@ -87,6 +98,8 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 * Creates a new TSDBMetricMeta
 	 */
 	private TSDBMetricMeta(final TSDBMetricMeta meta) {
+		this.index = meta.index;
+		this.pending = meta.pending;		
 		this.metricName = meta.metricName;
 		this.tsuid = meta.tsuid;
 		this.tags.putAll(meta.tags);
@@ -118,12 +131,24 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 * @return this instance
 	 */
 	public TSDBMetricMeta reset() {
+		index = -1;
+		pending = META_PENDING;
 		metricName = null;
 		tsuid = null;
 		tags.clear();
 		tagKeyUids.clear();
 		tagValueUids.clear();
 		endToEndStartTime = -1L;
+		return this;
+	}
+	
+	/**
+	 * Sets the pending state of this meta
+	 * @param pending true to set as pending, false to set as processed
+	 * @return this instance
+	 */
+	public TSDBMetricMeta setPending(final boolean pending) {
+		this.pending = pending ? META_PENDING : META_PROCESSED;
 		return this;
 	}
 	
@@ -157,6 +182,10 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		final StringBuilder b = new StringBuilder("TSDBMetricMeta: [");
 		b.append("\n\tTSUID:").append(tsuid==null ? "<null>" : DatatypeConverter.printHexBinary(tsuid));
 		b.append("\n\tMetric Name:").append(metricName).append("/").append(metricUid==null ? "<null>" : metricUid);
+		b.append("\n\tProcessed:").append(isProcessed());
+		if(index!=-1L) {
+			b.append("\n\tIndex:").append(index);
+		}
 		b.append("\n\tTags: [");
 		for(Map.Entry<String, String> tag: tags.entrySet()) {
 			final String key = tag.getKey();
@@ -190,6 +219,8 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 * @return this instance
 	 */
 	public TSDBMetricMeta load(final TSDBMetricMeta otherMeta) {
+		this.pending = otherMeta.pending;
+		this.index = otherMeta.index;
 		this.metricName = otherMeta.metricName;
 		this.tsuid = otherMeta.tsuid;
 		this.tags.putAll(otherMeta.tags);
@@ -231,6 +262,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 */
 	@Override
 	public void writeMarshallable(final BytesOut bytes) {		
+		bytes.writeByte(pending);
 		final int t = tags.size();
 		final int k = tagKeyUids.size();
 		final int v = tagKeyUids.size();
@@ -303,6 +335,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	 */
 	@Override
 	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
+		pending = bytes.readByte();
 		final byte mt = bytes.readByte();
 		if(mt!=MessageType.METRICMETA.byteOrdinal) throw new IllegalStateException("Header byte was not for MessageType.METRICMETA.byteOrdinal:" + mt);
 		metricName = bytes.readUtf8();
@@ -351,6 +384,14 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	public byte[] getTsuid() {
 		return tsuid;
 	}
+	
+	/**
+	 * Indicates if this meta has been processed
+	 * @return true if this meta has been processed, false if it is pending
+	 */
+	public boolean isProcessed() {
+		return pending==META_PROCESSED; 
+	}
 
 	/**
 	 * Returns the loaded tags
@@ -384,7 +425,23 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		return metricUid;
 	}
 	
+	/**
+	 * Returns the index of this meta in the queue, or -1 if not set
+	 * @return the index of this meta in the queue, or -1 if not set
+	 */
+	public long getIndex() {
+		return index;
+	}
 	
+	/**
+	 * Sets the index of this meta in the queue
+	 * @param index the index of this meta in the queue
+	 * @return this instance
+	 */
+	public TSDBMetricMeta index(final long index) {
+		this.index = index;
+		return this;
+	}
 
 	
 

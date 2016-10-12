@@ -96,7 +96,7 @@ public class DefaultDataSource implements Closeable {
 	/** The default minimum idle connections in the pool */
 	public static final int DEFAULT_DS_MINCONNS = 2;
 	/** The configuration key for the connection test sql */
-	public static final String CONFIG_DS_TESTSQL = "db.url";
+	public static final String CONFIG_DS_TESTSQL = "db.testsql";
 	/** The default connection test sql */
 	public static final String DEFAULT_DS_TESTSQL = "SELECT SYSDATE";
 	/** The configuration key for the connection timeout in ms. */
@@ -211,6 +211,7 @@ public class DefaultDataSource implements Closeable {
 		config.setRegisterMbeans(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_DS_MBEANS, DEFAULT_DS_MBEANS, properties));
 		config.setPoolName(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_DS_NAME, DEFAULT_DS_NAME, properties));
 		config.setThreadFactory(JMXManagedThreadFactory.newThreadFactory("HikariPool-" + config.getPoolName(), true));
+		log.info("Config: {}", config.toString());
 		schedulerObjectName = JMXHelper.objectName("com.heliosapm.streams.tsdb.listener:service=Scheduler,name=JDBCConnectionPool");
 		scheduler = new JMXManagedScheduler(schedulerObjectName, "JDBCConnectionPool", 2, true);
 		//config.setScheduledExecutorService(scheduler);
@@ -225,7 +226,9 @@ public class DefaultDataSource implements Closeable {
 	
 	protected void runDDL(final Properties properties) {
 		if(ddlResources.length > 0) {
-			if(ds.getDataSourceClassName().equals(DEFAULT_DS_CLASS)) {
+			final String dsClassName = ds.getDataSourceClassName(); 
+			if(dsClassName!=null && dsClassName.equals(DEFAULT_DS_CLASS)) {
+			
 				log.info(">>>>> Initializing DDL....");
 				String pResource = null;
 				Connection conn = null;
@@ -262,7 +265,8 @@ public class DefaultDataSource implements Closeable {
 	}
 	
 	protected void startServers(final Properties properties) {
-		if(ds.getDataSourceClassName().equals(DEFAULT_DS_CLASS)) {
+		final String dsClassName = ds.getDataSourceClassName(); 
+		if(dsClassName!=null && dsClassName.equals(DEFAULT_DS_CLASS)) {
 			tcpPort = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_DS_TCP, DEFAULT_DS_TCP, properties);
 			if(tcpPort!=-1) {
 				final List<String> args = new ArrayList<String>(Arrays.asList("-tcp", "-tcpDaemon", "-tcpPort", "" + tcpPort, "-tcpAllowOthers"));

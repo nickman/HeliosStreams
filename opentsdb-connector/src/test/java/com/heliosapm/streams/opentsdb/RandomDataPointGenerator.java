@@ -245,8 +245,8 @@ public class RandomDataPointGenerator implements Runnable {
 			final Config cfg = new Config(true);
 			final TSDB tsdb = new TSDB(cfg);
 			final TSDBChronicleEventPublisher pub = new TSDBChronicleEventPublisher(true);
-			final int sampleSize = 1024;
-			final int loops = 100000; 
+			final int sampleSize = 128000;
+			final int loops = 1; 
 			final long sleep = 0; //10000;
 			final int sleepFreq = 1;
 			final boolean text = false;			

@@ -18,16 +18,19 @@ under the License.
  */
 package com.heliosapm.streams.common.metrics;
 
+import java.io.PrintStream;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import javax.management.ObjectName;
 
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
-import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.codahale.metrics.ConsoleReporter;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.DefaultObjectNameFactory;
 import com.codahale.metrics.ExponentiallyDecayingReservoir;
@@ -63,6 +66,11 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 	/** The default JMX reporter for the registry if ours fails */
 	private final JmxReporter jmxReporter;
 	
+	/** The console reporter */
+	private ConsoleReporter consoleReporter = null;
+	/** Flag indicating if the console reporter is started */
+	private final AtomicBoolean consoleReporterEnabled = new AtomicBoolean(false);
+	
 	/** The default ObjectNameFactory if ours fails */
 	protected static final DefaultObjectNameFactory DEFAULT_ON_FACTORY = new DefaultObjectNameFactory();
 	
@@ -94,6 +102,57 @@ public class SharedMetricsRegistry extends MetricRegistry implements SharedMetri
 		jmxReporter.start();
 		log.info("Created SharedMetricsRegistry");
 	}
+	
+	
+	/**
+	 * Starts the console reporter if not already running
+	 * @param secs The frequency to report in seconds, defaults to 5
+	 * @param ps The print stream to report to , defaults to System.out
+	 */
+	public void startConsoleReporter(final Long secs, final PrintStream ps) {
+		if(consoleReporterEnabled.compareAndSet(false, true)) {
+			consoleReporter = ConsoleReporter.forRegistry(this).outputTo(ps==null ? System.out : ps).build();
+			consoleReporter.start(secs==null ? 5 : secs, TimeUnit.SECONDS);
+		}
+	}
+	
+	/**
+	 * Indicates if the console reporter is enabled
+	 * @return true if the console reporter is enabled, false otherwise
+	 */
+	public boolean isConsoleReporting() {
+		return consoleReporterEnabled.get();
+	}
+	
+	/**
+	 * Starts the console reporter if not already running.
+	 * Reports to System.out every 5 seconds
+	 */
+	public void startConsoleReporter() {
+		startConsoleReporter(null, null);
+	}
+	
+	/**
+	 * Starts the console reporter to System.out if not already running
+	 * @param secs The frequency to report in seconds, defaults to 5
+	 */
+	public void startConsoleReporter(final Long secs) {
+		startConsoleReporter(secs, null);
+	}
+	
+
+	
+	
+	/**
+	 * Stops the console reporter if running
+	 */
+	public void stopConsoleReporter() {
+		if(consoleReporterEnabled.compareAndSet(true, false)) {
+			if(consoleReporter!=null) consoleReporter.stop();
+			consoleReporter = null;
+		}
+	}
+	
 	
 	/**
 	 * {@inheritDoc}

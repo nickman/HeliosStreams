@@ -31,11 +31,14 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.codahale.metrics.Counter;
+import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
@@ -43,7 +46,6 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
-import com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisher;
 import com.heliosapm.streams.opentsdb.ringbuffer.RBWaitStrategy;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
 import com.heliosapm.streams.sqlbinder.SQLWorker.ResultSetRowDataHandler;
@@ -53,7 +55,6 @@ import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 import com.heliosapm.utils.lang.StringHelper;
-import com.heliosapm.utils.reflect.PrivateAccessor;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import com.lmax.disruptor.EventHandler;
@@ -68,9 +69,9 @@ import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.RollCycle;
 import net.openhft.chronicle.queue.RollCycles;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
+import net.openhft.chronicle.threads.LongPauser;
+import net.openhft.chronicle.threads.Pauser;
 import net.openhft.chronicle.wire.WireType;
-import net.opentsdb.core.TSDB;
-import net.opentsdb.utils.Config;
 
 /**
  * <p>Title: ListenerMain</p>
@@ -166,8 +167,8 @@ public class ListenerMain implements Closeable, Runnable {
 	protected boolean inQueueTextFormat = false;
 	/** Timer to track elapsed times on executing the dispatch handler */
 	protected final Timer dispatchHandlerTimer = SharedMetricsRegistry.getInstance().timer("dispatchHandler");
-	/** Endto end Timer to track elapsed times from the rtpublisher callback to the dispatcher */
-	protected final Timer endToEndTimer = SharedMetricsRegistry.getInstance().timer("endToEnd");
+//	/** Endto end Timer to track elapsed times from the rtpublisher callback to the dispatcher */
+//	protected final Timer endToEndTimer = SharedMetricsRegistry.getInstance().timer("endToEnd");
 	/** A meter of incoming datapoints */
 	protected final Meter dataPoints = SharedMetricsRegistry.getInstance().meter("incomingDataPoints");
 	/** A meter of incoming datapoints */
@@ -176,8 +177,11 @@ public class ListenerMain implements Closeable, Runnable {
 	/** Counter of uncaught exceptions in the dispatch handler */
 	protected final Counter dispatchExceptions = SharedMetricsRegistry.getInstance().counter("dispatchExceptions");
 	
-	/** The run thread */
+	/** The run thread that reads from the inbound queue and writes to the ring-buffer */
 	protected Thread runThread = null;
+	/** Counts the number of of in queue events in each batch */
+	protected final LongAdder batchCounter = new LongAdder();
+	
 	
 	// ===============================================================================================
 	//		Guava Cache Config
@@ -203,6 +207,8 @@ public class ListenerMain implements Closeable, Runnable {
 	protected RollCycle inQueueRollCycle = null;
 	/** The queue */
 	protected ChronicleQueue inQueue = null;
+	/** The in queue tailer */
+	protected ExcerptTailer tailer = null;
 	
 	// ===============================================================================================
 	//		RingBuffer Config
@@ -279,54 +285,67 @@ public class ListenerMain implements Closeable, Runnable {
 	
 	/** The dispatch handler */
 	protected final EventHandler<TSDBMetricMeta> dispatchHandler = new EventHandler<TSDBMetricMeta>() {
+		final AtomicInteger concurrency = new AtomicInteger(0);
+		final Gauge<Integer> concurrencyGauge = SharedMetricsRegistry.getInstance().gauge("concurrency", new Callable<Integer>(){
+			@Override
+			public Integer call() throws Exception {				
+				return concurrency.get();
+			}
+		});
 		@Override
 		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
-			final Context ctx = dispatchHandlerTimer.time();
-			Connection conn = null;
-			PreparedStatement ps = null;
+//			log.info("Processing TSDB Metric: {}/{}.", sequence, endOfBatch);
+			concurrency.incrementAndGet();
 			try {
-				if(endOfBatch) {
-					final long batchSize = sequence - lastBatchEnd;
-					lastBatchEnd = sequence;
-					log.info("Processing TSDB Metric: {}/{}. Batch Size: {}", sequence, endOfBatch, batchSize);
-				}				
-				conn = ds.getConnection();
-				final String metricUid = tagMetricCache.get(meta.getMetricName(), uIDLoader("TSD_METRIC", meta.getMetricName(), meta.getMetricUid(), conn));
-				final Map<String, String> tagUids = new TreeMap<String, String>(TagKeySorter.INSTANCE);
-				
-				for(Map.Entry<String, String> tag: meta.getTags().entrySet()) {
-					final String tagKey = tag.getKey();
-					final String tagValue = tag.getValue();
-					final String tagKeyUid = meta.getTagKeyUids().get(tagKey);
-					final String tagValueUid = meta.getTagValueUids().get(tagValue);
-					final String tagPairUid = tagPairCache.get(tagKey + "=" + tagValue, 
-							tagPairLoader(tagKey, tagKeyUid, tagValue, tagValueUid, conn)
-						);
- 
-					tagUids.put(tagKey, tagPairUid);
-				}
-				final String fqn = meta.getMetricName() + ":" + meta.getTags();
-				final String tsuid = StringHelper.bytesToHex(meta.getTsuid());
-				if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
-					final Object[][] keys = sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, fqn, tsuid);
-					final long tsuidKey = (Long)keys[0][0];
-					int porder = 1;
-					final int last = tagUids.size();
-					ps = null;
-					for(final String tagPairUid: tagUids.values()) {
-						// FQNID,XUID,PORDER,NODE
-						ps = sqlWorker.batch(conn, ps, FQN_TAGPAIR_INSERT_SQL, tsuidKey, tagPairUid, porder, porder==last ? "B" : "L");
+				final Context ctx = dispatchHandlerTimer.time();
+				Connection conn = null;
+				PreparedStatement ps = null;
+				try {
+					if(endOfBatch) {
+						final long batchSize = sequence - lastBatchEnd;
+						lastBatchEnd = sequence;
+						log.info("Processing TSDB Metric: {}/{}. Batch Size: {}", sequence, endOfBatch, batchSize);
+					}				
+					conn = ds.getConnection();
+					final String metricUid = tagMetricCache.get(meta.getMetricName(), uIDLoader("TSD_METRIC", meta.getMetricName(), meta.getMetricUid(), conn));
+					final Map<String, String> tagUids = new TreeMap<String, String>(TagKeySorter.INSTANCE);
+					
+					for(Map.Entry<String, String> tag: meta.getTags().entrySet()) {
+						final String tagKey = tag.getKey();
+						final String tagValue = tag.getValue();
+						final String tagKeyUid = meta.getTagKeyUids().get(tagKey);
+						final String tagValueUid = meta.getTagValueUids().get(tagValue);
+						final String tagPairUid = tagPairCache.get(tagKey + "=" + tagValue, 
+								tagPairLoader(tagKey, tagKeyUid, tagValue, tagValueUid, conn)
+							);
+	 
+						tagUids.put(tagKey, tagPairUid);
 					}
-					ps.executeBatch();
+					final String fqn = meta.getMetricName() + ":" + meta.getTags();
+					final String tsuid = StringHelper.bytesToHex(meta.getTsuid());
+					if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
+						final Object[][] keys = sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, fqn, tsuid);
+						final long tsuidKey = ((Number)keys[0][0]).longValue();
+						int porder = 1;
+						final int last = tagUids.size();
+						ps = null;
+						for(final String tagPairUid: tagUids.values()) {
+							// FQNID,XUID,PORDER,NODE
+							ps = sqlWorker.batch(conn, ps, FQN_TAGPAIR_INSERT_SQL, tsuidKey, tagPairUid, porder, porder==last ? "B" : "L");
+						}
+						ps.executeBatch();
+					}
+					
+					// insert fqn tagpairs
+					conn.commit();
+				} finally {
+					if(ps!=null) try { ps.close(); } catch (Exception x) {/* No Op */}
+					if(conn!=null) try { conn.close(); } catch (Exception x) {/* No Op */}
+					meta.reset();
+					ctx.stop();
 				}
-				
-				// insert fqn tagpairs
-				conn.commit();
 			} finally {
-				if(ps!=null) try { ps.close(); } catch (Exception x) {/* No Op */}
-				if(conn!=null) try { conn.close(); } catch (Exception x) {/* No Op */}
-				meta.reset();
-				ctx.stop();
+				concurrency.decrementAndGet();
 			}
 		}
 	};
@@ -391,25 +410,7 @@ public class ListenerMain implements Closeable, Runnable {
 	
 	public void start() {
 		log.info(">>>>> Starting Listener....");
-		runThread = new Thread("RunThread") {
-			public void run() {
-				final ExcerptTailer tailer = inQueue.createTailer();
-				final TSDBMetricMeta meta = TSDBMetricMeta.FACTORY.newInstance(); 
-				while(running.get()) {
-					try {
-						while(tailer.readBytes(meta.reset())) {
-							long sequence = dispatchRb.next();
-							TSDBMetricMeta event = dispatchRb.get(sequence);
-							event.load(meta).resolved(meta);
-							dispatchRb.publish(sequence);
-						}
-					} catch (Exception ex) {
-						log.error("RunThread Error", ex);
-					}
-				}
-				log.info("Run Thread Ended");
-			}
-		};
+		runThread = new Thread(this, "RunThread");
 		runThread.setDaemon(true);
 		running.set(true);
 		dispatchRb = dispatchRbDisruptor.start();
@@ -528,15 +529,38 @@ public class ListenerMain implements Closeable, Runnable {
 	 */
 	public static void main(String[] args) {
 		try {
+			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.Driver");
+			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/tsdb");
+			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "tsdb");
+			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "tsdb");
+			System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
+			
+			
 			
 			final ListenerMain lm = new ListenerMain(new Properties());
 			lm.start();
-			StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
-				public void run() {
-					lm.stop();
-					System.exit(0);
-				}
-			}).run();
+			final SharedMetricsRegistry smr = SharedMetricsRegistry.getInstance();
+//			smr.startConsoleReporter(5L, System.err);
+			StdInCommandHandler.getInstance()
+				.registerCommand("stop", new Runnable(){
+					public void run() {
+						lm.stop();
+						System.exit(0);
+					}
+				})
+				.registerCommand("conrep", new Runnable(){
+					public void run() {
+						if(smr.isConsoleReporting()) {
+							System.err.println("Stopping ConsoleReporter");
+							smr.stopConsoleReporter();
+						} else {
+							System.err.println("Starting ConsoleReporter");
+							smr.startConsoleReporter(5L, System.err);
+						}
+					}
+				})				
+			.run();
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			System.exit(-1);
@@ -569,22 +593,51 @@ public class ListenerMain implements Closeable, Runnable {
 	protected void stopDisruptor(final String name, final Disruptor<?> disruptor) {
 		final long start = System.currentTimeMillis();
 		try {			
-			disruptor.shutdown(5000, TimeUnit.MILLISECONDS);
+			disruptor.shutdown(15000, TimeUnit.MILLISECONDS);
 			final long elapsed = System.currentTimeMillis() - start;
 			log.info("{} Disruptor stopped normally in {} ms.", name, elapsed);
 		} catch (TimeoutException tex) {
 			final long elapsed = System.currentTimeMillis() - start;
 			log.warn("{} Disruptor failed to stop normally after {} ms. Halting....", name, elapsed);
 			disruptor.halt();
-			log.warn("{} Disruptor halted");
+			log.warn("{} Disruptor halted", name);
 		}
 	}
 	
 
 	
+	/**
+	 * <p>Reads from the in queue and writes the read event to the ring-buffer for processing</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Runnable#run()
+	 */
 	public void run() {
-		
-	}
+		final Pauser pauser = new LongPauser(5, 5, 10, 100, TimeUnit.MILLISECONDS);     
+		tailer = inQueue.createTailer();		
+		final TSDBMetricMeta meta = TSDBMetricMeta.FACTORY.newInstance();
+		while(running.get()) {
+			try {
+				boolean reset = false;
+				tailer = inQueue.createTailer();
+				while(running.get() && tailer.readBytes(meta.reset())) {					
+					if(meta.isProcessed()) continue;
+					meta.index(tailer.index());					
+					if(!reset) {
+						reset = true;
+						pauser.reset();
+					}
+					long sequence = dispatchRb.next();
+					TSDBMetricMeta event = dispatchRb.get(sequence);
+					event.load(meta).resolved(meta);
+					dispatchRb.publish(sequence);
+				}				
+				pauser.pause();
+			} catch (Exception ex) {
+				log.error("RunThread Error", ex);
+			}
+		}
+		log.info("Run Thread Ended");
+	}		
 	
 	
 

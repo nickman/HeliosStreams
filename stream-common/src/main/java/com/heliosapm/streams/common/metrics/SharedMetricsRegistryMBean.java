@@ -18,8 +18,12 @@ under the License.
  */
 package com.heliosapm.streams.common.metrics;
 
+import java.io.PrintStream;
+import java.util.concurrent.TimeUnit;
+
 import javax.management.ObjectName;
 
+import com.codahale.metrics.ConsoleReporter;
 import com.heliosapm.utils.jmx.JMXHelper;
 
 /**
@@ -33,4 +37,23 @@ import com.heliosapm.utils.jmx.JMXHelper;
 public interface SharedMetricsRegistryMBean {
 	/** The service JMX ObjectName */
 	public static final ObjectName OBJECT_NAME = JMXHelper.objectName("com.heliosapm.tsdbex.tracing:service=SharedMetricsRegistry");
+	
+	/**
+	 * Starts the console reporter to System.out if not already running
+	 * @param secs The frequency to report in seconds, defaults to 5
+	 */
+	public void startConsoleReporter(final Long secs);
+	
+	/**
+	 * Indicates if the console reporter is enabled
+	 * @return true if the console reporter is enabled, false otherwise
+	 */
+	public boolean isConsoleReporting();
+	
+	/**
+	 * Starts the console reporter if not already running.
+	 * Reports to System.out every 5 seconds
+	 */
+	public void startConsoleReporter();
+	
 }
