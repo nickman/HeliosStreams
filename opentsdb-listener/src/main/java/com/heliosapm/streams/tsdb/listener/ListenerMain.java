@@ -544,11 +544,11 @@ public class ListenerMain implements Closeable, Runnable {
 	public static void main(String[] args) {
 //		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.Driver");
 		try {
-			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
-			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/tsdb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "tsdb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "tsdb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/tsdb");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "tsdb");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "tsdb");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
 			
 			final ListenerMain lm = new ListenerMain(new Properties());
 			lm.start();

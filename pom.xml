@@ -64,6 +64,7 @@
 		<curator.version>2.10.0</curator.version>
 		<curator-discovery.version>2.10.0</curator-discovery.version>
 		<h2.version>1.4.187</h2.version>
+		<!--<h2.version>1.3.174</h2.version>-->
 		<hikari.version>2.5.1</hikari.version>		
 		<jexl.version>3.0</jexl.version>
 		<disruptor.version>3.3.5</disruptor.version>
