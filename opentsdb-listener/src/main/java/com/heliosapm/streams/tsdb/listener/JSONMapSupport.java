@@ -18,14 +18,6 @@ under the License.
  */
 package com.heliosapm.streams.tsdb.listener;
 
-/**
- * <p>Title: JSONMapSupport</p>
- * <p>Description: </p> 
- * <p>Company: Helios Development Group LLC</p>
- * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.tsdb.listener.JSONMapSupport</code></p>
- */
-
 import java.math.BigDecimal;
 import java.util.Map;
 
@@ -37,9 +29,12 @@ import com.fasterxml.jackson.databind.node.NumericNode;
 import com.heliosapm.streams.json.JSONException;
 import com.heliosapm.streams.json.JSONOps;
 
-import scala.util.parsing.json.JSON;
-
-
+/**
+ * <p>Title: JSONMapSupport</p>
+ * <p>Description: Helper class for managing JSON structured maps in a DB</p> 
+ * @author Whitehead (nwhitehead AT heliosdev DOT org)
+ * <p><code>com.heliosapm.streams.tsdb.listener.JSONMapSupport</code></p>
+ */
 public class JSONMapSupport {
 	/** A JSON representation of an empty map */
 	public static final String EMPTY_MAP = "{}";

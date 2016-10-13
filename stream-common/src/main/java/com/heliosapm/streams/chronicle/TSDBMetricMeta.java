@@ -134,6 +134,7 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		index = -1;
 		pending = META_PENDING;
 		metricName = null;
+		metricUid = null;
 		tsuid = null;
 		tags.clear();
 		tagKeyUids.clear();

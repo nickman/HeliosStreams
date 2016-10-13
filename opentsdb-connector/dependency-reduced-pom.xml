@@ -136,16 +136,16 @@
       <scope>test</scope>
       <exclusions>
         <exclusion>
+          <artifactId>reflections</artifactId>
+          <groupId>org.reflections</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>tools</artifactId>
           <groupId>com.sun</groupId>
         </exclusion>
         <exclusion>
           <artifactId>javassist</artifactId>
           <groupId>org.javassist</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>guava</artifactId>
-          <groupId>com.google.guava</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -155,6 +155,10 @@
       <version>0.0.1-SNAPSHOT</version>
       <scope>test</scope>
       <exclusions>
+        <exclusion>
+          <artifactId>kafka-unit</artifactId>
+          <groupId>info.batey.kafka</groupId>
+        </exclusion>
         <exclusion>
           <artifactId>spring-boot</artifactId>
           <groupId>org.springframework.boot</groupId>
@@ -192,6 +196,14 @@
           <groupId>org.apache.kafka</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>kafka_2.11</artifactId>
+          <groupId>org.apache.kafka</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>netty-all</artifactId>
+          <groupId>io.netty</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>metrics-jvm</artifactId>
           <groupId>io.dropwizard.metrics</groupId>
         </exclusion>
@@ -216,8 +228,24 @@
           <groupId>org.codehaus.groovy</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>trove4j</artifactId>
+          <groupId>net.sf.trove4j</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>jctools-core</artifactId>
           <groupId>org.jctools</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>log4j-core</artifactId>
+          <groupId>org.apache.logging.log4j</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>log4j-slf4j-impl</artifactId>
+          <groupId>org.apache.logging.log4j</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>log4j-1.2-api</artifactId>
+          <groupId>org.apache.logging.log4j</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -230,6 +258,10 @@
         <exclusion>
           <artifactId>log4j-over-slf4j</artifactId>
           <groupId>org.slf4j</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>guava</artifactId>
+          <groupId>com.google.guava</groupId>
         </exclusion>
         <exclusion>
           <artifactId>jackson-annotations</artifactId>
@@ -270,10 +302,6 @@
         <exclusion>
           <artifactId>opentsdb_gwt_theme</artifactId>
           <groupId>net.opentsdb</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>guava</artifactId>
-          <groupId>com.google.guava</groupId>
         </exclusion>
       </exclusions>
     </dependency>

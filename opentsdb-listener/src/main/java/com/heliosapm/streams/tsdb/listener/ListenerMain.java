@@ -64,11 +64,14 @@ import com.lmax.disruptor.TimeoutException;
 import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 
+import net.openhft.chronicle.bytes.Bytes;
 import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.RollCycle;
 import net.openhft.chronicle.queue.RollCycles;
+import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
+import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueExcerpts.StoreTailer;
 import net.openhft.chronicle.threads.LongPauser;
 import net.openhft.chronicle.threads.Pauser;
 import net.openhft.chronicle.wire.WireType;
@@ -295,6 +298,8 @@ public class ListenerMain implements Closeable, Runnable {
 		@Override
 		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
 //			log.info("Processing TSDB Metric: {}/{}.", sequence, endOfBatch);
+			final SingleChronicleQueue scq = (SingleChronicleQueue)inQueue;
+			final StoreTailer updater = new StoreTailer(scq);
 			concurrency.incrementAndGet();
 			try {
 				final Context ctx = dispatchHandlerTimer.time();
@@ -323,7 +328,8 @@ public class ListenerMain implements Closeable, Runnable {
 					}
 					final String fqn = meta.getMetricName() + ":" + meta.getTags();
 					final String tsuid = StringHelper.bytesToHex(meta.getTsuid());
-					if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
+					//if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
+					if(sqlWorker.sqlForInt(conn, "SELECT COUNT(*) FROM TSD_TSMETA WHERE FQN = ?", 0, fqn)==0) {
 						final Object[][] keys = sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, fqn, tsuid);
 						final long tsuidKey = ((Number)keys[0][0]).longValue();
 						int porder = 1;
@@ -338,6 +344,14 @@ public class ListenerMain implements Closeable, Runnable {
 					
 					// insert fqn tagpairs
 					conn.commit();
+//					final long index = meta.getIndex();
+//					final boolean moved = updater.moveToIndex(index);
+//					final Bytes<?> bytes = updater
+//						.wire()
+//						.bytes()
+//						.bytesForWrite()
+//						
+//					bytes.writeByte(TSDBMetricMeta.META_PROCESSED);
 				} finally {
 					if(ps!=null) try { ps.close(); } catch (Exception x) {/* No Op */}
 					if(conn!=null) try { conn.close(); } catch (Exception x) {/* No Op */}
@@ -528,15 +542,13 @@ public class ListenerMain implements Closeable, Runnable {
 	 * @param args
 	 */
 	public static void main(String[] args) {
+//		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.Driver");
 		try {
 			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
-//			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.Driver");
 			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/tsdb");
 			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "tsdb");
 			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "tsdb");
 			System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
-			
-			
 			
 			final ListenerMain lm = new ListenerMain(new Properties());
 			lm.start();
@@ -613,14 +625,16 @@ public class ListenerMain implements Closeable, Runnable {
 	 */
 	public void run() {
 		final Pauser pauser = new LongPauser(5, 5, 10, 100, TimeUnit.MILLISECONDS);     
-		tailer = inQueue.createTailer();		
+		tailer = inQueue.createTailer();
 		final TSDBMetricMeta meta = TSDBMetricMeta.FACTORY.newInstance();
 		while(running.get()) {
 			try {
 				boolean reset = false;
 				tailer = inQueue.createTailer();
 				while(running.get() && tailer.readBytes(meta.reset())) {					
-					if(meta.isProcessed()) continue;
+					if(meta.isProcessed()) {
+						continue;
+					}
 					meta.index(tailer.index());					
 					if(!reset) {
 						reset = true;
