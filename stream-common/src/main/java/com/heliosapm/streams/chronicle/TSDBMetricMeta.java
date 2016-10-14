@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.chronicle;
 
+import java.nio.charset.Charset;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.TimeUnit;
@@ -77,7 +79,8 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	/** The end to end timer start time in ms. */
 	protected long endToEndStartTime = -1L;
 	
-	
+	/** The UTF8 character set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
 
 	
 	
@@ -257,6 +260,35 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		
 	}
 	
+	public static void writeString(final CharSequence cs, final BytesOut bytes) {
+		final byte[] cbytes = cs.toString().trim().getBytes(UTF8);
+		bytes.writeInt(cbytes.length);
+		bytes.write(cbytes);
+	}
+	
+	public static String readString(final BytesIn bytes) {
+		final byte[] cbytes = new byte[bytes.readInt()];
+		bytes.read(cbytes);
+		return new String(cbytes, UTF8);
+	}
+	
+	public static void writeMap(final Map<String, String> map, final BytesOut bytes) {
+		bytes.writeByte((byte)map.size());
+		for(Map.Entry<String, String> entry: map.entrySet()) {
+			writeString(entry.getKey(), bytes);
+			writeString(entry.getValue(), bytes);
+		}
+	}
+	
+	public static Map<String, String> readMap(final BytesIn bytes) {
+		final byte size = bytes.readByte();
+		final Map<String, String> map = new HashMap<String, String>(size);
+		for(int i = 0; i < size; i++) {
+			map.put(readString(bytes), readString(bytes));
+		}
+		return map;
+	}
+	
 	/**
 	 * {@inheritDoc}
 	 * @see net.openhft.chronicle.bytes.BytesMarshallable#writeMarshallable(net.openhft.chronicle.bytes.BytesOut)
@@ -270,30 +302,124 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 		if(t != k || t != v) throw new IllegalStateException(new StringBuilder("Mismatch in tag, tagKeyUid and tagValueUid map sizes, t:")
 				.append(t).append(", k:").append(k).append(", v:").append(v).toString());
 		bytes.writeByte(MessageType.METRICMETA.byteOrdinal);
-		bytes.writeUtf8(metricName);
-		bytes.writeByte((byte)tags.size());
-		for(Map.Entry<String, String> tag: tags.entrySet()) {
-			bytes.writeUtf8(tag.getKey());
-			bytes.writeUtf8(tag.getValue());
-		}
+		writeString(metricName, bytes);
+//		bytes.writeUtf8(metricName);	
+		writeMap(tags, bytes);
+//		bytes.writeByte((byte)tags.size());
+//		for(Map.Entry<String, String> tag: tags.entrySet()) {
+//			bytes.writeUtf8(tag.getKey());
+//			bytes.writeUtf8(tag.getValue());
+//		}
 		bytes.writeShort((short)tsuid.length);
 		bytes.write(tsuid);
 
-		bytes.writeUtf8(metricUid);
+		writeString(metricUid, bytes);
+//		bytes.writeUtf8(metricUid);
 		
-		// tag key uids: HashMap<String, byte[]> tagKeyUids
-		for(Map.Entry<String, String> uid: tagKeyUids.entrySet()) {
-			bytes.writeUtf8(uid.getKey());
-			bytes.writeUtf8(uid.getValue());
-		}
-		// tag value uids: HashMap<String, byte[]> tagValueUids 
-		for(Map.Entry<String, String> uid: tagValueUids.entrySet()) {
-			bytes.writeUtf8(uid.getKey());
-			bytes.writeUtf8(uid.getValue());
-		}
+		writeMap(tagKeyUids, bytes);
+		writeMap(tagValueUids, bytes);
+		
+//		// tag key uids: HashMap<String, byte[]> tagKeyUids
+//		for(Map.Entry<String, String> uid: tagKeyUids.entrySet()) {
+//			bytes.writeUtf8(uid.getKey());
+//			bytes.writeUtf8(uid.getValue());
+//		}
+//		// tag value uids: HashMap<String, byte[]> tagValueUids 
+//		for(Map.Entry<String, String> uid: tagValueUids.entrySet()) {
+//			bytes.writeUtf8(uid.getKey());
+//			bytes.writeUtf8(uid.getValue());
+//		}
 		// end to end start time in ms.
 		bytes.writeLong(endToEndStartTime);
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see net.openhft.chronicle.bytes.BytesMarshallable#readMarshallable(net.openhft.chronicle.bytes.BytesIn)
+	 */
+	@Override
+	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
+		pending = bytes.readByte();
+		final byte mt = bytes.readByte();
+		if(mt!=MessageType.METRICMETA.byteOrdinal) throw new IllegalStateException("Header byte was not for MessageType.METRICMETA.byteOrdinal:" + mt);
+		metricName = readString(bytes);
+		//metricName = bytes.readUtf8();
+		tags.putAll(readMap(bytes));
+//		final int tagCount = bytes.readByte();
+//		for(int i = 0; i < tagCount; i++) {
+//			tags.put(bytes.readUtf8(), bytes.readUtf8());
+//		}
+		tsuid = readShortSizedBytes(bytes);
+		metricUid = readString(bytes);
+		//metricUid = bytes.readUtf8();
+		tagKeyUids.putAll(readMap(bytes));
+		tagValueUids.putAll(readMap(bytes));
+//		// tag key uids: HashMap<String, byte[]> tagKeyUids		
+//		for(int i = 0; i < tagCount; i++) {
+//			tagKeyUids.put(bytes.readUtf8(), bytes.readUtf8());
+//		}
+//		// tag value uids: HashMap<String, byte[]> tagValueUids
+//		for(int i = 0; i < tagCount; i++) {
+//			tagValueUids.put(bytes.readUtf8(), bytes.readUtf8());
+//		}		
+		endToEndStartTime = bytes.readLong();
+	}
+	
+//	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
+//		pending = bytes.readByte();
+//		final byte mt = bytes.readByte();
+//		if(mt!=MessageType.METRICMETA.byteOrdinal) throw new IllegalStateException("Header byte was not for MessageType.METRICMETA.byteOrdinal:" + mt);
+//		metricName = bytes.readUtf8();
+//		final int tagCount = bytes.readByte();
+//		for(int i = 0; i < tagCount; i++) {
+//			tags.put(bytes.readUtf8(), bytes.readUtf8());
+//		}
+//		tsuid = readShortSizedBytes(bytes);
+//		metricUid = bytes.readUtf8();
+//		// tag key uids: HashMap<String, byte[]> tagKeyUids		
+//		for(int i = 0; i < tagCount; i++) {
+//			tagKeyUids.put(bytes.readUtf8(), bytes.readUtf8());
+//		}
+//		// tag value uids: HashMap<String, byte[]> tagValueUids
+//		for(int i = 0; i < tagCount; i++) {
+//			tagValueUids.put(bytes.readUtf8(), bytes.readUtf8());
+//		}		
+//		endToEndStartTime = bytes.readLong();
+//	}
+	
+	
+//	public void writeMarshallable(final BytesOut bytes) {		
+//		bytes.writeByte(pending);
+//		final int t = tags.size();
+//		final int k = tagKeyUids.size();
+//		final int v = tagKeyUids.size();
+//		if(t != k || t != v) throw new IllegalStateException(new StringBuilder("Mismatch in tag, tagKeyUid and tagValueUid map sizes, t:")
+//				.append(t).append(", k:").append(k).append(", v:").append(v).toString());
+//		bytes.writeByte(MessageType.METRICMETA.byteOrdinal);
+//		bytes.writeUtf8(metricName);
+//		bytes.writeByte((byte)tags.size());
+//		for(Map.Entry<String, String> tag: tags.entrySet()) {
+//			bytes.writeUtf8(tag.getKey());
+//			bytes.writeUtf8(tag.getValue());
+//		}
+//		bytes.writeShort((short)tsuid.length);
+//		bytes.write(tsuid);
+//
+//		bytes.writeUtf8(metricUid);
+//		
+//		// tag key uids: HashMap<String, byte[]> tagKeyUids
+//		for(Map.Entry<String, String> uid: tagKeyUids.entrySet()) {
+//			bytes.writeUtf8(uid.getKey());
+//			bytes.writeUtf8(uid.getValue());
+//		}
+//		// tag value uids: HashMap<String, byte[]> tagValueUids 
+//		for(Map.Entry<String, String> uid: tagValueUids.entrySet()) {
+//			bytes.writeUtf8(uid.getKey());
+//			bytes.writeUtf8(uid.getValue());
+//		}
+//		// end to end start time in ms.
+//		bytes.writeLong(endToEndStartTime);
+//	}
 	
 	/**
 	 * {@inheritDoc}
@@ -330,32 +456,6 @@ public class TSDBMetricMeta implements BytesMarshallable, Marshallable {
 	
 	
 	
-	/**
-	 * {@inheritDoc}
-	 * @see net.openhft.chronicle.bytes.BytesMarshallable#readMarshallable(net.openhft.chronicle.bytes.BytesIn)
-	 */
-	@Override
-	public void readMarshallable(final BytesIn bytes) throws IORuntimeException {
-		pending = bytes.readByte();
-		final byte mt = bytes.readByte();
-		if(mt!=MessageType.METRICMETA.byteOrdinal) throw new IllegalStateException("Header byte was not for MessageType.METRICMETA.byteOrdinal:" + mt);
-		metricName = bytes.readUtf8();
-		final int tagCount = bytes.readByte();
-		for(int i = 0; i < tagCount; i++) {
-			tags.put(bytes.readUtf8(), bytes.readUtf8());
-		}
-		tsuid = readShortSizedBytes(bytes);
-		metricUid = bytes.readUtf8();
-		// tag key uids: HashMap<String, byte[]> tagKeyUids		
-		for(int i = 0; i < tagCount; i++) {
-			tagKeyUids.put(bytes.readUtf8(), bytes.readUtf8());
-		}
-		// tag value uids: HashMap<String, byte[]> tagValueUids
-		for(int i = 0; i < tagCount; i++) {
-			tagValueUids.put(bytes.readUtf8(), bytes.readUtf8());
-		}		
-		endToEndStartTime = bytes.readLong();
-	}
 	
 	
 	private static byte[] readByteSizedBytes(final BytesIn<?> bytes) {

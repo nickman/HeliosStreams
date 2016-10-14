@@ -410,7 +410,7 @@ public class SQLWorker {
 	 * Executes a query with a {@link ResultSetHandler} that handles the returned rows.
 	 * @param conn An optional connection. If not supplied, a new connection will be acquired, and closed when used.
 	 * @param sqlText The SQL query
-	 * @param rowHandler The row handler to handle the rows returned
+	 * @param rowDataHandler The row handler to handle the rows returned
 	 * @param args The bind variables
 	 * @return the number of rows retrieved
 	 */
@@ -429,8 +429,9 @@ public class SQLWorker {
 			rset = executeQuery(ps, binder);
 			while(rset.next()) {				
 				if(!rowDataHandler.onRow(rowId, binder.colCount,  binder.unbind(rset))) break;
+				rowId++;
 			}
-			return rowId+1;
+			return rowId;
 		} catch (Exception ex) {
 			throw new RuntimeException("SQL Query Failure [" + sqlText + "]", ex);
 		} finally {
@@ -1272,7 +1273,7 @@ public class SQLWorker {
 				} finally {
 					
 				}
-				log.info("UNMODIFIED PMD: {}", dumpParameterMetaData(ps.getParameterMetaData()));
+				if(log.isDebugEnabled()) log.debug("UNMODIFIED PMD: {}", dumpParameterMetaData(ps.getParameterMetaData()));
 				final ParameterMetaData pmd;
 				final int returningBinds;
 				if(isReturning(sqlText)) {
