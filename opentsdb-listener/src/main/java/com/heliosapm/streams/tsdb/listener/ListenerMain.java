@@ -129,7 +129,7 @@ public class ListenerMain implements Closeable, Runnable {
 	/** The config key name for the dispatch ringbuffer size */
 	public static final String CONFIG_DISPATCHRB_SIZE = "listener.dispatch.rb.size";
 	/** The default dispatch ringbuffer size */
-	public static final int DEFAULT_DISPATCHRB_SIZE = 2048;
+	public static final int DEFAULT_DISPATCHRB_SIZE = 2048 * 2;
 	
 	/** The config key name for the dispatch ringbuffer wait strategy */
 	public static final String CONFIG_DISPATCHRB_WAITSTRAT = "listener.dispatch.rb.waitstrat";
@@ -332,8 +332,8 @@ public class ListenerMain implements Closeable, Runnable {
 		@Override
 		public void onEvent(final TSDBMetricMeta meta, final long sequence, final boolean endOfBatch) throws Exception {
 //			log.info("Processing TSDB Metric: {}/{}.", sequence, endOfBatch);
-			final SingleChronicleQueue scq = (SingleChronicleQueue)inQueue;
-			final StoreTailer updater = new StoreTailer(scq);
+//			final SingleChronicleQueue scq = (SingleChronicleQueue)inQueue;
+//			final StoreTailer updater = new StoreTailer(scq);
 			concurrency.incrementAndGet();
 			try {
 				final Context ctx = dispatchHandlerTimer.time();
@@ -357,13 +357,13 @@ public class ListenerMain implements Closeable, Runnable {
 						final String tagPairUid = tagPairCache.get(tagKey + "=" + tagValue, 
 								tagPairLoader(tagKey, tagKeyUid, tagValue, tagValueUid, conn)
 							);
-	 
+						conn.commit();
 						tagUids.put(tagKey, tagPairUid);
 					}
 					final String fqn = meta.getMetricName() + ":" + meta.getTags();
 					final String tsuid = StringHelper.bytesToHex(meta.getTsuid());
-					//if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
-					if(sqlWorker.sqlForInt(conn, "SELECT COUNT(*) FROM TSD_TSMETA WHERE FQN = ?", 0, fqn)==0) {
+					if(sqlWorker.sqlForInt(conn, TSMETA_COUNT_SQL, 0, fqn, tsuid)==0) {
+					//if(sqlWorker.sqlForInt(conn, "SELECT COUNT(*) FROM TSD_TSMETA WHERE FQN = ?", 0, fqn)==0) {
 						final Object[][] keys = sqlWorker.execute(conn, TSMETA_INSERT_SQL, metricUid, fqn, tsuid);
 						final long tsuidKey = ((Number)keys[0][0]).longValue();
 						int porder = 1;
@@ -658,22 +658,21 @@ public class ListenerMain implements Closeable, Runnable {
 	 * @see java.lang.Runnable#run()
 	 */
 	public void run() {
-		final Pauser pauser = new LongPauser(5, 5, 10, 100, TimeUnit.MILLISECONDS);     
+		final Pauser pauser = new LongPauser(5, 5, 10, 100, TimeUnit.MILLISECONDS);     		
 		tailer = inQueue.createTailer();
 		final TSDBMetricMeta meta = TSDBMetricMeta.FACTORY.newInstance();
 		while(running.get()) {
 			try {
-				boolean reset = false;
-				tailer = inQueue.createTailer();
+//				boolean reset = false;				
 				while(running.get() && tailer.readBytes(meta.reset())) {					
-					if(meta.isProcessed()) {
-						continue;
-					}
-					meta.index(tailer.index());					
-					if(!reset) {
-						reset = true;
-						pauser.reset();
-					}
+//					if(meta.isProcessed()) {
+//						continue;
+//					}
+					//meta.index(tailer.index());					
+//					if(!reset) {
+//						reset = true;
+//						pauser.reset();
+//					}
 					long sequence = dispatchRb.next();
 					TSDBMetricMeta event = dispatchRb.get(sequence);
 					event.load(meta).resolved(meta);

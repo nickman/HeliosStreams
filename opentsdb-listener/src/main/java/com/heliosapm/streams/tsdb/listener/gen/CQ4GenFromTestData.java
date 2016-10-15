@@ -88,7 +88,13 @@ public class CQ4GenFromTestData {
 	 * @param dataDir The directory where the test data files reside
 	 */
 	public CQ4GenFromTestData(final File queueDir, final File dataDir) {
-		Arrays.stream(queueDir.listFiles()).forEach(f -> f.delete());
+		if(queueDir.isDirectory()) {
+			Arrays.stream(queueDir.listFiles()).forEach(f -> f.delete());
+		} else {
+			if(!queueDir.mkdirs()) {
+				throw new RuntimeException("Failed to create Queue Directory [" + queueDir + "]");				
+			}
+		}
 		this.queueDir = queueDir;
 		this.dataDir = dataDir;
 		outQueue = SingleChronicleQueueBuilder.binary(queueDir)

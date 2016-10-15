@@ -20,6 +20,8 @@ package com.heliosapm.streams.opentsdb;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,6 +29,7 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,11 +45,11 @@ import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.chronicle.MessageType;
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
+import com.heliosapm.streams.opentsdb.MetaDataSync.MetricMetaSink;
 import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.streams.opentsdb.ringbuffer.RBWaitStrategy;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
-import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 import com.lmax.disruptor.EventHandler;
@@ -57,6 +60,7 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
+
 
 import net.openhft.chronicle.bytes.BytesRingBufferStats;
 import net.openhft.chronicle.map.ChronicleMap;
@@ -85,7 +89,7 @@ import net.opentsdb.utils.Config;
  * <p><code>com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisher</code></p>
  */
 
-public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChronicleEventPublisherMBean, StoreFileListener, Consumer<BytesRingBufferStats> {
+public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChronicleEventPublisherMBean, StoreFileListener, Consumer<BytesRingBufferStats>, MetricMetaSink {
 	
 	/** The number of processors */
 	public static final int CORES = Runtime.getRuntime().availableProcessors();
@@ -115,14 +119,14 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	/** The default cache lookup ringbuffer wait strategy */
 	public static final RBWaitStrategy DEFAULT_CACHERB_WAITSTRAT = RBWaitStrategy.SLEEP;
 	/** The config key prefix for the cache lookup ringbuffer wait strategy config properties */
-	public static final String CONFIG_CACHERB_WAITSTRAT_PROPS = DEFAULT_CACHERB_WAITSTRAT + ".";
+	public static final String CONFIG_CACHERB_WAITSTRAT_PROPS = CONFIG_CACHERB_WAITSTRAT + ".";
 	
 	/** The config key name for the dispatch ringbuffer wait strategy */
 	public static final String CONFIG_DISPATCHRB_WAITSTRAT = "eventpublisher.dispatch.rb.waitstrat";
 	/** The default dispatch ringbuffer wait strategy */
 	public static final RBWaitStrategy DEFAULT_DISPATCHRB_WAITSTRAT = RBWaitStrategy.SLEEP;
 	/** The config key prefix for the dispatch ringbuffer wait strategy config properties */
-	public static final String CONFIG_DISPATCHRB_WAITSTRAT_PROPS = DEFAULT_DISPATCHRB_WAITSTRAT + ".";
+	public static final String CONFIG_DISPATCHRB_WAITSTRAT_PROPS = CONFIG_DISPATCHRB_WAITSTRAT + ".";
 
 	/** The mandatory TSUID cache db file extension */
 	public static final String CACHE_DBFILE_EXT = ".db";
@@ -334,21 +338,25 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	
 	public static void main(String[] args) {
 		try {
-			final Config cfg = new Config(true);
-			final TSDB tsdb = new TSDB(cfg);
-//			PrivateAccessor.setFieldValue(tsdb, "rt_publisher", value);
-			final TSDBChronicleEventPublisher pub = new TSDBChronicleEventPublisher();
-			pub.initialize(tsdb);
-			StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
-				public void run() {
-					pub.shutdown();
-					System.exit(0);
+			for(Field f: TSDBChronicleEventPublisher.class.getDeclaredFields()) {
+				final int mod = f.getModifiers();
+				if(Modifier.isStatic(mod) && Modifier.isFinal(mod) && Modifier.isPublic(mod)) {
+					final String name = f.getName();
+					if(name.startsWith("CONFIG_")) {
+						try {
+							String ckey = f.get(null).toString();
+							String dval = TSDBChronicleEventPublisher.class.getDeclaredField(name.replace("CONFIG_", "DEFAULT_")).get(null).toString();
+							System.out.println(ckey + "=" + dval);
+						} catch (Exception ex) {
+							String ckey = f.get(null).toString();
+							System.out.println("#" + ckey + "=" );
+						}
+					}
 				}
-			}).run();
+			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
-			System.exit(-1);
-		}	
+		}
 	}
 	
 	
@@ -505,6 +513,25 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		log.info("Created TSDBChronicleEventPublisher instance. TestMode: {}", this.testMode);
 	}
 	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#synchronizeMetricMeta(int)
+	 */
+	@Override
+	public void synchronizeMetricMeta(final int threadCount) {
+		final MetaDataSync sync = new MetaDataSync(tsdb, cacheDb, this, threadCount);
+		sync.go();
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#synchronizeMetricMeta()
+	 */
+	@Override
+	public void synchronizeMetricMeta() {
+		synchronizeMetricMeta(CORES * 2);
+	}
 
 	/**
 	 * {@inheritDoc}
@@ -663,6 +690,20 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		cacheRb.publish(sequence);
 		return Deferred.fromResult(null);
 	}
+	
+	
+	@Override
+	public void sinkMetricMeta(final String metric, final String metricUid, final Map<String, String> tags,
+			final Map<String, String> tagKeyUids, final Map<String, String> tagValueUids, final byte[] tsuid) {
+		final long sequence = dispatchRb.next();
+		final TSDBMetricMeta meta = dispatchRb.get(sequence);
+		meta.reset()
+			.load(metric, tags, tsuid)
+			.resolved(metricUid, tagKeyUids, tagValueUids)
+			.startTimer();
+		dispatchRb.publish(sequence);		
+	}
+	
 
 	/**
 	 * {@inheritDoc}

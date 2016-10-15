@@ -144,5 +144,18 @@ public interface TSDBChronicleEventPublisherMBean {
 	 * @return the size of the TSUID lookup cache underlying file in bytes
 	 */
 	public long getCacheLookupFileSize();
+	
+	/**
+	 * Synchronizes OpenTSDB metric meta data to the chronicle sink
+	 * @param threadCount the number of threads to allocate
+	 */
+	public void synchronizeMetricMeta(final int threadCount);
+	
+	/**
+	 * Synchronizes OpenTSDB metric meta data to the chronicle sink
+	 * using the default number of threads which is cores X 2.
+	 */
+	public void synchronizeMetricMeta();
+
 
 }

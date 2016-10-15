@@ -1,2 +1,2 @@
 com.heliosapm.streams.opentsdb.KafkaRPC
-com.heliosapm.streams.opentsdb.TSDBEndpointPublisher
+#com.heliosapm.streams.opentsdb.TSDBEndpointPublisher
