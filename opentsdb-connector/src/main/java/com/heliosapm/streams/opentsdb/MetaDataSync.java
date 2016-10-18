@@ -43,6 +43,7 @@ import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import com.stumbleupon.async.Callback;
+import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.core.Const;
 import net.opentsdb.core.RowKey;
@@ -196,7 +197,7 @@ public class MetaDataSync {
 									final byte[] rowKey = row.get(0).key();
 						            final byte[] tsuid = UniqueId.getTSUIDFromKey(rowKey, TSDB.metrics_width(), Const.TIMESTAMP_BYTES);
 						            final long timestamp = Bytes.getUnsignedInt(row.get(0).key(), Const.SALT_WIDTH() + TSDB.metrics_width());
-
+						            final Deferred<Object> result = new Deferred<Object>();
 						            TSMeta.getTSMeta(tsdb, UniqueId.uidToString(tsuid)).addCallback(new Callback<Void, TSMeta>() {
 						            	@Override
 						            	public Void call(TSMeta tsMeta) throws Exception {

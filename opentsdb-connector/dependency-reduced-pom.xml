@@ -136,8 +136,8 @@
       <scope>test</scope>
       <exclusions>
         <exclusion>
-          <artifactId>jsr305</artifactId>
-          <groupId>com.google.code.findbugs</groupId>
+          <artifactId>reflections</artifactId>
+          <groupId>org.reflections</groupId>
         </exclusion>
         <exclusion>
           <artifactId>tools</artifactId>
@@ -146,10 +146,6 @@
         <exclusion>
           <artifactId>javassist</artifactId>
           <groupId>org.javassist</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>guava</artifactId>
-          <groupId>com.google.guava</groupId>
         </exclusion>
       </exclusions>
     </dependency>
@@ -264,6 +260,10 @@
           <groupId>org.slf4j</groupId>
         </exclusion>
         <exclusion>
+          <artifactId>guava</artifactId>
+          <groupId>com.google.guava</groupId>
+        </exclusion>
+        <exclusion>
           <artifactId>jackson-annotations</artifactId>
           <groupId>com.fasterxml.jackson.core</groupId>
         </exclusion>
@@ -302,10 +302,6 @@
         <exclusion>
           <artifactId>opentsdb_gwt_theme</artifactId>
           <groupId>net.opentsdb</groupId>
-        </exclusion>
-        <exclusion>
-          <artifactId>guava</artifactId>
-          <groupId>com.google.guava</groupId>
         </exclusion>
       </exclusions>
     </dependency>

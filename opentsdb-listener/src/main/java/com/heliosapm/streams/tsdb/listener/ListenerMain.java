@@ -129,7 +129,7 @@ public class ListenerMain implements Closeable, Runnable {
 	/** The config key name for the dispatch ringbuffer size */
 	public static final String CONFIG_DISPATCHRB_SIZE = "listener.dispatch.rb.size";
 	/** The default dispatch ringbuffer size */
-	public static final int DEFAULT_DISPATCHRB_SIZE = 2048 * 2;
+	public static final int DEFAULT_DISPATCHRB_SIZE = 1024;
 	
 	/** The config key name for the dispatch ringbuffer wait strategy */
 	public static final String CONFIG_DISPATCHRB_WAITSTRAT = "listener.dispatch.rb.waitstrat";
@@ -200,6 +200,10 @@ public class ListenerMain implements Closeable, Runnable {
 	final ThreadGroup tg = new ThreadGroup("MessageListGroup");
 	/** Threads running flag */
 	final AtomicBoolean running = new AtomicBoolean(false);
+	
+	final LongAdder openRequests = new LongAdder();
+	
+	
 	/** Indicates if the in queue is using text format (true) or binary (false) */
 	protected boolean inQueueTextFormat = false;
 	/** Timer to track elapsed times on executing the dispatch handler */
@@ -664,7 +668,9 @@ public class ListenerMain implements Closeable, Runnable {
 		while(running.get()) {
 			try {
 //				boolean reset = false;				
-				while(running.get() && tailer.readBytes(meta.reset())) {					
+				while(running.get() && 
+						tailer.readBytes(meta.reset())) {
+					openRequests.increment();
 //					if(meta.isProcessed()) {
 //						continue;
 //					}
@@ -673,14 +679,17 @@ public class ListenerMain implements Closeable, Runnable {
 //						reset = true;
 //						pauser.reset();
 //					}
-					long sequence = dispatchRb.next();
-					TSDBMetricMeta event = dispatchRb.get(sequence);
+					final long sequence = dispatchRb.next();
+					final TSDBMetricMeta event = dispatchRb.get(sequence);
 					event.load(meta).resolved(meta);
 					dispatchRb.publish(sequence);
 				}				
 				pauser.pause();
-			} catch (Exception ex) {
-				log.error("RunThread Error", ex);
+			} catch (OutOfMemoryError ex) {
+				log.error("OOM. OpenRequests: " + openRequests.longValue(), ex);
+				System.exit(-1);
+			} catch (Throwable t) {
+				log.error("RunThread Error. OpenRequests: " + openRequests.longValue(), t);
 			}
 		}
 		log.info("Run Thread Ended");
