@@ -339,7 +339,6 @@ public class MetaDataSync {
 
 	/**
 	   * Returns the max metric ID from the UID table
-	   * @param tsdb The TSDB to use for data access
 	   * @return The max metric ID as an integer value, may be 0 if the UID table
 	   * hasn't been initialized or is missing the UID row or metrics column.
 	   * @throws IllegalStateException if the UID column can't be found or couldn't
