@@ -29,7 +29,6 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -45,13 +44,15 @@ import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
 import com.heliosapm.streams.chronicle.MessageType;
 import com.heliosapm.streams.chronicle.TSDBMetricMeta;
-import com.heliosapm.streams.opentsdb.MetaDataSync.MetricMetaSink;
+import com.heliosapm.streams.opentsdb.MetaDataSync2.MetricMetaSink;
 import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.streams.opentsdb.ringbuffer.RBWaitStrategy;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
+import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.ExceptionHandler;
 import com.lmax.disruptor.RingBuffer;
@@ -60,7 +61,6 @@ import com.lmax.disruptor.dsl.Disruptor;
 import com.lmax.disruptor.dsl.ProducerType;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
-
 
 import net.openhft.chronicle.bytes.BytesRingBufferStats;
 import net.openhft.chronicle.map.ChronicleMap;
@@ -519,9 +519,18 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#synchronizeMetricMeta(int)
 	 */
 	@Override
-	public void synchronizeMetricMeta(final int threadCount) {
-		final MetaDataSync sync = new MetaDataSync(tsdb, cacheDb, this, threadCount);
-		sync.go();
+	public long synchronizeMetricMeta(final int threadCount) {
+		//final TSDB tsdb, final MetricMetaSink sink, final int runThreads, final double avgKeySize
+		try {
+			final ElapsedTime et = SystemClock.startClock();
+			final MetaDataSync2 sync = new MetaDataSync2(tsdb, this, threadCount, 128);
+			final long metrics = sync.run();
+			log.info("MetricMeta Synchronization Complete. Total Synced: {}, {}", metrics, et.printAvg("Metrics", metrics));
+			return metrics;
+		} catch (Exception ex) {
+			log.error("synchronizeMetricMeta failed", ex);
+			throw new RuntimeException("synchronizeMetricMeta failed", ex);
+		}
 	}
 	
 	/**
@@ -529,8 +538,8 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 	 * @see com.heliosapm.streams.opentsdb.TSDBChronicleEventPublisherMBean#synchronizeMetricMeta()
 	 */
 	@Override
-	public void synchronizeMetricMeta() {
-		synchronizeMetricMeta(CORES * 2);
+	public long synchronizeMetricMeta() {
+		return synchronizeMetricMeta(CORES * 2);
 	}
 
 	/**

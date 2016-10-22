@@ -148,14 +148,16 @@ public interface TSDBChronicleEventPublisherMBean {
 	/**
 	 * Synchronizes OpenTSDB metric meta data to the chronicle sink
 	 * @param threadCount the number of threads to allocate
+	 * @return the number of written metrics
 	 */
-	public void synchronizeMetricMeta(final int threadCount);
+	public long synchronizeMetricMeta(final int threadCount);
 	
 	/**
 	 * Synchronizes OpenTSDB metric meta data to the chronicle sink
 	 * using the default number of threads which is cores X 2.
+	 * @return the number of written metrics
 	 */
-	public void synchronizeMetricMeta();
+	public long synchronizeMetricMeta();
 
 
 }

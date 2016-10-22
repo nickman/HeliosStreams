@@ -487,6 +487,7 @@ public class ListenerMain implements Closeable, Runnable {
 	 * @return true if found, false otherwise
 	 */
 	protected boolean isQueueFileReady() {
+		if(!inQueueDir.isDirectory()) return false;
 		return inQueueDir.listFiles(f -> f.getName().endsWith(".cq4")).length > 0;
 	}
 	
