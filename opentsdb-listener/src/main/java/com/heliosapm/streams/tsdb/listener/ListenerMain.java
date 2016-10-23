@@ -22,6 +22,8 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
+import java.sql.Driver;
+import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.util.Map;
 import java.util.Properties;
@@ -68,9 +70,7 @@ import net.openhft.chronicle.queue.ChronicleQueue;
 import net.openhft.chronicle.queue.ExcerptTailer;
 import net.openhft.chronicle.queue.RollCycle;
 import net.openhft.chronicle.queue.RollCycles;
-import net.openhft.chronicle.queue.impl.single.SingleChronicleQueue;
 import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueBuilder;
-import net.openhft.chronicle.queue.impl.single.SingleChronicleQueueExcerpts.StoreTailer;
 import net.openhft.chronicle.threads.LongPauser;
 import net.openhft.chronicle.threads.Pauser;
 import net.openhft.chronicle.wire.WireType;
@@ -584,10 +584,14 @@ public class ListenerMain implements Closeable, Runnable {
 //		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.Driver");
 		try {
 			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
-			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/tsdb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "tsdb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "tsdb");
+			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/metadb");
+			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "metadb");
+			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "metadb");
 			System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
+			
+			DriverManager.registerDriver((Driver)Class.forName("org.postgresql.Driver").newInstance());
+			Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/metadb", "metadb", "metadb");
+			conn.close();
 			
 			final ListenerMain lm = new ListenerMain(new Properties());
 			lm.start();

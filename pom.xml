@@ -59,7 +59,7 @@
 		<groovy.version>2.4.7</groovy.version>
 		<hbase-testing.version>1.1.0</hbase-testing.version>
 		<metrics.version>3.1.2</metrics.version>
-		<postgres.version>9.4-1201-jdbc41</postgres.version>
+		<postgres.version>9.4.1208</postgres.version>
 		<async-http-client.version>2.1.0-alpha1</async-http-client.version>
 		<curator.version>2.10.0</curator.version>
 		<curator-discovery.version>2.10.0</curator-discovery.version>

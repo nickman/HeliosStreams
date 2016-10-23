@@ -70,7 +70,7 @@ public class MetaDataSync2 {
 	/** The TSDB instance we're operating in */
 	protected final TSDB tsdb;
 	/** A set of tsuids that are known to have been replicated */
-	protected final Set<Integer> tsuidSet;
+	protected final Set<byte[]> tsuidSet;
 	/** The sink to write the discovered metas to */
 	protected final MetricMetaSink sink;
 	/** The number of threads to allocate to the sync */
@@ -136,7 +136,8 @@ public class MetaDataSync2 {
 	public MetaDataSync2(final TSDB tsdb, final MetricMetaSink sink, final int runThreads, final double avgKeySize) {
 		this.client = tsdb.getClient();
 		this.tsdb = tsdb;
-		this.tsuidSet = ChronicleSetBuilder.of(Integer.class)
+		this.tsuidSet = ChronicleSetBuilder.of(byte[].class)
+				.averageKeySize(128)
 				.entries(1000000)
 				.maxBloatFactor(10.0D)
 				.create();
@@ -351,6 +352,7 @@ public class MetaDataSync2 {
 
 			final class MetaScanner implements Callback<Object, ArrayList<ArrayList<KeyValue>>> {
 				protected final AtomicLong counter = new AtomicLong(0L);
+				protected final AtomicLong loops = new AtomicLong(0L);
 
 				/**
 				 * Fetches the next set of rows from the scanner and adds this class as
@@ -379,14 +381,15 @@ public class MetaDataSync2 {
 
 				@Override
 				public Object call(ArrayList<ArrayList<KeyValue>> rows) throws Exception {
-					LOG.info("Scanner Starting");
+					loops.incrementAndGet();
 					if (rows == null || rows.isEmpty()) {
 						result.callback(null);
 						return null;
 					}		        
 					for (final ArrayList<KeyValue> row : rows) {
-						LOG.info("Thread [{}] Scanner returned {} rows", thread_id, rows.size());
+						LOG.debug("Thread [{}] Scanner returned {} rows", thread_id, rows.size());
 						final byte[] tsuid = UniqueId.getTSUIDFromKey(row.get(0).key(), TSDB.metrics_width(), Const.TIMESTAMP_BYTES);
+						if(!tsuidSet.add(tsuid)) continue;
 						final List<byte[]> tagBytes = new ArrayList<byte[]>(8);
 						final Deferred<EnumMap<UniqueIdType, Map<String, String>>> resolvedMetric = resolveUIDsAsync(tsuid, tagBytes);
 
@@ -394,7 +397,7 @@ public class MetaDataSync2 {
 							@Override
 							public Void call(final EnumMap<UniqueIdType, Map<String, String>> resolved) throws Exception {
 								final long sub = counter.incrementAndGet();
-								LOG.info("Thread [{}] processing UIDAsync [{}], total: {}", thread_id, sub, sinkCount.longValue());
+								LOG.debug("Thread [{}] processing UIDAsync [{}], total: {}", thread_id, sub, sinkCount.longValue());
 								
 								final int tagCount = tagBytes.size()/2;
 								final Map<String, String> uidTagPairs = new HashMap<String, String>(tagCount);
@@ -433,7 +436,7 @@ public class MetaDataSync2 {
 			try {
 				scanner.scan();
 				result.joinUninterruptibly();
-				LOG.info("MetaSync Thread#" + thread_id + " Complete");
+				LOG.info("MetaSync Thread#" + thread_id + " Complete. Scans: {}", scanner.loops.get());
 			} catch (Exception e) {
 				LOG.error("[" + thread_id + "] Scanner Exception", e);
 				throw new RuntimeException("[" + thread_id + "] Scanner exception", e);
