@@ -16,11 +16,11 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package com.heliosapm.streams.tsdb.listener;
+package com.heliosapm.streams.sqlbinder;
 
 /**
  * <p>Title: DBType</p>
- * <p>Description: </p> 
+ * <p>Description: Functional enum to handle slight differences between supported databases.</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.tsdb.listener.DBType</code></p>

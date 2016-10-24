@@ -138,11 +138,11 @@ public class DefaultDataSource implements Closeable {
 //		System.setProperty(DefaultDataSource.CONFIG_DS_PW, user);
 //		System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
 
-		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "oracle.jdbc.pool.OracleDataSource");
-		System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:oracle:thin:@//localhost:1521/XE");
-		System.setProperty(DefaultDataSource.CONFIG_DS_USER, user);
-		System.setProperty(DefaultDataSource.CONFIG_DS_PW, user);
-		System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT SYSDATE FROM DUAL");
+//		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "oracle.jdbc.pool.OracleDataSource");
+//		System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:oracle:thin:@//localhost:1521/XE");
+//		System.setProperty(DefaultDataSource.CONFIG_DS_USER, user);
+//		System.setProperty(DefaultDataSource.CONFIG_DS_PW, user);
+//		System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT SYSDATE FROM DUAL");
 		
 		final DefaultDataSource dds = getInstance();
 		final SQLWorker sqlWorker = SQLWorker.getInstance(dds.getDataSource());
@@ -195,12 +195,28 @@ public class DefaultDataSource implements Closeable {
 		if(instance==null) {
 			synchronized(lock) {
 				if(instance==null) {
-					instance = new DefaultDataSource(null);  // FIXME
+					throw new IllegalStateException("DefaultDataSource has not been initialized");
 				}
 			}
 		}
 		return instance;
 	}
+	
+	/**
+	 * Acquires the default data source instance
+	 * @return the default data source instance
+	 */
+	public static DefaultDataSource getInstance(final Properties props) {
+		if(instance==null) {
+			synchronized(lock) {
+				if(instance==null) {
+					instance = new DefaultDataSource(props);  // FIXME
+				}
+			}
+		}
+		return instance;
+	}
+	
 	
 	private DefaultDataSource(final Properties properties) {
 		log.info(">>>>> Initializing DataSource....");
@@ -259,7 +275,10 @@ public class DefaultDataSource implements Closeable {
 						log.info("Processing DDL Resource [{}]", rez);
 						final URL sourceUrl = URLHelper.toURL(rez);
 						final String sqlText = StringHelper.resolveTokens(URLHelper.getTextFromURL(sourceUrl), properties);
-						if(tmpSqlFile==null) tmpSqlFile = File.createTempFile(sourceUrl.getFile().replace(File.separator, "").replace("/", ""), ".tmp");
+						log.info("DDL temp file: [{}]", sourceUrl.getFile().replace(File.separator, "").replace("/", "") + ".tmp");
+						if(tmpSqlFile==null) tmpSqlFile = File.createTempFile("opentsdb-listener-ddl", ".tmp");
+						tmpSqlFile.deleteOnExit();
+						log.info("DDL temp file: [{}]", tmpSqlFile);
 						URLHelper.writeToURL(URLHelper.toURL(tmpSqlFile), sqlText, false);
 						st.execute("RUNSCRIPT FROM '" + tmpSqlFile + "'");
 						log.info("DDL Resource [{}] Processed", rez);						

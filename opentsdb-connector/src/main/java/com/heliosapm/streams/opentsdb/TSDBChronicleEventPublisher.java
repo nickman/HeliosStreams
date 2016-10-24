@@ -555,65 +555,85 @@ public class TSDBChronicleEventPublisher extends RTPublisher implements TSDBChro
 		final Properties properties = new Properties();
 		final Config cfg = tsdb.getConfig();
 		properties.putAll(cfg.getMap());
-		// ================  Configure Outbound Queue
-		outQueueTextFormat = metricManager.getAndSetConfig(CONFIG_OUTQ_TEXT, DEFAULT_OUTQ_TEXT, properties, cfg);
-		outQueueDirName = metricManager.getAndSetConfig(CONFIG_OUTQ_DIR, DEFAULT_OUTQ_DIR, properties, cfg); 
-		log.info("OutQueue: [{}]", outQueueDirName);
-		outQueueDir = new File(outQueueDirName);
-		outQueueBlockSize = metricManager.getAndSetConfig(CONFIG_OUTQ_BLOCKSIZE, DEFAULT_OUTQ_BLOCKSIZE, properties, cfg);
-		outQueueRollCycle = metricManager.getAndSetConfig(CONFIG_OUTQ_ROLLCYCLE, DEFAULT_OUTQ_ROLLCYCLE, properties, cfg);
-		outQueue = SingleChronicleQueueBuilder.binary(outQueueDir)
-				.blockSize(outQueueBlockSize)
-				.rollCycle(outQueueRollCycle)
-				.storeFileListener(this)
-				.onRingBufferStats(this)
-				.wireType(outQueueTextFormat ? WireType.JSON : WireType.BINARY)
-				.build();
-
-		// ================  Configure Cache
-		tsuidCacheDbFileName = metricManager.getAndSetConfig(CONFIG_CACHE_FILE, DEFAULT_CACHE_FILE, properties, cfg);
-		tsuidCacheDbFile = new File(tsuidCacheDbFileName);
-		tsuidCacheDbFile.getParentFile().mkdirs();
-		maxBloatFactor = metricManager.getAndSetConfig(CONFIG_CACHE_BLOAT, DEFAULT_CACHE_BLOAT, properties, cfg);
-		avgKeySize = metricManager.getAndSetConfig(CONFIG_CACHE_AVGKEYSIZE, DEFAULT_CACHE_AVGKEYSIZE, properties, cfg);
-		maxEntries = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_CACHE_MAXKEYS, DEFAULT_CACHE_MAXKEYS, properties);
 		try {
-			cacheDb = ChronicleSetBuilder.of(byte[].class)
-				.averageKeySize(avgKeySize)
-				.entries(maxEntries)
-				.maxBloatFactor(maxBloatFactor)
-				.createOrRecoverPersistedTo(tsuidCacheDbFile);
-			log.info("TSUID Lookup Cache Initialized. Initial Size: {}", cacheDb.size());
+			log.info("Configuring Outbound Queue....");
+			// ================  Configure Outbound Queue
+			outQueueTextFormat = metricManager.getAndSetConfig(CONFIG_OUTQ_TEXT, DEFAULT_OUTQ_TEXT, properties, cfg);
+			outQueueDirName = metricManager.getAndSetConfig(CONFIG_OUTQ_DIR, DEFAULT_OUTQ_DIR, properties, cfg); 
+			log.info("OutQueue: [{}]", outQueueDirName);
+			outQueueDir = new File(outQueueDirName);
+			outQueueBlockSize = metricManager.getAndSetConfig(CONFIG_OUTQ_BLOCKSIZE, DEFAULT_OUTQ_BLOCKSIZE, properties, cfg);
+			outQueueRollCycle = metricManager.getAndSetConfig(CONFIG_OUTQ_ROLLCYCLE, DEFAULT_OUTQ_ROLLCYCLE, properties, cfg);
+			outQueue = SingleChronicleQueueBuilder.binary(outQueueDir)
+					.blockSize(outQueueBlockSize)
+					.rollCycle(outQueueRollCycle)
+					.storeFileListener(this)
+					.onRingBufferStats(this)
+					.wireType(outQueueTextFormat ? WireType.JSON : WireType.BINARY)
+					.build();
+			log.info("Outbound Queue Configured");
 		} catch (Exception ex) {
-			final String msg = "Failed to create TSUID lookup cache with file [" + tsuidCacheDbFileName + "]";
-			log.error(msg, ex);
-			throw new IllegalArgumentException(msg, ex);
+			log.error("Failed to configure OutboundQueue", ex);
+			throw new IllegalArgumentException("Failed to configure OutboundQueue", ex);
+		}
+
+		try {
+			log.info("Configuring TSUID Cache....");
+			// ================  Configure Cache
+			tsuidCacheDbFileName = metricManager.getAndSetConfig(CONFIG_CACHE_FILE, DEFAULT_CACHE_FILE, properties, cfg);
+			tsuidCacheDbFile = new File(tsuidCacheDbFileName);
+			tsuidCacheDbFile.getParentFile().mkdirs();
+			maxBloatFactor = metricManager.getAndSetConfig(CONFIG_CACHE_BLOAT, DEFAULT_CACHE_BLOAT, properties, cfg);
+			avgKeySize = metricManager.getAndSetConfig(CONFIG_CACHE_AVGKEYSIZE, DEFAULT_CACHE_AVGKEYSIZE, properties, cfg);
+			maxEntries = ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_CACHE_MAXKEYS, DEFAULT_CACHE_MAXKEYS, properties);
+			try {
+				cacheDb = ChronicleSetBuilder.of(byte[].class)
+					.averageKeySize(avgKeySize)
+					.entries(maxEntries)
+					.maxBloatFactor(maxBloatFactor)
+					.createOrRecoverPersistedTo(tsuidCacheDbFile);
+				log.info("TSUID Lookup Cache Initialized. Initial Size: {}", cacheDb.size());
+			} catch (Exception ex) {
+				final String msg = "Failed to create TSUID lookup cache with file [" + tsuidCacheDbFileName + "]";
+				log.error(msg, ex);
+				throw new IllegalArgumentException(msg, ex);
+			}
+		} catch (Throwable ex) {
+			log.error("Failed to configure TSUID Cache", ex);
+			throw new IllegalArgumentException("Failed to configure TSUID Cache", ex);
 		}
 		
-		// ================  Configure RingBuffer
-		cacheRbThreads = metricManager.getAndSetConfig(CONFIG_CACHERB_THREADS, DEFAULT_CACHERB_THREADS, properties, cfg);
-		dispatchRbThreads = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_THREADS, DEFAULT_DISPATCHRB_THREADS, properties, cfg);
-		cacheRbSize = metricManager.getAndSetConfig(CONFIG_CACHERB_SIZE, DEFAULT_CACHERB_SIZE, properties, cfg);
-		dispatchRbSize = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_SIZE, DEFAULT_DISPATCHRB_SIZE, properties, cfg);
-		final Properties cacheRbWaitStratConfig = Props.extract(CONFIG_CACHERB_WAITSTRAT_PROPS, properties, true, false);
-		final Properties dispatchRbWaitStratConfig = Props.extract(CONFIG_DISPATCHRB_WAITSTRAT_PROPS, properties, true, false);
-		cacheRbWaitStrat = metricManager.getAndSetConfig(CONFIG_CACHERB_WAITSTRAT, DEFAULT_CACHERB_WAITSTRAT, properties, cfg);		
-		dispatchRbWaitStrat = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_WAITSTRAT, DEFAULT_DISPATCHRB_WAITSTRAT, properties, cfg);
-		cacheRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, cacheRbSize, cacheRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(cacheRbWaitStratConfig));
-		cacheRbDisruptor.setDefaultExceptionHandler(cacheLookupExceptionHandler);
-		cacheRbDisruptor.handleEventsWith(testMode ? testCacheLookupHandler : cacheLookupHandler);
-		dispatchRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, dispatchRbSize, dispatchRbThreadFactory, ProducerType.MULTI, dispatchRbWaitStrat.waitStrategy(dispatchRbWaitStratConfig));
-		dispatchRbDisruptor.setDefaultExceptionHandler(dispatchExceptionHandler);
-		dispatchRbDisruptor.handleEventsWith(dispatchHandler);
-		cacheRb = cacheRbDisruptor.start();
-		log.info("Started CacheLookup RingBuffer");
-		dispatchRb = dispatchRbDisruptor.start();
-		log.info("Started MetricDispatch RingBuffer");
-		
-		if(rolledFileDeletionThread!=null) {
-			rolledFileDeletionThread.setDaemon(true);
-			rolledFileDeletionThread.start();
+		try {
+			log.info("Configuring RingBuffers....");
+			// ================  Configure RingBuffer
+			cacheRbThreads = metricManager.getAndSetConfig(CONFIG_CACHERB_THREADS, DEFAULT_CACHERB_THREADS, properties, cfg);
+			dispatchRbThreads = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_THREADS, DEFAULT_DISPATCHRB_THREADS, properties, cfg);
+			cacheRbSize = metricManager.getAndSetConfig(CONFIG_CACHERB_SIZE, DEFAULT_CACHERB_SIZE, properties, cfg);
+			dispatchRbSize = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_SIZE, DEFAULT_DISPATCHRB_SIZE, properties, cfg);
+			final Properties cacheRbWaitStratConfig = Props.extract(CONFIG_CACHERB_WAITSTRAT_PROPS, properties, true, false);
+			final Properties dispatchRbWaitStratConfig = Props.extract(CONFIG_DISPATCHRB_WAITSTRAT_PROPS, properties, true, false);
+			cacheRbWaitStrat = metricManager.getAndSetConfig(CONFIG_CACHERB_WAITSTRAT, DEFAULT_CACHERB_WAITSTRAT, properties, cfg);		
+			dispatchRbWaitStrat = metricManager.getAndSetConfig(CONFIG_DISPATCHRB_WAITSTRAT, DEFAULT_DISPATCHRB_WAITSTRAT, properties, cfg);
+			cacheRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, cacheRbSize, cacheRbThreadFactory, ProducerType.MULTI, cacheRbWaitStrat.waitStrategy(cacheRbWaitStratConfig));
+			cacheRbDisruptor.setDefaultExceptionHandler(cacheLookupExceptionHandler);
+			cacheRbDisruptor.handleEventsWith(testMode ? testCacheLookupHandler : cacheLookupHandler);
+			dispatchRbDisruptor = new Disruptor<TSDBMetricMeta>(TSDBMetricMeta.FACTORY, dispatchRbSize, dispatchRbThreadFactory, ProducerType.MULTI, dispatchRbWaitStrat.waitStrategy(dispatchRbWaitStratConfig));
+			dispatchRbDisruptor.setDefaultExceptionHandler(dispatchExceptionHandler);
+			dispatchRbDisruptor.handleEventsWith(dispatchHandler);
+			cacheRb = cacheRbDisruptor.start();
+			log.info("Started CacheLookup RingBuffer");
+			dispatchRb = dispatchRbDisruptor.start();
+			log.info("Started MetricDispatch RingBuffer");
+			
+			if(rolledFileDeletionThread!=null) {
+				rolledFileDeletionThread.setDaemon(true);
+				rolledFileDeletionThread.start();
+			}
+		} catch (Exception ex) {
+			log.error("Failed to configure TSUID Cache", ex);
+			throw new IllegalArgumentException("Failed to configure TSUID Cache", ex);
 		}
+			
 		try {
 			JMXHelper.registerMBean(this, JMXHelper.objectName("net.opentsdb:service=TSDBChronicleEventPublisher"));
 		} catch (Exception ex) {

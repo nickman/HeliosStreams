@@ -143,7 +143,41 @@
 		<dependency>
 		  <groupId>org.postgresql</groupId>
 		  <artifactId>postgresql</artifactId>
+		  <scope>compile</scope>
 		</dependency>
+		
+	    <dependency>
+	      <groupId>com.google.guava</groupId>
+	      <artifactId>guava</artifactId>
+	      <scope>compile</scope>
+	    </dependency>
+		
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-annotations</artifactId>
+		  <scope>compile</scope>
+		</dependency>
+		
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-core</artifactId>
+		  <scope>compile</scope>
+		</dependency>
+		
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-databind</artifactId>
+		  <scope>compile</scope>
+		</dependency>
+
+		<dependency>
+		  <groupId>com.fasterxml.jackson.dataformat</groupId>
+		  <artifactId>jackson-dataformat-xml</artifactId>
+		  <scope>compile</scope>
+		</dependency>
+
+		
+		  
 		  
 			
     
@@ -199,6 +233,16 @@
 		<version>${jar-plugin.version}</version>
 		<configuration>
 		  <forceCreation>true</forceCreation>
+           <archive>
+               <manifest>
+                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                   <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                   <addClasspath>true</addClasspath>
+               </manifest>
+               <manifestEntries>
+	               <Main-Class>com.heliosapm.streams.tsdb.listener.ListenerMain</Main-Class>
+               </manifestEntries>
+           </archive>		  		  
 		</configuration>
 	    </plugin>
 	    <plugin>

@@ -22,8 +22,6 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
-import java.sql.Driver;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.util.Map;
 import java.util.Properties;
@@ -55,10 +53,12 @@ import com.heliosapm.streams.tracing.TagKeySorter;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.JMXManagedThreadFactory;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
+import com.heliosapm.utils.url.URLHelper;
 import com.lmax.disruptor.EventHandler;
 import com.lmax.disruptor.ExceptionHandler;
 import com.lmax.disruptor.RingBuffer;
@@ -81,41 +81,6 @@ import net.openhft.chronicle.wire.WireType;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.tsdb.listener.ListenerMain</code></p>
  */
-
-//Exception in thread "MetricListenerThreadThread#5" java.lang.OutOfMemoryError: GC overhead limit exceeded
-//at java.util.zip.InflaterInputStream.<init>(InflaterInputStream.java:88)
-//at java.util.zip.ZipFile$ZipFileInflaterInputStream.<init>(ZipFile.java:393)
-//at java.util.zip.ZipFile.getInputStream(ZipFile.java:374)
-//at java.util.jar.JarFile.getInputStream(JarFile.java:447)
-//at sun.misc.URLClassPath$JarLoader$2.getInputStream(URLClassPath.java:940)
-//at sun.misc.Resource.cachedInputStream(Resource.java:77)
-//at sun.misc.Resource.getByteBuffer(Resource.java:160)
-//at java.net.URLClassLoader.defineClass(URLClassLoader.java:454)
-//at java.net.URLClassLoader.access$100(URLClassLoader.java:73)
-//at java.net.URLClassLoader$1.run(URLClassLoader.java:368)
-//at java.net.URLClassLoader$1.run(URLClassLoader.java:362)
-//at java.security.AccessController.doPrivileged(Native Method)
-//at java.net.URLClassLoader.findClass(URLClassLoader.java:361)
-//at java.lang.ClassLoader.loadClass(ClassLoader.java:424)
-//at sun.misc.Launcher$AppClassLoader.loadClass(Launcher.java:331)
-//at java.lang.ClassLoader.loadClass(ClassLoader.java:357)
-//at org.apache.logging.log4j.core.impl.ThrowableProxy.toCacheEntry(ThrowableProxy.java:560)
-//at org.apache.logging.log4j.core.impl.ThrowableProxy.toExtendedStackTrace(ThrowableProxy.java:603)
-//at org.apache.logging.log4j.core.impl.ThrowableProxy.<init>(ThrowableProxy.java:135)
-//at org.apache.logging.log4j.core.impl.ThrowableProxy.<init>(ThrowableProxy.java:117)
-//at org.apache.logging.log4j.core.impl.Log4jLogEvent.getThrownProxy(Log4jLogEvent.java:530)
-//at org.apache.logging.log4j.core.pattern.ExtendedThrowablePatternConverter.format(ExtendedThrowablePatternConverter.java:61)
-//at org.apache.logging.log4j.core.pattern.PatternFormatter.format(PatternFormatter.java:38)
-//at org.apache.logging.log4j.core.layout.PatternLayout$PatternSerializer.toSerializable(PatternLayout.java:288)
-//at org.apache.logging.log4j.core.layout.PatternLayout.toText(PatternLayout.java:194)
-//at org.apache.logging.log4j.core.layout.PatternLayout.encode(PatternLayout.java:180)
-//at org.apache.logging.log4j.core.layout.PatternLayout.encode(PatternLayout.java:57)
-//at org.apache.logging.log4j.core.appender.AbstractOutputStreamAppender.directEncodeEvent(AbstractOutputStreamAppender.java:120)
-//at org.apache.logging.log4j.core.appender.AbstractOutputStreamAppender.tryAppend(AbstractOutputStreamAppender.java:113)
-//at org.apache.logging.log4j.core.appender.AbstractOutputStreamAppender.append(AbstractOutputStreamAppender.java:104)
-//at org.apache.logging.log4j.core.config.AppenderControl.tryCallAppender(AppenderControl.java:155)
-//at org.apache.logging.log4j.core.config.AppenderControl.callAppender0(AppenderControl.java:128)
-
 
 public class ListenerMain implements Closeable, Runnable {
 	/** The number of processors */
@@ -448,7 +413,7 @@ public class ListenerMain implements Closeable, Runnable {
 		dispatchRbDisruptor.handleEventsWith(dispatchHandler);		
 		log.info("Started MetricDispatch RingBuffer");
 		
-		ds = DefaultDataSource.getInstance();
+		ds = DefaultDataSource.getInstance(properties);
 		sqlWorker = SQLWorker.getInstance(ds.getDataSource());
 		
 		final CountDownLatch keyLoadLatch = asynchLoadUIDCache("tagKeyCache", tagKeyCache, "SELECT XUID, NAME FROM TSD_TAGK");
@@ -583,39 +548,64 @@ public class ListenerMain implements Closeable, Runnable {
 	public static void main(String[] args) {
 //		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.Driver");
 		try {
-			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
-			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/metadb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "metadb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "metadb");
-			System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
-			
-			DriverManager.registerDriver((Driver)Class.forName("org.postgresql.Driver").newInstance());
-			Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/metadb", "metadb", "metadb");
-			conn.close();
-			
-			final ListenerMain lm = new ListenerMain(new Properties());
+//			System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/metadb");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_USER, "metadb");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_PW, "metadb");
+//			System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
+//			
+//			DriverManager.registerDriver((Driver)Class.forName("org.postgresql.Driver").newInstance());
+//			Connection conn = DriverManager.getConnection("jdbc:postgresql://localhost:5432/metadb", "metadb", "metadb");
+//			conn.close();
+			final Properties p = new Properties();
+			if(args.length>0) {
+				Properties props = Props.strToProps(URLHelper.getStrBuffFromURL(URLHelper.toURL(args[0])));
+				p.putAll(props);
+			} else {
+				File f = new File("config.properties");
+				if(f.canRead()) {
+					Properties props = Props.strToProps(URLHelper.getStrBuffFromURL(URLHelper.toURL(f)));
+					p.putAll(props);					
+				}
+			}
+			final ListenerMain lm = new ListenerMain(p);
 			lm.start();
 			final SharedMetricsRegistry smr = SharedMetricsRegistry.getInstance();
 //			smr.startConsoleReporter(5L, System.err);
-			StdInCommandHandler.getInstance()
-				.registerCommand("stop", new Runnable(){
+			if(JMXHelper.isDebugAgentLoaded()) {
+				StdInCommandHandler.getInstance()
+					.registerCommand("stop", new Runnable(){
+						public void run() {
+							lm.stop();
+							System.exit(0);
+						}
+					})
+					.registerCommand("conrep", new Runnable(){
+						public void run() {
+							if(smr.isConsoleReporting()) {
+								System.err.println("Stopping ConsoleReporter");
+								smr.stopConsoleReporter();
+							} else {
+								System.err.println("Starting ConsoleReporter");
+								smr.startConsoleReporter(5L, System.err);
+							}
+						}
+					})				
+				.run();
+			} else {
+				final Thread main = Thread.currentThread();
+				Runtime.getRuntime().addShutdownHook(new Thread(){
 					public void run() {
 						lm.stop();
-						System.exit(0);
+						main.interrupt();
 					}
-				})
-				.registerCommand("conrep", new Runnable(){
-					public void run() {
-						if(smr.isConsoleReporting()) {
-							System.err.println("Stopping ConsoleReporter");
-							smr.stopConsoleReporter();
-						} else {
-							System.err.println("Starting ConsoleReporter");
-							smr.startConsoleReporter(5L, System.err);
-						}
-					}
-				})				
-			.run();
+				});
+				try {
+					Thread.currentThread().join();
+				} catch (Exception ex) {
+					System.out.println("Shutting down....");
+				}
+			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
 			System.exit(-1);
