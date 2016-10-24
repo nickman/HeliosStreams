@@ -131,15 +131,30 @@ public class DefaultDataSource implements Closeable {
 	public static final int DEFAULT_DS_HTTP = 7083;
 	
 	public static void main(String[] args) {
+		final String user = "tsdb";
+//		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "org.postgresql.ds.PGSimpleDataSource");
+//		System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:postgresql://localhost:5432/" + user);
+//		System.setProperty(DefaultDataSource.CONFIG_DS_USER, user);
+//		System.setProperty(DefaultDataSource.CONFIG_DS_PW, user);
+//		System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT current_timestamp");
+
+		System.setProperty(DefaultDataSource.CONFIG_DS_CLASS, "oracle.jdbc.pool.OracleDataSource");
+		System.setProperty(DefaultDataSource.CONFIG_DS_URL, "jdbc:oracle:thin:@//localhost:1521/XE");
+		System.setProperty(DefaultDataSource.CONFIG_DS_USER, user);
+		System.setProperty(DefaultDataSource.CONFIG_DS_PW, user);
+		System.setProperty(DefaultDataSource.CONFIG_DS_TESTSQL, "SELECT SYSDATE FROM DUAL");
+		
 		final DefaultDataSource dds = getInstance();
-		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
-			public void run() {
-				try { dds.close(); } catch (Exception ex) {
-					ex.printStackTrace(System.err);
-				}
-				System.exit(0);
-			}
-		}).run();
+		final SQLWorker sqlWorker = SQLWorker.getInstance(dds.getDataSource());
+		System.out.println("DB Type: [" + sqlWorker.getDBProductName() + "]");
+//		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
+//			public void run() {
+//				try { dds.close(); } catch (Exception ex) {
+//					ex.printStackTrace(System.err);
+//				}
+//				System.exit(0);
+//			}
+//		}).run();
 	}
 	
 	

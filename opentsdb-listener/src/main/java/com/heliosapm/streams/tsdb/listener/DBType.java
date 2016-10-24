@@ -27,5 +27,13 @@ package com.heliosapm.streams.tsdb.listener;
  */
 
 public enum DBType {
-
+	POSTGRES("PostgreSQL"),
+	ORACLE("Oracle"),
+	H2("H2");
+	
+	private DBType(final String dbTypeName) {
+		this.dbTypeName = dbTypeName;
+	}
+	
+	public final String dbTypeName;
 }

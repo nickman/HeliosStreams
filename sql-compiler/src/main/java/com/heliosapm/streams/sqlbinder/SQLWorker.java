@@ -146,6 +146,24 @@ public class SQLWorker {
 	}
 	
 	/**
+	 * Returns the DB product name
+	 * @return
+	 */
+	public String getDBProductName() {
+		Connection conn = null;
+		try {
+			conn = dataSource.getConnection();
+			return conn.getMetaData().getDatabaseProductName();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to get DB product name", ex);
+		} finally {
+			if(conn!=null) {
+				try { conn.close(); } catch (Exception x) {/* No Op */}
+			}
+		}
+	}
+	
+	/**
 	 * Returns the number of binders held in state, bound to a transient PreparedStatement
 	 * @return the number of binders held in state, bound to a transient PreparedStatement
 	 */
