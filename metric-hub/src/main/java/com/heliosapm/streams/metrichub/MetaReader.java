@@ -16,11 +16,13 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package com.heliosapm.streams.metrichub.impl;
+package com.heliosapm.streams.metrichub;
 
 import java.sql.ResultSet;
 import java.util.Iterator;
 import java.util.List;
+
+import com.heliosapm.streams.metrichub.impl.IndexProvidingIterator;
 
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.meta.TSMeta;

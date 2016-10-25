@@ -24,20 +24,25 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.zookeeper.Environment;
 
+import com.heliosapm.streams.metrichub.MetaReader;
 import com.heliosapm.streams.metrichub.MetricsMetaAPI;
 import com.heliosapm.streams.metrichub.QueryContext;
+import com.heliosapm.streams.metrichub.metareader.DefaultMetaReader;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
 import com.heliosapm.streams.sqlbinder.TagPredicateCache;
+import com.heliosapm.streams.sqlbinder.datasource.SQLCompilerDataSource;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.utils.jmx.ManagedForkJoinPool;
 
-import net.opentsdb.core.Const;
-import net.opentsdb.core.TSDB;
+import jsr166y.ForkJoinPool;
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.meta.TSMeta;
 import net.opentsdb.meta.UIDMeta;
@@ -55,12 +60,12 @@ import reactor.core.composable.Stream;
 public class SQLCatalogMetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHandler{
 	/** Instance logger */
 	protected Logger log = LogManager.getLogger(getClass());
-	/** The reactor environment */
-	protected final Environment env;
+	/** The execution thread pool */
+	protected final ForkJoinPool fjPool;
+	/** The data source */
+	protected final SQLCompilerDataSource dataSource;
 	/** The SQLWorker to manage JDBC Ops */
 	protected final SQLWorker sqlWorker;
-	/** The TSDB instance */
-	protected final TSDB tsdb;
 	/** The meta-reader for returning pojos */
 	protected final MetaReader metaReader;
 	
@@ -70,7 +75,7 @@ public class SQLCatalogMetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExc
 	/** The maximum TSUID in Hex String format */
 	public static final String MAX_TSUID;
 	/** The maximum UID in Hex String format */
-	public static final String MAX_UID;
+	public static final String MAX_UID = "FFFFFF";   // FIXME: This is now variable. Need to get widths from TSDB
 	
 	/** The dynamic binding SQL block for tag keys */
 	public static final String TAGK_SQL_BLOCK = "K.NAME %s ?"; 
@@ -185,20 +190,25 @@ public class SQLCatalogMetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExc
 		public static final String GET_TSMETAS_NO_TAGS_NAME_TSUID_SQL =
 				"SELECT X.* FROM TSD_TSMETA X, TSD_METRIC M WHERE M.XUID = X.METRIC_UID AND %s AND M.NAME = ?  AND X.TSUID = ? ORDER BY X.TSUID DESC LIMIT ?"; 
 		
-	
-	
 	static {
-		char[] fs = new char[4 + (2*4*Const.MAX_NUM_TAGS())];
+		final int maxUidChars = MAX_UID.toCharArray().length;
+		char[] fs = new char[(maxUidChars * 8) + maxUidChars];
 		Arrays.fill(fs, 'F');
-		MAX_TSUID = new String(fs);		
+		MAX_TSUID = new String(fs);				
 	}
-
+	
 	/**
 	 * Creates a new SQLCatalogMetricsMetaAPIImpl
+	 * @param properties The configuration properties
 	 */
-	public SQLCatalogMetricsMetaAPIImpl() {
-		// TODO Auto-generated constructor stub
+	public SQLCatalogMetricsMetaAPIImpl(final Properties properties) {
+		dataSource = SQLCompilerDataSource.getInstance(properties);
+		sqlWorker = dataSource.getSQLWorker();
+		tagPredicateCache = new TagPredicateCache(sqlWorker);
+		fjPool = new ManagedForkJoinPool(getClass().getSimpleName(), Runtime.getRuntime().availableProcessors(), true, JMXHelper.objectName(getClass()));
+		metaReader = new DefaultMetaReader(sqlWorker);
 	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -210,126 +220,62 @@ public class SQLCatalogMetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExc
 		
 	}
 
+//	public static void log(Object fmt, Object...args) {
+//		System.out.println(String.format(fmt.toString(), args));
+//	}
+//	public static void loge(Object fmt, Object...args) {
+//		System.err.println(String.format(fmt.toString(), args));
+//		if(args.length > 0 && args[args.length-1] instanceof Throwable) {
+//			System.err.println("Stack Trace Follows....");
+//			((Throwable)args[args.length-1]).printStackTrace(System.err);
+//		}
+//	}
+	
+	/** Bind variable token pattern */
+	private static final Pattern Q_PATTERN = Pattern.compile("\\?");
+	
+//	/**
+//	 * Fills in some parameterized SQL with literals
+//	 * @param sql The base SQL to modify
+//	 * @param binds The bind values to fill in
+//	 * @return the rewritten SQL
+//	 */
+//	public static String fillInSQL(String sql, final List<Object> binds) {
+//		final int bindCnt = binds.size();
+//		Matcher m = Q_PATTERN.matcher(sql);
+//		for(int i = 0; i < bindCnt; i++) {
+//			Object bind = binds.get(i);
+//			if(bind instanceof CharSequence) {
+//				sql = m.replaceFirst("'" + bind.toString() + "'");
+//			} else if (bind.getClass().isArray()) {
+//				sql = m.replaceFirst(renderArray(bind));
+//			} else {
+//				sql = m.replaceFirst(bind.toString());
+//			}		
+//			m = Q_PATTERN.matcher(sql);
+//		}
+//		return sql;
+//	}
+	
 	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#find(com.heliosapm.streams.metrichub.QueryContext, net.opentsdb.uid.UniqueId.UniqueIdType, java.lang.String)
+	 * Renders an array of objects
+	 * @param array The array
+	 * @return the rendered string
 	 */
-	@Override
-	public Stream<List<UIDMeta>> find(QueryContext queryContext, UniqueIdType type, String name) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#getTagKeys(com.heliosapm.streams.metrichub.QueryContext, java.lang.String, java.lang.String[])
-	 */
-	@Override
-	public Stream<List<UIDMeta>> getTagKeys(QueryContext queryContext, String metric, String... tagKeys) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#getTagValues(com.heliosapm.streams.metrichub.QueryContext, java.lang.String, java.util.Map, java.lang.String)
-	 */
-	@Override
-	public Stream<List<UIDMeta>> getTagValues(QueryContext queryContext, String metric, Map<String, String> tagPairs,
-			String tagKey) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#getMetricNames(com.heliosapm.streams.metrichub.QueryContext, java.lang.String[])
-	 */
-	@Override
-	public Stream<List<UIDMeta>> getMetricNames(QueryContext queryContext, String... tagKeys) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#getMetricNames(com.heliosapm.streams.metrichub.QueryContext, java.util.Map)
-	 */
-	@Override
-	public Stream<List<UIDMeta>> getMetricNames(QueryContext queryContext, Map<String, String> tags) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#getTSMetas(com.heliosapm.streams.metrichub.QueryContext, java.lang.String, java.util.Map)
-	 */
-	@Override
-	public Stream<List<TSMeta>> getTSMetas(QueryContext queryContext, String metricName, Map<String, String> tags) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#evaluate(com.heliosapm.streams.metrichub.QueryContext, java.lang.String)
-	 */
-	@Override
-	public Stream<List<TSMeta>> evaluate(QueryContext queryContext, String expression) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#match(java.lang.String, byte[])
-	 */
-	@Override
-	public Promise<Boolean> match(String expression, byte[] tsuid) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#match(java.lang.String, java.lang.String)
-	 */
-	@Override
-	public Promise<Boolean> match(String expression, String tsuid) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#overlap(java.lang.String, java.lang.String)
-	 */
-	@Override
-	public long overlap(String expressionOne, String expressionTwo) {
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#getAnnotations(com.heliosapm.streams.metrichub.QueryContext, java.lang.String, long[])
-	 */
-	@Override
-	public Stream<List<Annotation>> getAnnotations(QueryContext queryContext, String expression,
-			long... startTimeEndTime) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	/**
-	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.metrichub.MetricsMetaAPI#getGlobalAnnotations(com.heliosapm.streams.metrichub.QueryContext, long[])
-	 */
-	@Override
-	public Stream<List<Annotation>> getGlobalAnnotations(QueryContext queryContext, long... startTimeEndTime) {
-		// TODO Auto-generated method stub
-		return null;
+	public static String renderArray(final Object array) {
+		if(array==null) return "";
+		final int length = java.lang.reflect.Array.getLength(array);
+		if(length < 1) return "";
+		final boolean quote = CharSequence.class.isAssignableFrom(array.getClass().getComponentType());
+		final StringBuilder b = new StringBuilder();
+		for(int i = 0; i < length; i++) {
+			if(quote) b.append("'");
+			b.append(java.lang.reflect.Array.get(array, i));
+			if(quote) b.append("'");
+			b.append(", ");
+		}
+		return b.deleteCharAt(b.length()-1).deleteCharAt(b.length()-1).toString();
+		
 	}
 
 }
