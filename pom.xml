@@ -24,6 +24,7 @@
 		<module>collector-server</module>
 		<module>tsdb-query</module>
 		<module>sql-compiler</module>
+		<module>metric-hub</module>
 	</modules>
 	
     <properties>    	 
@@ -59,7 +60,7 @@
 		<groovy.version>2.4.7</groovy.version>
 		<hbase-testing.version>1.1.0</hbase-testing.version>
 		<metrics.version>3.1.2</metrics.version>
-		<postgres.version>9.4.1208</postgres.version>
+		<postgres.version>9.4.1208.jre7</postgres.version>
 		<async-http-client.version>2.1.0-alpha1</async-http-client.version>
 		<curator.version>2.10.0</curator.version>
 		<curator-discovery.version>2.10.0</curator-discovery.version>
@@ -71,6 +72,7 @@
 		<hystrix-core.version>1.5.3</hystrix-core.version>
 		<quartz.version>2.2.2</quartz.version>
 		<za-hashing.version>0.6</za-hashing.version>
+		<reactor.version>1.1.5.RELEASE</reactor.version>
 		<!-- <kafka.version>0.9.0.1</kafka.version> -->
 		
 		<zookeeper.version>3.4.8</zookeeper.version>
@@ -260,6 +262,19 @@
 		        </exclusion>		        		        
 			  </exclusions>			  		    
 			</dependency>
+
+		    <!--
+		      ========================================
+		      Reactor Artifacts
+		      ========================================
+		      -->
+
+			<dependency>
+			  <groupId>org.projectreactor</groupId>
+			  <artifactId>reactor-core</artifactId>
+			  <version>${reactor.version}</version>
+			</dependency>
+
 
 
 		    <!--

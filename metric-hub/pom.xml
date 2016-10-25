@@ -9,10 +9,10 @@
   	</parent>
     
     <groupId>com.heliosapm.streams</groupId>
-    <artifactId>opentsdb-listener</artifactId>
+    <artifactId>metric-hub</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>Helios Streams :: OpenTSDB Event Listener</name>
-    <description>Helios Streams OpenTSDB RTPublisher Event Listener</description>
+    <name>Helios Streams :: MetricHub</name>
+    <description>Helios Streams MetricHub Server</description>
     <packaging>jar</packaging>
     <url>https://github.com/nickman</url>
 	
@@ -24,45 +24,125 @@
 		    <artifactId>junit</artifactId>
 		</dependency>
 
-		<!-- ==========================================================
-		    Project Dependencies
-		    ========================================================== -->
-		 <!-- 
 		<dependency>
-		  <groupId>org.apache.logging.log4j</groupId>
-		  <artifactId>log4j-jul</artifactId>
-		  <version>2.6.1</version>
-		</dependency>
-		    -->
-
-		<dependency>				
-			<groupId>com.heliosapm.utils</groupId>
-			<artifactId>heliosutils</artifactId>
+			<groupId>com.heliosapm.aop</groupId>
+			<artifactId>helios-retransformer</artifactId>
+			<version>1.0-SNAPSHOT</version>
+			<scope>test</scope>
 		</dependency>
 
-
-		<dependency>
-		  <groupId>com.heliosapm.streams</groupId>
-		  <artifactId>stream-common</artifactId>
-		  <version>${project.version}</version>
-		</dependency>
-		
-		<dependency>
-		  <groupId>com.heliosapm.streams</groupId>
-		  <artifactId>sql-compiler</artifactId>
-		  <version>${project.version}</version>
-		</dependency>
-		
 
 		<dependency>
 		    <groupId>com.heliosapm.streams</groupId>
-		    <artifactId>opentsdb-connector</artifactId>
-		  	<version>${project.version}</version>		
+		    <artifactId>sql-compiler</artifactId>
+			<version>${project.version}</version>
+		</dependency>
+
+
+		<dependency>
+			<groupId>com.heliosapm.streams</groupId>
+			<artifactId>stream-common</artifactId>
+			<version>${project.version}</version>
 		</dependency>
 		
 			<dependency>
+			  <groupId>org.apache.curator</groupId>
+			  <artifactId>curator-recipes</artifactId>
+			</dependency>
+		
+<!--
+
+		<dependency>
+		  <artifactId>spring-kafka-test</artifactId>
+		  <groupId>org.springframework.kafka</groupId>
+		  <scope>test</scope>
+		</dependency>
+
+		<dependency>
+		  <groupId>com.goldmansachs</groupId>
+		  <artifactId>gs-collections</artifactId>
+		  <version>5.0.0</version>
+		  <scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka_2.11</artifactId>
+			<version>${kafka.version}</version>
+			<scope>test</scope>			
+		</dependency>
+		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka_2.11</artifactId>
+			<version>${kafka.version}</version>
+			<classifier>test</classifier>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.kafka</groupId>
+			<artifactId>kafka-clients</artifactId>
+			<version>${kafka.version}</version>
+			<classifier>test</classifier>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<version>3.3.0</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework</groupId>
+			<artifactId>spring-test</artifactId>
+			<version>4.2.5.RELEASE</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.hamcrest</groupId>
+			<artifactId>hamcrest-all</artifactId>
+			<version>1.3</version>
+			<scope>test</scope>
+		</dependency>
+
+		<dependency>
+		  <groupId>org.springframework.retry</groupId>
+		  <artifactId>spring-retry</artifactId>
+		  <version>1.1.1.RELEASE</version>
+		  <scope>test</scope>
+		</dependency>
+
+-->		
+
+		<!--
+	      ========================================
+	      Disruptor Artifacts
+	      ========================================
+	      -->
+			<dependency>
+			  <groupId>com.lmax</groupId>
+			  <artifactId>disruptor</artifactId>
+			  <version>${disruptor.version}</version>
+			</dependency>
+
+		
+			<dependency>
+			  <groupId>org.apache.kafka</groupId>
+			  <artifactId>kafka-clients</artifactId>
+			</dependency>
+
+
+
+			<dependency>
+			    <groupId>com.heliosapm.streams</groupId>
+			    <artifactId>stream-common</artifactId>
+			    <version>${project.version}</version>			
+			</dependency>
+
+			<dependency>
 			    <groupId>net.opentsdb</groupId>
 			    <artifactId>opentsdb</artifactId>
+			    <scope>provided</scope>
 			    <exclusions>
 			    	<exclusion>
           				<groupId>org.slf4j</groupId>
@@ -70,62 +150,56 @@
         			</exclusion>
 			    </exclusions>
 			</dependency>
-		
 
-	    <!--
-	      ========================================
-	      Chronicle artifacts
-	      ========================================
-	      -->			
+			<dependency>
+			  <groupId>net.openhft</groupId>
+			  <artifactId>chronicle-queue</artifactId>
+			</dependency>
 
-	      
-		<dependency>
-		  <groupId>net.openhft</groupId>
-		  <artifactId>chronicle-queue</artifactId>
-		</dependency>
+			<dependency>
+			  <groupId>net.openhft</groupId>
+			  <artifactId>chronicle-map</artifactId>
+			</dependency>
 
-		<dependency>
-		  <groupId>net.openhft</groupId>
-		  <artifactId>chronicle-map</artifactId>
-		</dependency>
-
-	    <!--
-	      ========================================
-	      Metrics artifacts
-	      ========================================
-	      -->			
-
+			<dependency>				
+				<groupId>com.heliosapm.utils</groupId>
+				<artifactId>heliosutils</artifactId>
+			</dependency>
+			
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
                 <artifactId>metrics-core</artifactId>
             </dependency>
 
 
-		<!-- ==========================================================
-		    Logging Dependencies
-		    ========================================================== -->
-
 		  <dependency>
 		    <groupId>org.apache.logging.log4j</groupId>
 		    <artifactId>log4j-api</artifactId>
 		  </dependency>
 
-		  <dependency>
-		    <groupId>org.apache.logging.log4j</groupId>
-		    <artifactId>log4j-core</artifactId>
-		  </dependency>
-	
-	
-		  <dependency>
-		    <groupId>org.apache.logging.log4j</groupId>
-		    <artifactId>log4j-slf4j-impl</artifactId>
-		  </dependency>
+		  
+		    <!--
+		      ========================================
+		      Reactor Artifacts
+		      ========================================
+		      -->
 
-		  <dependency>
-		    <groupId>org.apache.logging.log4j</groupId>
-		    <artifactId>log4j-1.2-api</artifactId>
-		  </dependency>
+			<dependency>
+			  <groupId>org.projectreactor</groupId>
+			  <artifactId>reactor-core</artifactId>
+			</dependency>
 
+		    <!--
+		      ========================================
+		      Netty All
+		      ========================================
+		      -->
+
+			<dependency>
+				<groupId>io.netty</groupId>
+				<artifactId>netty-all</artifactId>
+			</dependency>
+		  
 		<!-- ==========================================================
 		    JDBC and DB Dependencies
 		    ========================================================== -->
@@ -146,40 +220,9 @@
 		  <scope>compile</scope>
 		</dependency>
 		
-	    <dependency>
-	      <groupId>com.google.guava</groupId>
-	      <artifactId>guava</artifactId>
-	      <scope>compile</scope>
-	    </dependency>
-		
-		<dependency>
-		  <groupId>com.fasterxml.jackson.core</groupId>
-		  <artifactId>jackson-annotations</artifactId>
-		  <scope>compile</scope>
-		</dependency>
-		
-		<dependency>
-		  <groupId>com.fasterxml.jackson.core</groupId>
-		  <artifactId>jackson-core</artifactId>
-		  <scope>compile</scope>
-		</dependency>
-		
-		<dependency>
-		  <groupId>com.fasterxml.jackson.core</groupId>
-		  <artifactId>jackson-databind</artifactId>
-		  <scope>compile</scope>
-		</dependency>
+	
 
-		<dependency>
-		  <groupId>com.fasterxml.jackson.dataformat</groupId>
-		  <artifactId>jackson-dataformat-xml</artifactId>
-		  <scope>compile</scope>
-		</dependency>
 
-		
-		  
-		  
-			
     
     </dependencies>
     
@@ -190,8 +233,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${compiler-plugin.version}</version>
                 <configuration>
-                    <source>${compiler-source.version}</source>
-                    <target>${compiler-target.version}</target>
+                    <source>1.8</source>
+                    <target>1.8</target>
                 </configuration>
             </plugin>
             <plugin>
@@ -233,16 +276,6 @@
 		<version>${jar-plugin.version}</version>
 		<configuration>
 		  <forceCreation>true</forceCreation>
-           <archive>
-               <manifest>
-                   <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
-                   <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
-                   <addClasspath>true</addClasspath>
-               </manifest>
-               <manifestEntries>
-	               <Main-Class>com.heliosapm.streams.tsdb.listener.ListenerMain</Main-Class>
-               </manifestEntries>
-           </archive>		  		  
 		</configuration>
 	    </plugin>
 	    <plugin>
