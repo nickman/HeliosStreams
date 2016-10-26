@@ -298,6 +298,7 @@ public class QueryContext {
 	 */
 	public final boolean isExpired() {
 		if(expired) return true;
+		if(timeout < 1) return false;
 		final long now = System.currentTimeMillis();
 		try {
 			if(timeLimit!=-1L) {				
@@ -322,9 +323,11 @@ public class QueryContext {
 	 * @return this QueryContext
 	 */
 	public QueryContext startExpiry() {
-		if(this.timeLimit==-1L) {
-			this.timeLimit = System.currentTimeMillis() + timeout;
-			log.debug("\n\t**********************\n\tTimeLimit set with timeout [{}] to [{}]\n", timeout, timeLimit);
+		if(timeout > 0) {
+			if(this.timeLimit==-1L) {
+				this.timeLimit = System.currentTimeMillis() + timeout;
+				log.debug("\n\t**********************\n\tTimeLimit set with timeout [{}] to [{}]\n", timeout, timeLimit);
+			}
 		}
 		return this;
 	}
@@ -366,8 +369,9 @@ public class QueryContext {
 	/**
 	 * Sets the JSON seralization format to use for serializing the response objects for this query context 
 	 * @param serializer the serializer name to set
+	 * @return this query context
 	 */
-	public void setFormat(String serializer) {
+	public QueryContext setFormat(final String serializer) {
 		if(serializer==null || serializer.trim().isEmpty()) throw new IllegalArgumentException("The passed serialization name was null or empty");
 		final String serName = serializer.trim().toUpperCase();
 		try {
@@ -376,6 +380,7 @@ public class QueryContext {
 			throw new IllegalArgumentException("The passed serialization name [" + serializer + "] was invalid. Valid names are:" + Arrays.toString(TSDBTypeSerializer.values()));
 		}
 		this.format = serName;
+		return this;
 	}
 	
 	/**

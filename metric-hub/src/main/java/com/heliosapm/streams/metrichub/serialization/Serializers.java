@@ -105,6 +105,12 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.TSMetaFullSerializer</code></p>
 	 */
 	public static class TSMetaFullSerializer extends StdSerializer<TSMeta> {
+		/**  */
+		private static final long serialVersionUID = 5900483050368365725L;
+
+		/**
+		 * Creates a new TSMetaFullSerializer
+		 */
 		public TSMetaFullSerializer() {
 			super(TSMeta.class);
 		}
@@ -146,6 +152,12 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.UIDMetaFullSerializer</code></p>
 	 */
 	public static class UIDMetaFullSerializer extends StdSerializer<UIDMeta> {
+		/**  */
+		private static final long serialVersionUID = 1300751077854869373L;
+
+		/**
+		 * Creates a new UIDMetaFullSerializer
+		 */
 		public UIDMetaFullSerializer() {
 			super(UIDMeta.class);
 		}
@@ -184,6 +196,11 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.AnnotationFullSerializer</code></p>
 	 */	
 	public static class AnnotationFullSerializer extends StdSerializer<Annotation> {
+		/**  */
+		private static final long serialVersionUID = 3802980372517948281L;
+		/**
+		 * Creates a new AnnotationFullSerializer
+		 */
 		public AnnotationFullSerializer() {
 			super(Annotation.class);
 		}
@@ -225,6 +242,12 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.AnnotationDefaultSerializer</code></p>
 	 */	
 	public static class AnnotationDefaultSerializer extends StdSerializer<Annotation> {
+		/**  */
+		private static final long serialVersionUID = -7634175176396973858L;
+
+		/**
+		 * Creates a new AnnotationDefaultSerializer
+		 */
 		public AnnotationDefaultSerializer() {
 			super(Annotation.class);
 		}
@@ -270,6 +293,12 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.AnnotationDefaultSerializer</code></p>
 	 */	
 	public static class AnnotationNameSerializer extends StdSerializer<Annotation> {
+		/**  */
+		private static final long serialVersionUID = -9084565679213812490L;
+
+		/**
+		 * Creates a new AnnotationNameSerializer
+		 */
 		public AnnotationNameSerializer() {
 			super(Annotation.class);
 		}
@@ -304,6 +333,11 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.TSMetaDefaultSerializer</code></p>
 	 */
 	public static class TSMetaDefaultSerializer extends StdSerializer<TSMeta> {
+		/**  */
+		private static final long serialVersionUID = 4012690261231539510L;
+		/**
+		 * Creates a new TSMetaDefaultSerializer
+		 */
 		public TSMetaDefaultSerializer() {
 			super(TSMeta.class);
 		}		
@@ -372,6 +406,12 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.TSMetaNameSerializer</code></p>
 	 */
 	public static class TSMetaNameSerializer extends StdSerializer<TSMeta> {
+		/**  */
+		private static final long serialVersionUID = 2966230273731536851L;
+
+		/**
+		 * Creates a new TSMetaNameSerializer
+		 */
 		public TSMetaNameSerializer() {
 			super(TSMeta.class);
 		}		
@@ -395,6 +435,11 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.TSMetaArrayD3Serializer</code></p>
 	 */
 	public static class TSMetaArrayD3Serializer extends StdSerializer<TSMeta[]> {
+		/**  */
+		private static final long serialVersionUID = -2240134371409101873L;
+		/**
+		 * Creates a new TSMetaArrayD3Serializer
+		 */
 		public TSMetaArrayD3Serializer() {
 			super(TSMeta[].class);
 		}
@@ -417,8 +462,13 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.TSMetaCollectionD3Serializer</code></p>
 	 */
 	public static class TSMetaCollectionD3Serializer extends StdSerializer<LinkedHashSet<TSMeta>> {
+		/**  */
+		private static final long serialVersionUID = -9000637093155773460L;
 		private static final Class<?> c = new LinkedHashSet<TSMeta>(0).getClass();
 		
+		/**
+		 * Creates a new TSMetaCollectionD3Serializer
+		 */
 		public TSMetaCollectionD3Serializer() {
 			super((Class<LinkedHashSet<TSMeta>>) c);
 		}
@@ -441,6 +491,10 @@ public class Serializers {
 	 */
 	public static class TSMetaD3Serializer extends StdSerializer<TSMeta> {
 		
+		/**  */
+		private static final long serialVersionUID = 3925781895135781484L;
+
+
 		public TSMetaD3Serializer() {
 			super(TSMeta.class);
 		}
@@ -464,6 +518,9 @@ public class Serializers {
 	 * <p><code>org.helios.tsdb.plugins.remoting.json.serialization.Serializers.UIDMetaNameSerializer</code></p>
 	 */
 	public static class UIDMetaNameSerializer extends StdSerializer<UIDMeta> {
+		/**  */
+		private static final long serialVersionUID = -5427675439860344193L;
+
 		public UIDMetaNameSerializer() {
 			super(UIDMeta.class);
 		}
@@ -662,6 +719,11 @@ public class Serializers {
 	}
 
 	public static class TSMetaTreeSerializer extends StdSerializer<TSMetaTree> {
+		/**  */
+		private static final long serialVersionUID = 4981629486479858842L;
+		/**
+		 * Creates a new TSMetaTreeSerializer
+		 */
 		public TSMetaTreeSerializer() {
 			super(TSMetaTree.class);
 		}

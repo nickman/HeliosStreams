@@ -234,7 +234,7 @@ public class SQLCompilerDataSource implements Closeable {
 		dbType = DBType.getMatchingDBType(url, dataSourceClassName);
 		String tmp = ConfigurationHelper.getSystemThenEnvProperty(CONFIG_DS_NAME, null, properties);
 		if(tmp==null) {
-			name = String.format(DEFAULT_DS_NAME, dbType.name(), dsSerial.incrementAndGet());
+			name = String.format(DEFAULT_DS_NAME, dbType.dbTypeName, dsSerial.incrementAndGet());
 		} else {
 			name = tmp.trim();
 		}
@@ -257,9 +257,15 @@ public class SQLCompilerDataSource implements Closeable {
 		config.setConnectionTimeout(ConfigurationHelper.getLongSystemThenEnvProperty(CONFIG_DS_CONNTIMEOUT, DEFAULT_DS_CONNTIMEOUT, properties));
 		config.setAutoCommit(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_DS_AUTOCOMMIT, DEFAULT_DS_AUTOCOMMIT, properties));
 		config.setRegisterMbeans(ConfigurationHelper.getBooleanSystemThenEnvProperty(CONFIG_DS_MBEANS, DEFAULT_DS_MBEANS, properties));
-		config.setPoolName(ConfigurationHelper.getSystemThenEnvProperty(CONFIG_DS_NAME, DEFAULT_DS_NAME, properties));
+		config.setPoolName(name);
 		config.setThreadFactory(JMXManagedThreadFactory.newThreadFactory("HikariPool-" + config.getPoolName(), true));
-		log.info("Config: {}", config.toString());
+		final StringBuilder b = new StringBuilder("\n\t========================\n\tDataSource\n\t========================");
+		b.append("\n\tURL:").append(config.getJdbcUrl());
+		b.append("\n\tDS Class:").append(config.getDataSourceClassName());
+		b.append("\n\tUser:").append(config.getUsername());
+		b.append("\n\t========================\n");
+		log.info(b.toString());
+
 //		config.setScheduledExecutorService(scheduler);
 		ds = new HikariDataSource(config);
 		sqlWorker = SQLWorker.getInstance(ds);		
@@ -314,6 +320,7 @@ public class SQLCompilerDataSource implements Closeable {
 	}
 	
 	protected void startServers(final Properties properties) {
+		if(dbType!=DBType.H2) return;
 		final String dsClassName = ds.getDataSourceClassName(); 
 		if(dsClassName!=null && dsClassName.equals(DEFAULT_DS_CLASS)) {
 			tcpPort = ConfigurationHelper.getIntSystemThenEnvProperty(CONFIG_DS_TCP, DEFAULT_DS_TCP, properties);
