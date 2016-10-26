@@ -34,6 +34,8 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -51,6 +53,8 @@ import com.heliosapm.streams.sqlbinder.TagPredicateCache;
 import com.heliosapm.streams.sqlbinder.datasource.SQLCompilerDataSource;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.ManagedForkJoinPool;
+import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import com.heliosapm.utils.url.URLHelper;
 import com.lmax.disruptor.LiteBlockingWaitStrategy;
 import com.lmax.disruptor.dsl.ProducerType;
@@ -267,34 +271,50 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		final String config = "./src/test/resources/conf/application.properties";
 //		FileInputStream fis = null;
 		try {
+			final AtomicInteger count = new AtomicInteger(0);
+			final AtomicBoolean print = new AtomicBoolean(false);
 			final Properties p = URLHelper.readProperties(URLHelper.toURL(config));
 			final MetricsMetaAPIImpl api = new MetricsMetaAPIImpl(p);
 			log("MetricsMetaAPI Initialized");
-			final QueryContext q = new QueryContext().setTimeout(-1L);
+			final QueryContext q = new QueryContext().setTimeout(-1L).setContinuous(true).setPageSize(500);
 			final Thread t = Thread.currentThread();
-			final Stream<List<TSMeta>> metaStream = api.evaluate(q, "sys.cpu:host=mad-server,type=combined,*");
-			metaStream.consume(new Consumer<List<TSMeta>>() {
+			final Consumer<List<TSMeta>> consumer = new Consumer<List<TSMeta>>() {
 				@Override
 				public void accept(final List<TSMeta> metas) {
 					for(TSMeta meta: metas) {
-						log("TSMeta: [%s]", meta);
+						count.incrementAndGet();
+						if(print.get()) log("[%s] TSMeta: [%s]", count.incrementAndGet(), meta);
 					}
 					if(q.isExhausted()) {
 						t.interrupt();
 					}
 				}
-			}).when(Throwable.class, new Consumer<Throwable>(){
+			};
+			final Consumer<Throwable> errorHandler = new Consumer<Throwable>(){
 				@Override
 				public void accept(final Throwable te) {
 					loge("Stream ejected an error");
 					te.printStackTrace(System.err);
 					t.interrupt();
 				}
-			});
+			}; 
+			final String QUERY = "linux.mem.*:host=pdk-pt-cltsdb-04";
+			final ElapsedTime et1 = SystemClock.startClock();
+			Stream<List<TSMeta>> metaStream = api.evaluate(q, QUERY);
+			metaStream.consume(consumer).when(Throwable.class, errorHandler);
 			try { Thread.currentThread().join(); } catch (Exception ex) {
-				log("Done. Q:\n%s", q);
-				
+				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), q, et1.elapsedStrMs());
+				if(Thread.interrupted()) Thread.interrupted();
 			}
+			count.set(0);
+			//print.set(true);
+			final ElapsedTime et2 = SystemClock.startClock();
+			metaStream = api.evaluate(q, QUERY);
+			metaStream.consume(consumer).when(Throwable.class, errorHandler);
+			try { Thread.currentThread().join(); } catch (Exception ex) {
+				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), q, et2.elapsedStrMs());
+				if(Thread.interrupted()) Thread.interrupted();
+			}			
 		} catch (Exception ex) {
 			loge("Start Failed", ex);
 		} finally {
@@ -636,7 +656,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 					rset.setFetchSize(expectedRows);
 					queryContext.addCtx("SQLExecuted", System.currentTimeMillis());
 //					final List<TSMeta> tsMetas = metaReader.readTSMetas(rset, true);
-					final IndexProvidingIterator<TSMeta> tsMetas = metaReader.iterateTSMetas(rset, true);
+					final IndexProvidingIterator<TSMeta> tsMetas = metaReader.iterateTSMetas(rset, false);  // true makes it quite slow
 					queryContext.addCtx("SQLRSetIter", System.currentTimeMillis());
 					try {
 						while(processStream(tsMetas, def, queryContext)) {

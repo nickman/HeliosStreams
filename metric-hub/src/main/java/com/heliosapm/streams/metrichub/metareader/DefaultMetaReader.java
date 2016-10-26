@@ -422,6 +422,7 @@ public class DefaultMetaReader implements MetaReader {
 	 * @param tags The tags to set
 	 * @param metric The metric to update
 	 * @return The updated TSMeta
+	 * FIXME:  implement a new TSMeta pojo so we don't have to do this.
 	 */
 	protected static TSMeta setUIDs(TSMeta tsMeta, ArrayList<UIDMeta> tags, UIDMeta metric) {
 		setTSMetaTags(tsMeta, tags);

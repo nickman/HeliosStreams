@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration monitorInterval="60">
+
+<Appenders>
+    <Console name="Console-Appender" target="SYSTEM_OUT">
+        <PatternLayout>
+            <pattern>
+                [%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{1} - %msg%n
+            </pattern>>
+        </PatternLayout>
+    </Console>
+    <Console name="ERR-Appender" target="SYSTEM_ERR">
+        <PatternLayout>
+            <pattern>
+                [%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{4} - %msg%n
+            </pattern>>
+        </PatternLayout>
+    </Console>
+    
+</Appenders>
+
+<Loggers>
+           <Logger name="com.heliosapm" level="info" additivity="false">
+               <AppenderRef ref="Console-Appender" level="info"/>               
+           </Logger>
+           
+           <Logger name="com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl" level="debug" additivity="false">
+               <AppenderRef ref="Console-Appender" level="debug"/>               
+           </Logger>           
+           
+           <Logger name="org.apache.sshd" level="warn" additivity="false">
+               <AppenderRef ref="Console-Appender" level="warn"/>               
+           </Logger>
+           <Logger name="javax.management.mbeanserver" level="trace" additivity="false">
+               <AppenderRef ref="ERR-Appender" level="trace"/>
+           </Logger>           
+        <Root level="info">
+            <AppenderRef ref="Console-Appender" />
+        </Root>
+    </Loggers>
+</Configuration>
