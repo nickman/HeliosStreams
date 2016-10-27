@@ -239,13 +239,14 @@ public class DefaultMetaReader implements MetaReader {
 	 * @param tsMeta The TSMeta to load
 	 * @param metricUid The TSMeta's metric UID
 	 * @param fqnid The TSMeta's DB PK
+	 *	TODO: this badly needs a cache.
 	 */
 	protected void loadUIDs(final Connection conn, final TSMeta tsMeta, final String metricUid, final long fqnid) {
 		try {
-			ResultSet rset = sqlWorker.executeQuery(conn, "SELECT * FROM TSD_METRIC WHERE XUID = ?", true, metricUid);
-			UIDMeta metric = readUIDMetas(rset, UniqueIdType.METRIC).iterator().next();
+			final ResultSet rset = sqlWorker.executeQuery(conn, "SELECT * FROM TSD_METRIC WHERE XUID = ?", true, metricUid);
+			final UIDMeta metric = readUIDMetas(rset, UniqueIdType.METRIC).iterator().next();
 			rset.close();
-			ArrayList<UIDMeta> tags = (ArrayList<UIDMeta>)readUIDMetas(sqlWorker.executeQuery(conn, TSMETA_TAGS_SQL, true, fqnid, fqnid), "");
+			final ArrayList<UIDMeta> tags = (ArrayList<UIDMeta>)readUIDMetas(sqlWorker.executeQuery(conn, TSMETA_TAGS_SQL, true, fqnid, fqnid), "");
 			setUIDs(tsMeta, tags, metric);
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to load UIDs for TSMeta [" + tsMeta + "]", ex);

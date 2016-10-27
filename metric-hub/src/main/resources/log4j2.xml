@@ -24,15 +24,15 @@
                <AppenderRef ref="Console-Appender" level="info"/>               
            </Logger>
            
-           <Logger name="com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl" level="debug" additivity="false">
-               <AppenderRef ref="Console-Appender" level="debug"/>               
+           <Logger name="com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl" level="info" additivity="false">
+               <AppenderRef ref="Console-Appender" level="info"/>               
            </Logger>           
            
            <Logger name="org.apache.sshd" level="warn" additivity="false">
                <AppenderRef ref="Console-Appender" level="warn"/>               
            </Logger>
-           <Logger name="javax.management.mbeanserver" level="trace" additivity="false">
-               <AppenderRef ref="ERR-Appender" level="trace"/>
+           <Logger name="javax.management.mbeanserver" level="info" additivity="false">
+               <AppenderRef ref="ERR-Appender" level="info"/>
            </Logger>           
         <Root level="info">
             <AppenderRef ref="Console-Appender" />

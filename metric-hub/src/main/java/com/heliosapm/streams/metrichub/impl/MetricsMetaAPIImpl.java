@@ -276,7 +276,10 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 			final Properties p = URLHelper.readProperties(URLHelper.toURL(config));
 			final MetricsMetaAPIImpl api = new MetricsMetaAPIImpl(p);
 			log("MetricsMetaAPI Initialized");
-			final QueryContext q = new QueryContext().setTimeout(-1L).setContinuous(true).setPageSize(500);
+			final QueryContext q = new QueryContext()
+					.setTimeout(-1L)
+					.setContinuous(true)
+					.setPageSize(500);
 			final Thread t = Thread.currentThread();
 			final Consumer<List<TSMeta>> consumer = new Consumer<List<TSMeta>>() {
 				@Override
@@ -298,21 +301,22 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 					t.interrupt();
 				}
 			}; 
-			final String QUERY = "linux.mem.*:host=pdk-pt-cltsdb-04";
+			//final String QUERY = "linux.mem.*:host=pdk-pt-cltsdb-04";
+			final String QUERY = "sys.cpu:host=mad-server,cpu=0,dc=dcX,type=combined";
 			final ElapsedTime et1 = SystemClock.startClock();
 			Stream<List<TSMeta>> metaStream = api.evaluate(q, QUERY);
 			metaStream.consume(consumer).when(Throwable.class, errorHandler);
 			try { Thread.currentThread().join(); } catch (Exception ex) {
-				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), q, et1.elapsedStrMs());
+				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), et1.elapsedStrMs(), q);
 				if(Thread.interrupted()) Thread.interrupted();
 			}
 			count.set(0);
 			//print.set(true);
 			final ElapsedTime et2 = SystemClock.startClock();
-			metaStream = api.evaluate(q, QUERY);
-			metaStream.consume(consumer).when(Throwable.class, errorHandler);
+			api.evaluate(q.reset(), QUERY)
+				.consume(consumer).when(Throwable.class, errorHandler);
 			try { Thread.currentThread().join(); } catch (Exception ex) {
-				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), q, et2.elapsedStrMs());
+				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), et2.elapsedStrMs(), q);
 				if(Thread.interrupted()) Thread.interrupted();
 			}			
 		} catch (Exception ex) {

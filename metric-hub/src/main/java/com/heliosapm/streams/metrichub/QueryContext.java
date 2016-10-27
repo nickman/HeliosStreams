@@ -33,7 +33,10 @@ import net.opentsdb.utils.JSON;
 
 /**
  * <p>Title: QueryContext</p>
- * <p>Description: </p> 
+ * <p>Description: The query context is a set of configuration items and query state fields representing
+ * the currently executed query. It accompanies the query and is returned with the result since queries 
+ * can be split into sequential pages so as to not overwhelm resources. It can also accompany query requests 
+ * and responses on remote invocations.</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrichub.QueryContext</code></p>
  */
@@ -71,7 +74,28 @@ public class QueryContext {
 	/** The cummulative number of items retrieved within this context */
 	protected int cummulative = 0;
 	
-
+	public static enum QueryPhase {
+		/** The start timestamp of the current query */
+		START,
+		SQLPREPARED,
+		SQLEXECUTED,
+		RSETITER;
+	}
+	
+	/**
+	 * Resets the non-configuration fields of this query context
+	 * @return this query context
+	 */
+	public QueryContext reset() {
+		nextIndex = null;
+		exhausted = false;		
+		cummulative = 0;
+		ctx.clear();
+		timeLimit = -1L;
+		elapsed = -1L;
+		expired = false;
+		return this;
+	}
 
 	/**
 	 * Returns the page size set which is the maximum number of items returned in each call
@@ -319,10 +343,13 @@ public class QueryContext {
 	
 
 	/**
-	 * Starts the expiration timeout clock
+	 * Starts the expiration timeout clock.
+	 * We might be disbling timeout, but we use this to capture the start time.
 	 * @return this QueryContext
 	 */
 	public QueryContext startExpiry() {
+		// TODO: SET START HERE
+		addCtx("QStart", System.currentTimeMillis());
 		if(timeout > 0) {
 			if(this.timeLimit==-1L) {
 				this.timeLimit = System.currentTimeMillis() + timeout;
@@ -331,6 +358,17 @@ public class QueryContext {
 		}
 		return this;
 	}
+	
+	public String reportElapsed() {
+		final StringBuilder b = new StringBuilder("Query Phase Elapsed Times:");
+		final Long start = (Long)ctx.get("QStart");
+		final Long prepared = (Long)ctx.get("SQLPrepared");
+		final Long executed = (Long)ctx.get("SQLExecuted");
+		final Long iterated = (Long)ctx.get("SQLRSetIter");
+		final Long flushed = (Long)ctx.get("StreamFlushed");
+		return b.toString();
+	}
+	
 
 	/**
 	 * Returns the elapsed time of the last request in ms. 
