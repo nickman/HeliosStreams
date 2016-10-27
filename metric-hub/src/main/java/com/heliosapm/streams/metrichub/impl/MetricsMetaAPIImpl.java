@@ -32,6 +32,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -286,7 +288,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 				public void accept(final List<TSMeta> metas) {
 					for(TSMeta meta: metas) {
 						count.incrementAndGet();
-						if(print.get()) log("[%s] TSMeta: [%s]", count.incrementAndGet(), meta);
+						if(print.get()) log("[%s] TSMeta: [%s]", count.get(), meta.getDisplayName());
 					}
 					if(q.isExhausted()) {
 						t.interrupt();
@@ -301,8 +303,10 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 					t.interrupt();
 				}
 			}; 
-			//final String QUERY = "linux.mem.*:host=pdk-pt-cltsdb-04";
-			final String QUERY = "sys.cpu:host=mad-server,cpu=0,dc=dcX,type=combined";
+			//mq.topic.subs.queue.onqtime-recent:{app=icemqmgr, host=pdk-pt-cefmq-01, q=ifeu.to.mwy.liffe.lqueue, subscription=ifeu.to.mwy.liffe.sub, topic=ifeu.to.mwy.liffe.topic}
+			final String QUERY = "mq.topic.subs.queue.*:app=*, host=pdk-pt-cefmq-0*|pdk-pt-cebmq-0*,subscription=*,topic=ifeu*,*";
+			//final String QUERY = "linux.mem.*:host=pdk-pt-cltsdb-*";			
+			//final String QUERY = "sys.cpu:host=mad-server,cpu=0,dc=dcX,type=combined";
 			final ElapsedTime et1 = SystemClock.startClock();
 			Stream<List<TSMeta>> metaStream = api.evaluate(q, QUERY);
 			metaStream.consume(consumer).when(Throwable.class, errorHandler);
@@ -316,7 +320,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 			api.evaluate(q.reset(), QUERY)
 				.consume(consumer).when(Throwable.class, errorHandler);
 			try { Thread.currentThread().join(); } catch (Exception ex) {
-				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), et2.elapsedStrMs(), q);
+				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), et2.elapsedStrMs(), q.reportElapsed());
 				if(Thread.interrupted()) Thread.interrupted();
 			}			
 		} catch (Exception ex) {
@@ -787,7 +791,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		final String _tagKey = (tagKey==null || tagKey.trim().isEmpty()) ? "*" : tagKey.trim();
 		final Map<String, String> _tags = (tags==null) ? EMPTY_TAGS : tags;
 		
-		this.dispatcher.execute(new Runnable() {
+		fjPool.execute(new Runnable() {
 			@SuppressWarnings("boxing")
 			public void run() {				
 				final List<Object> binds = new ArrayList<Object>();
@@ -905,7 +909,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 			def.accept(new IllegalArgumentException("The passed type was null"));
 			return stream;
 		}
-		this.dispatcher.execute(new Runnable() {
+		fjPool.execute(new Runnable() {
 			public void run() {
 				final List<Object> binds = new ArrayList<Object>();
 				StringBuilder sqlBuffer = new StringBuilder("SELECT * FROM TSD_")
@@ -1062,7 +1066,23 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		queryContext.addCtx("StreamFlushed", System.currentTimeMillis());
 		log.debug("Deferred Flushing [{}] rows", rowsRead);
 		def.flush();
-		return queryContext.shouldContinue();
+		final boolean cont = queryContext.shouldContinue();
+		if(cont && queryContext.isContinuous()) {
+			try {
+				return fjPool.submit(new Callable<Boolean>(){
+					@Override
+					public Boolean call() throws Exception {						
+						return processStream(iter , def, queryContext);
+					}
+				}).get();
+			} catch (InterruptedException | ExecutionException e) {
+				def.accept(e);
+				return false;
+			}
+		} else {
+			return cont;
+		}
+		
 	}
 	
 	/**
@@ -1118,6 +1138,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	 */
 	protected void generateTSMetaSQL(final StringBuilder sqlBuffer, final List<Object> binds, final QueryContext queryOptions, final String metricName, final Map<String, String> tags, final String mergeOp, final String tsuid) {
 		final boolean hasMetricName = (metricName==null || metricName.trim().isEmpty());
+		final String tagColumn = queryOptions.isIncludeUIDs() ? ", Y.TAGS " : "";
 		if(tags==null || tags.isEmpty()) {	
 			if(tsuid!=null && !tsuid.trim().isEmpty()) {
 				if(queryOptions.getNextIndex()==null) {							
@@ -1254,3 +1275,66 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	
 
 }
+
+
+/*
+Query to retrieve TSMetas with tags
+===================================
+SELECT
+Y.TAGS, X.*
+FROM
+(
+   SELECT
+   X.*
+   FROM TSD_TSMETA X,
+   TSD_METRIC M,
+   TSD_FQN_TAGPAIR T,
+   TSD_TAGPAIR P,
+   TSD_TAGK K,
+   TSD_TAGV V
+   WHERE M.XUID = X.METRIC_UID
+   AND X.FQNID = T.FQNID
+   AND T.XUID = P.XUID
+   AND P.TAGK = K.XUID
+   AND (M.NAME LIKE 'mq.topic.subs.queue.%')
+   AND P.TAGV = V.XUID
+   AND (K.NAME = 'host')
+   AND (V.NAME LIKE 'pdk-pt-cefmq-0%' OR V.NAME LIKE 'pdk-pt-cebmq-0%') INTERSECT
+   SELECT
+   X.*
+   FROM TSD_TSMETA X,
+   TSD_METRIC M,
+   TSD_FQN_TAGPAIR T,
+   TSD_TAGPAIR P,
+   TSD_TAGK K,
+   TSD_TAGV V
+   WHERE M.XUID = X.METRIC_UID
+   AND X.FQNID = T.FQNID
+   AND T.XUID = P.XUID
+   AND P.TAGK = K.XUID
+   AND (M.NAME LIKE 'mq.topic.subs.queue.%')
+   AND P.TAGV = V.XUID
+   AND (K.NAME = 'app')
+   AND (V.NAME LIKE '%')
+)
+X, (
+	--SELECT json_object_keys(array_to_json(array_agg(P.NAME))) TAGKS, T.FQNID
+	--SELECT array_to_json(array_agg(P.XUID), array_agg(P.NAME)) TAGS,  T.FQNID
+	SELECT jsonb_agg(jsonb_build_object('kuid', K.XUID, 'vuid', V.XUID, 'kname', K.NAME, 'vname', V.NAME )) TAGS,  T.FQNID	
+	FROM TSD_TSMETA X,
+	TSD_FQN_TAGPAIR T,
+   	TSD_TAGPAIR P,
+   	TSD_TAGK K,
+   	TSD_TAGV V
+	WHERE T.XUID = P.XUID
+	AND X.FQNID = T.FQNID
+	AND P.TAGK = K.XUID
+	AND P.TAGV = V.XUID
+	GROUP BY T.FQNID
+) Y
+WHERE X.TSUID <= 'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF'
+AND X.FQNID = Y.FQNID
+ORDER BY X.TSUID DESC LIMIT 5001
+
+
+*/

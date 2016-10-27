@@ -61,6 +61,10 @@ public class QueryContext {
 	protected String format = "DEFAULT";
 	/** Indicates hard expired */
 	protected boolean expired = false;
+	/** Indicates if retrieved TSMetas should have the metric and tag UIDMetas populated. See {@link MetaReader#readTSMetas(java.sql.ResultSet, boolean)} */
+	protected boolean includeUIDs = false;
+	
+
 	/** Recorded context events such as timings etc. */
 	protected final Map<String, Object> ctx = new LinkedHashMap<String, Object>();
 
@@ -306,6 +310,24 @@ public class QueryContext {
 	}
 
 	/**
+	 * Indicates if retrieved TSMetas should have the metric and tag UIDMetas populated. 
+	 * See {@link MetaReader#readTSMetas(java.sql.ResultSet, boolean)}
+	 * @return true to fully populate TSMetas, false otherwise
+	 */
+	public boolean isIncludeUIDs() {
+		return includeUIDs;
+	}
+
+	/**
+	 * Specifies if retrieved TSMetas should have the metric and tag UIDMetas populated. 
+	 * See {@link MetaReader#readTSMetas(java.sql.ResultSet, boolean)}
+	 * @param includeUIDs true to fully populate TSMetas, false otherwise
+	 */
+	public void setIncludeUIDs(boolean includeUIDs) {
+		this.includeUIDs = includeUIDs;
+	}
+
+	/**
 	 * Returns the timestamp at which the running asynch request will be expired 
 	 * @return the expired timestamp
 	 */
@@ -366,6 +388,18 @@ public class QueryContext {
 		final Long executed = (Long)ctx.get("SQLExecuted");
 		final Long iterated = (Long)ctx.get("SQLRSetIter");
 		final Long flushed = (Long)ctx.get("StreamFlushed");
+		if(start!=null && prepared!=null) {
+			b.append("\n\tPrepared: ").append(prepared - start).append(" ms.");
+		}
+		if(prepared!=null && executed!=null) {
+			b.append("\n\tExecuted: ").append(executed - prepared).append(" ms.");
+		}
+		if(executed!=null && iterated!=null) {
+			b.append("\n\tIterated: ").append(iterated - executed).append(" ms.");
+		}
+		if(flushed!=null && iterated!=null) {
+			b.append("\n\tFlushed: ").append(flushed - iterated).append(" ms.");
+		}		
 		return b.toString();
 	}
 	

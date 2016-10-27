@@ -269,7 +269,9 @@ public class DefaultMetaReader implements MetaReader {
 			}
 			meta.setDescription(rset.getString("DESCRIPTION"));
 			meta.setNotes(rset.getString("NOTES"));
-			meta.setDisplayName(rset.getString("DISPLAY_NAME"));
+			String disp = rset.getString("DISPLAY_NAME");
+			if(disp==null || disp.trim().isEmpty()) disp = rset.getString("FQN"); 
+			meta.setDisplayName(disp);
 			meta.setDataType(rset.getString("DATA_TYPE"));
 			meta.setMax(rset.getDouble("MAX_VALUE"));
 			meta.setMin(rset.getDouble("MIN_VALUE"));

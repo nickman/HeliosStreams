@@ -24,8 +24,8 @@
                <AppenderRef ref="Console-Appender" level="info"/>               
            </Logger>
            
-           <Logger name="com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl" level="info" additivity="false">
-               <AppenderRef ref="Console-Appender" level="info"/>               
+           <Logger name="com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl" level="debug" additivity="false">
+               <AppenderRef ref="Console-Appender" level="debug"/>               
            </Logger>           
            
            <Logger name="org.apache.sshd" level="warn" additivity="false">
