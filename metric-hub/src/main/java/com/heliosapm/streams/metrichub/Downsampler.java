@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.metrichub;
 
+import java.util.regex.Pattern;
+
 /**
  * <p>Title: Downsampler</p>
  * <p>Description: The OpenTSDB supported downsamplers as of 2.3. For Quantile details see https://en.wikipedia.org/wiki/Quantile.</p> 
@@ -80,5 +82,32 @@ public enum Downsampler {
 	SUM,
 	/** Adds the data points together interpolating with Zero if missing */
 	ZIMSUM;
+	
+	
+	public static final Pattern DOWNSAMPLER_PATTERN;
+	
+	private static final Downsampler[] values = values();
+	
+	static {
+		final StringBuilder b = new StringBuilder("(\\d+)([");
+		for(Interval inter: Interval.values()) {
+			b.append(inter.name().toLowerCase()).append("|");
+		}
+		b.deleteCharAt(b.length()-1).append("])\\-([");
+		for(int i = 0; i < values.length; i++) {
+			b.append(values[i].name().toLowerCase()).append("|");
+		}
+		b.deleteCharAt(b.length()-1).append("])\\-([");
+		for(FillPolicy fp: FillPolicy.values()) {
+			b.append(fp.name().toLowerCase()).append("|");
+		}
+		b.deleteCharAt(b.length()-1).append("])$");
+		DOWNSAMPLER_PATTERN = Pattern.compile(b.toString(), Pattern.CASE_INSENSITIVE);
+	}
+
+	public static void main(String[] args) {
+		System.out.println(DOWNSAMPLER_PATTERN);
+	}
+
 
 }

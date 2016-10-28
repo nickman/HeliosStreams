@@ -273,7 +273,6 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		final String config = "./src/test/resources/conf/application.properties";
 //		FileInputStream fis = null;
 		try {
-			final AtomicInteger count = new AtomicInteger(0);
 			final AtomicBoolean print = new AtomicBoolean(false);
 			final Properties p = URLHelper.readProperties(URLHelper.toURL(config));
 			final MetricsMetaAPIImpl api = new MetricsMetaAPIImpl(p);
@@ -281,16 +280,16 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 			final QueryContext q = new QueryContext()
 					.setTimeout(-1L)
 					.setContinuous(true)
-					.setPageSize(500);
+					.setPageSize(500)
+					.setMaxSize(1701);
 			final Thread t = Thread.currentThread();
 			final Consumer<List<TSMeta>> consumer = new Consumer<List<TSMeta>>() {
 				@Override
 				public void accept(final List<TSMeta> metas) {
 					for(TSMeta meta: metas) {
-						count.incrementAndGet();
-						if(print.get()) log("[%s] TSMeta: [%s]", count.get(), meta.getDisplayName());
+						if(print.get()) log("[%s] TSMeta: [%s]", q.getCummulative(), meta.getDisplayName());
 					}
-					if(q.isExhausted()) {
+					if(!q.shouldContinue()) {
 						t.interrupt();
 					}
 				}
@@ -304,23 +303,23 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 				}
 			}; 
 			//mq.topic.subs.queue.onqtime-recent:{app=icemqmgr, host=pdk-pt-cefmq-01, q=ifeu.to.mwy.liffe.lqueue, subscription=ifeu.to.mwy.liffe.sub, topic=ifeu.to.mwy.liffe.topic}
-			final String QUERY = "mq.topic.subs.queue.*:app=*, host=pdk-pt-cefmq-0*|pdk-pt-cebmq-0*,subscription=*,topic=ifeu*,*";
+			//final String QUERY = "mq.topic.subs.queue.*:app=*, host=pdk-pt-cefmq-0*|pdk-pt-cebmq-0*,subscription=*,topic=ifeu*,*";
 			//final String QUERY = "linux.mem.*:host=pdk-pt-cltsdb-*";			
 			//final String QUERY = "sys.cpu:host=mad-server,cpu=0,dc=dcX,type=combined";
+			final String QUERY = "*:*";
 			final ElapsedTime et1 = SystemClock.startClock();
 			Stream<List<TSMeta>> metaStream = api.evaluate(q, QUERY);
 			metaStream.consume(consumer).when(Throwable.class, errorHandler);
 			try { Thread.currentThread().join(); } catch (Exception ex) {
-				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), et1.elapsedStrMs(), q);
+				log("Done. Count: %s, Elapsed: %s, Q:\n%s", q.getCummulative(), et1.elapsedStrMs(), q);
 				if(Thread.interrupted()) Thread.interrupted();
-			}
-			count.set(0);
+			}			
 			//print.set(true);
 			final ElapsedTime et2 = SystemClock.startClock();
 			api.evaluate(q.reset(), QUERY)
 				.consume(consumer).when(Throwable.class, errorHandler);
 			try { Thread.currentThread().join(); } catch (Exception ex) {
-				log("Done. Count: %s, Elapsed: %s, Q:\n%s", count.get(), et2.elapsedStrMs(), q.reportElapsed());
+				log("Done. Count: %s, Elapsed: %s, Q:\n%s", q.getCummulative(), et2.elapsedStrMs(), q.reportElapsed());
 				if(Thread.interrupted()) Thread.interrupted();
 			}			
 		} catch (Exception ex) {
@@ -643,7 +642,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	 * @param tsuid The optional TSMeta UID used for matching patterns. Ignored if null.
 	 * @return the deferred result
 	 */
-	protected Stream<List<TSMeta>> getTSMetas(final reactor.core.composable.Deferred<TSMeta, Stream<TSMeta>> priorDeferred, final QueryContext queryContext, final String metricName, final Map<String, String> tags, final String tsuid) {
+	protected Stream<List<TSMeta>> getTSMetas(final Deferred<TSMeta, Stream<TSMeta>> priorDeferred, final QueryContext queryContext, final String metricName, final Map<String, String> tags, final String tsuid) {
 		final reactor.core.composable.Deferred<TSMeta, Stream<TSMeta>> def = getDeferred(priorDeferred, queryContext);
 		final Stream<List<TSMeta>> stream = def.compose().collect();		
 		final String _metricName = (metricName==null || metricName.trim().isEmpty()) ? "*" : metricName.trim();
@@ -656,7 +655,8 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 				final StringBuilder sqlBuffer = new StringBuilder();
 				try {
 					generateTSMetaSQL(sqlBuffer, binds, queryContext, _metricName, _tags, "INTERSECT", tsuid);		
-					final int expectedRows = queryContext.getNextMaxLimit() + 1; 
+					final int expectedRows = queryContext.getNextMaxLimit(); 
+//					final int expectedRows = queryContext.getPageSize();
 					binds.add(expectedRows);
 					queryContext.addCtx("SQLPrepared", System.currentTimeMillis());
 					if(log.isDebugEnabled()) log.debug("Executing SQL [{}]", fillInSQL(sqlBuffer.toString(), binds));					
@@ -672,6 +672,13 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 						} 
 					} finally {
 						try { rset.close(); } catch (Exception x) {/* No Op */}
+					}
+					if(queryContext.isContinuous() && queryContext.shouldContinue()) {
+						fjPool.execute(new Runnable(){
+							public void run() {
+								getTSMetas(def, queryContext, metricName, tags, tsuid);
+							}
+						});
 					}
 				} catch (Exception ex) {
 					log.error("Failed to execute getTSMetas (with tags).\nSQL was [{}]", sqlBuffer, ex);
@@ -1064,24 +1071,21 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 			queryContext.setExhausted(true).setNextIndex(null).incrementCummulative(rowsRead);
 		}		
 		queryContext.addCtx("StreamFlushed", System.currentTimeMillis());
-		log.debug("Deferred Flushing [{}] rows", rowsRead);
+		log.debug("Deferred Flushing [{}] T rows", rowsRead);
 		def.flush();
 		final boolean cont = queryContext.shouldContinue();
-		if(cont && queryContext.isContinuous()) {
-			try {
-				return fjPool.submit(new Callable<Boolean>(){
-					@Override
-					public Boolean call() throws Exception {						
-						return processStream(iter , def, queryContext);
-					}
-				}).get();
-			} catch (InterruptedException | ExecutionException e) {
-				def.accept(e);
-				return false;
-			}
-		} else {
-			return cont;
-		}
+		return cont;
+//		if(cont && queryContext.isContinuous()) {
+//			fjPool.submit(new Callable<Boolean>(){
+//				@Override
+//				public Boolean call() throws Exception {						
+//					return processStream(iter , def, queryContext);
+//				}
+//			});
+//			return false;
+//		} else {
+//			return cont;
+//		}
 		
 	}
 	
