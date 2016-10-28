@@ -34,13 +34,17 @@ import java.sql.RowId;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.sql.DataSource;
@@ -1567,6 +1571,83 @@ public class SQLWorker {
 			throw new RuntimeException(ex);
 		}
 	}
+	
+	/** The format token pattern */
+	public static final Pattern TOKEN = Pattern.compile("##(\\d++)##");
+	
+	public static Map<String, Integer> getTokens(final String format) {
+		final Map<String, Integer> tokenReplacements = new HashMap<String, Integer>();
+		final Matcher m = TOKEN.matcher(format);
+		while(m.find()) {
+			tokenReplacements.put(m.group(0), Integer.parseInt(m.group(1)));
+		}
+		return tokenReplacements;
+	}
+	
+	public static Object[] rowToArr(final int cols, final ResultSet rset) {
+		try {
+			final Object[] arr = new Object[cols];
+			for(int i = 0; i < cols; i++) {
+				arr[i] = rset.getString(i+1);
+			}
+			return arr;
+		} catch (SQLException sex) {
+			throw new RuntimeException("Failed to rowToArr", sex);
+		}
+	}
+	
+	/**
+	 * Executes the passed query statement and uses the results to fill in the format specifier using tokens specified
+	 * as zero init tokens as <b><code>##&lt;column&gt;##</code></b>. So the token <b><code>##3##</code></b> would
+	 * effectively be replaced with <b><code>resultSet.getString(4)</code></b>.  
+	 * @param conn An optional connection. If not supplied, a new connection will be acquired, and closed when used.
+	 * @param defaultValue The default value to return if no rows are found. Ignored if null, but if so, 
+	 * and no rows are returned, will throw an exception.
+	 * @param sqlText The query SQL text
+	 * @param format The format specifier where zero init tokens as <b><code>##&lt;column&gt;##</code></b> tokens
+	 * will be replaced with the according column (+1). 
+	 * @param args The bind arguments
+	 * @return An array of the formated rows
+	 */
+	public String[] sqlForFormat(Connection conn, final String defaultValue, final String sqlText, final String format, final Object...args) {
+		PreparedStatement ps = null;
+		ResultSet rset = null;
+		boolean newConn = conn==null;
+		try {
+			final Map<String, Integer> tokenReplacements = getTokens(format);
+			if(tokenReplacements.isEmpty()) {
+				throw new IllegalArgumentException("Format had no ## tokens");
+			}
+			final List<String> results = new ArrayList<String>(); 
+			final AbstractPreparedStatementBinder binder = binderFactory.getBinder(sqlText);
+			if(newConn) {
+				conn = dataSource.getConnection();			
+			}
+			ps = conn.prepareStatement(sqlText);
+			binder.bind(ps, args);
+			rset = executeQuery(ps, binder);
+			final int cols = rset.getMetaData().getColumnCount();
+			
+			int rows = 0;
+			while(rset.next()) {
+				final Object[] colValues = rowToArr(cols, rset);
+				String concat = format;
+				for(Map.Entry<String, Integer> entry: tokenReplacements.entrySet()) {
+					Object v = colValues[entry.getValue()];
+					concat = concat.replace(entry.getKey(), v==null ? "" : v.toString());
+				}
+				results.add(concat);
+			}
+			if(rows==0) return new String[]{defaultValue};
+			return results.toArray(new String[rows]);
+		} catch (Exception ex) {
+			throw new RuntimeException("SQL Query Failure [" + sqlText + "]", ex);
+		} finally {
+			if(rset!=null) try { rset.close(); } catch (Exception x) { /* No Op */ }
+			if(ps!=null) try { ps.close(); } catch (Exception x) { /* No Op */ }
+			if(newConn && conn!=null) try { conn.close(); } catch (Exception x) { /* No Op */ }
+		}
+	}	
 	
 	/**
 	 * Executes the passed query statement and returns the first column of the first row as a String

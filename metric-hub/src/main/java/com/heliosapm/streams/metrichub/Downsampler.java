@@ -93,16 +93,28 @@ public enum Downsampler {
 		for(Interval inter: Interval.values()) {
 			b.append(inter.name().toLowerCase()).append("|");
 		}
-		b.deleteCharAt(b.length()-1).append("])\\-([");
+		b.deleteCharAt(b.length()-1).append("])\\-(");
 		for(int i = 0; i < values.length; i++) {
 			b.append(values[i].name().toLowerCase()).append("|");
 		}
-		b.deleteCharAt(b.length()-1).append("])\\-([");
+		b.deleteCharAt(b.length()-1).append(")\\-(");
 		for(FillPolicy fp: FillPolicy.values()) {
 			b.append(fp.name().toLowerCase()).append("|");
 		}
-		b.deleteCharAt(b.length()-1).append("])$");
+		b.deleteCharAt(b.length()-1).append(")$");
 		DOWNSAMPLER_PATTERN = Pattern.compile(b.toString(), Pattern.CASE_INSENSITIVE);
+	}
+	
+	/**
+	 * Validates that the passed stringy is a valid downsampling expression
+	 * @param expression The expression to test
+	 */
+	public static void validateDownsamplerExpression(final CharSequence expression) {
+		if(expression==null) throw new IllegalArgumentException("The passed expression was null");
+		final String v = expression.toString().trim().toUpperCase();
+		if(v.isEmpty()) throw new IllegalArgumentException("The passed expression was empty");
+		if(!DOWNSAMPLER_PATTERN.matcher(v).matches()) throw new IllegalArgumentException("The passed expression is not a valid downsampler [" + expression + "]");
+
 	}
 
 	public static void main(String[] args) {

@@ -358,3 +358,29 @@ WHERE V.XUID = T.TAGV
 AND K.XUID = T.TAGK;
 
 
+-- =================================================================
+-- OPENTSDB SERVERS
+-- =================================================================
+
+
+CREATE TABLE TSD_KNOWNSERVERS (
+    HOST VARCHAR(200) NOT NULL,
+    PORT INT NOT NULL DEFAULT 4242,
+    UP CHAR(1) NOT NULL,
+    URI VARCHAR(200) NOT NULL DEFAULT '/api',
+    CREATED TIMESTAMP DEFAULT current_timestamp NOT NULL,
+    LAST_UPDATE TIMESTAMP
+); 
+
+
+COMMENT ON COLUMN TSD_KNOWNSERVERS.HOST IS 'The host name or IP address of the TSD';
+COMMENT ON COLUMN TSD_KNOWNSERVERS.PORT IS 'The listening port of the TSD';
+COMMENT ON COLUMN TSD_KNOWNSERVERS.UP IS 'Up indicator for the TSD service';
+COMMENT ON COLUMN TSD_KNOWNSERVERS.URI IS 'The TSD service base api URI in case we want to reverse proxy';
+COMMENT ON COLUMN TSD_KNOWNSERVERS.CREATED IS 'The creation timestamp of this record';
+COMMENT ON COLUMN TSD_KNOWNSERVERS.LAST_UPDATE IS 'The last update timestamp of this record';
+
+
+ALTER TABLE TSD_KNOWNSERVERS ADD CONSTRAINT TSD_KNOWNSERVERS_PK PRIMARY KEY (HOST, PORT) ;
+ALTER TABLE TSD_KNOWNSERVERS ADD CONSTRAINT NODE_IS_Y_OR_N CHECK (UP IN ('Y', 'N'));
+

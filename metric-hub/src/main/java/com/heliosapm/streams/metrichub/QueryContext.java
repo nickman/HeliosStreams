@@ -41,6 +41,25 @@ import net.opentsdb.utils.JSON;
  * <p><code>com.heliosapm.streams.metrichub.QueryContext</code></p>
  */
 
+
+/*
+import java.util.regex.*;
+
+p = Pattern.compile("\\[(\\d+.*?\\d+)\\]");
+x = Pattern.compile("(\\d+\\-\\d+|\\d+)");
+v = "[1,3-5,7]";
+m = p.matcher(v);
+int cnt = 0;
+println "Matches: ${m.matches()}";
+m = x.matcher(m.group(1));
+while(m.find()) {
+    println m.group(1);
+}
+
+
+return null;
+ */
+
 public class QueryContext {
 	/** Static class logger */
 	@JsonIgnore

@@ -327,7 +327,8 @@ public class DataContext {
 	 */
 	public DataContext downSampling(final String downSampling) {
 		if(downSampling==null || downSampling.trim().isEmpty()) throw new IllegalArgumentException("The passed downsampling expression was null or empty");
-		this.downSampling = downSampling;
+		Downsampler.validateDownsamplerExpression(downSampling);  // validates
+		this.downSampling = downSampling.trim();
 		return this;
 	}
 	
@@ -342,115 +343,133 @@ public class DataContext {
 	
 
 	/**
-	 * Returns the
-	 * @return the msResolution
+	 * Indicates if the responses will be in ms. resolution
+	 * @return true if millisecond resolution, false if second resolution
 	 */
 	public boolean isMsResolution() {
 		return msResolution;
 	}
 
 	/**
-	 * Sets the
-	 * @param msResolution the msResolution to set
+	 * Specifies if the responses will be in ms. resolution
+	 * @param msResolution true for millisecond resolution, false for second resolution
+	 * @return this data context
 	 */
-	public void setMsResolution(boolean msResolution) {
+	public DataContext msResolution(final boolean msResolution) {
 		this.msResolution = msResolution;
+		return this;
 	}
 
 	/**
-	 * Returns the
-	 * @return the includeAnnotations
+	 * Indicates if TSUID related annotations should be returned
+	 * @return true if TSUID related annotations should be returned, false otherwise
 	 */
 	public boolean isIncludeAnnotations() {
 		return includeAnnotations;
 	}
 
 	/**
-	 * Sets the
-	 * @param includeAnnotations the includeAnnotations to set
+	 * Specifies if TSUID related annotations should be returned.
+	 * <b>Not implemented yet</b>
+	 * @param includeAnnotations true if TSUID related annotations should be returned, false otherwise
+	 * @return this data context
 	 */
-	public void setIncludeAnnotations(boolean includeAnnotations) {
+	public DataContext includeAnnotations(boolean includeAnnotations) {
 		this.includeAnnotations = includeAnnotations;
+		return this;
 	}
-
+	
 	/**
-	 * Returns the
-	 * @return the includeGlobalAnnotations
+	 * Indicates if timestamp related (global) annotations should be returned
+	 * @return true if timestamp related (global) annotations should be returned, false otherwise
 	 */
 	public boolean isIncludeGlobalAnnotations() {
 		return includeGlobalAnnotations;
 	}
 
 	/**
-	 * Sets the
-	 * @param includeGlobalAnnotations the includeGlobalAnnotations to set
+	 * Specifies if timestamp related (global) annotations should be returned.
+	 * <b>Not implemented yet</b>
+	 * @param includeAnnotations true if timestamp related (global) annotations should be returned, false otherwise
+	 * @return this data context
 	 */
-	public void setIncludeGlobalAnnotations(boolean includeGlobalAnnotations) {
-		this.includeGlobalAnnotations = includeGlobalAnnotations;
+	public DataContext includeGlobalAnnotations(boolean includeAnnotations) {
+		this.includeGlobalAnnotations = includeAnnotations;
+		return this;
 	}
+	
+
 
 	/**
-	 * Returns the
-	 * @return the includeTsuids
+	 * Indicates if TSUIDs should be returned in the response
+	 * @return true if TSUIDs should be returned in the response, false otherwise
 	 */
 	public boolean isIncludeTsuids() {
 		return includeTsuids;
 	}
 
 	/**
-	 * Sets the
-	 * @param includeTsuids the includeTsuids to set
+	 * Specifies if TSUIDs should be returned in the response
+	 * @param includeTsuids true if TSUIDs should be returned in the response, false otherwise
+	 * @return this data context
 	 */
-	public void setIncludeTsuids(boolean includeTsuids) {
+	public DataContext includeTsuids(final boolean includeTsuids) {
 		this.includeTsuids = includeTsuids;
+		return this;
 	}
 
 	/**
-	 * Returns the
-	 * @return the showSummary
+	 * Indicates if an elapsed time summary should be included in the response
+	 * @return true if summary is included, false otherwise
 	 */
 	public boolean isShowSummary() {
 		return showSummary;
 	}
 
 	/**
-	 * Sets the
-	 * @param showSummary the showSummary to set
+	 * Specifies if an elapsed time summary should be included in the response
+	 * @param showSummary true to include a summary, false otherwise
+	 * @return this data context
 	 */
-	public void setShowSummary(boolean showSummary) {
+	public DataContext showSummary(final boolean showSummary) {
 		this.showSummary = showSummary;
+		return this;
 	}
 
 	/**
-	 * Returns the
-	 * @return the showQuery
+	 * Indicates if the submitted query should be included in the response
+	 * @return true if the submitted query should be included in the response
 	 */
 	public boolean isShowQuery() {
 		return showQuery;
 	}
 
 	/**
-	 * Sets the
+	 * Specifies if the submitted query should be included in the response
 	 * @param showQuery the showQuery to set
+	 * @return this data context
 	 */
-	public void setShowQuery(boolean showQuery) {
+	public DataContext showQuery(final boolean showQuery) {
 		this.showQuery = showQuery;
+		return this;
 	}
 
 	/**
-	 * Returns the
-	 * @return the deletion
+	 * Indicates if the submitted request should be a deletion
+	 * @return true if the submitted request should be a deletion, false otherwise
 	 */
 	public boolean isDeletion() {
 		return deletion;
 	}
 
 	/**
-	 * Sets the
-	 * @param deletion the deletion to set
+	 * Specifies if the submitted request should be a deletion
+	 * @param deletion true if the submitted request should be a deletion, false for a query
+	 * @return this data context
 	 */
-	public void setDeletion(boolean deletion) {
+	public DataContext deletion(final boolean deletion) {
 		this.deletion = deletion;
+		return this;
 	}	
 
 }

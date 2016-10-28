@@ -729,7 +729,7 @@ public class AgentName extends NotificationBroadcasterSupport  implements AgentN
 	 */
 	public static String getVMSupportAppName() {
 		Properties p = JMXHelper.getAgentProperties();
-		String app = p.getProperty("sun.java.command", null);
+		String app = p.getProperty("k", null);
 		if(app!=null && !app.trim().isEmpty()) {
 			app = cleanAppName(app);			
 			if(app!=null && !app.trim().isEmpty()) {
