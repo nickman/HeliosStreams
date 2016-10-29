@@ -16,6 +16,8 @@
 package com.heliosapm.streams.tracing;
 
 import java.util.Comparator;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * <p>Title: TagKeySorter</p>
@@ -35,6 +37,36 @@ public class TagKeySorter implements Comparator<String> {
 //	public static String CONFIG_TAG_KEYS = "tagkey.sort";
 //	/** The default tags that will sort low (in low to high order) */
 //	public static String[] DEFAULT_TAG_KEYS = {"app", "host"};
+	
+	
+	/**
+	 * <p>Title: TagMap</p>
+	 * <p>Description: An extension of {@link TreeMap} that automatically adds the tag key sorter</p> 
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.tracing.TagKeySorter.TagMap</code></p>
+	 */
+	public static class TagMap extends TreeMap<String, String> {
+
+		/**  */
+		private static final long serialVersionUID = 8546262826577735456L;
+
+		/**
+		 * Creates a new TagMap
+		 */
+		public TagMap() {
+			super(INSTANCE);
+		}
+
+		/**
+		 * Creates a new TagMap
+		 * @param m A map to copy into this map
+		 */
+		public TagMap(final Map<? extends String, ? extends String> m) {
+			this();
+			if(m!=null) putAll(m);
+		}
+		
+	}
 	
 	/**
 	 * Creates a new TagKeySorter

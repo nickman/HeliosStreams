@@ -18,7 +18,9 @@ under the License.
  */
 package com.heliosapm.streams.metrichub;
 
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.codahale.metrics.CachedGauge;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
@@ -31,20 +33,49 @@ import com.heliosapm.streams.sqlbinder.SQLWorker;
  */
 
 public class TSDBEndpoint {
+	/** A map of endpoints keyed by the DB key they're connected to */
+	private static final ConcurrentHashMap<String, TSDBEndpoint> endpoints = new ConcurrentHashMap<String, TSDBEndpoint>();
+	/** Placeholder */
+	private static final TSDBEndpoint PLACEHOLDER = new TSDBEndpoint();
 	/** The sqlworker to poll the db when the cache expires */
 	protected final SQLWorker sqlWorker;
 	/** The cache of known on line servers */
 	protected final CachedGauge<String[]> knownServers;
+	/** flag indicating the ordering */
+	protected final AtomicBoolean asc = new AtomicBoolean(true);
+	
+	
+	/**
+	 * Acquires the unique TSDBEndpoint for the passed SQLWorker
+	 * @param sqlWorker The SQLWorker that will drive the endpoint lookup
+	 * @return the unique TSDBEndpoint 
+	 */
+	public static TSDBEndpoint getEndpoint(final SQLWorker sqlWorker) {
+		if(sqlWorker==null) throw new IllegalArgumentException("The passed SQLWorker was null");
+		final String key = sqlWorker.getDBKey();
+		TSDBEndpoint endpoint = endpoints.putIfAbsent(key, PLACEHOLDER);
+		if(endpoint==null || endpoint==PLACEHOLDER) {
+			endpoint = new TSDBEndpoint(sqlWorker);
+		}		
+		return endpoint;
+	}
+	
+	private TSDBEndpoint() {
+		sqlWorker = null;
+		knownServers = null;
+	}
 	
 	/**
 	 * Creates a new TSDBEndpoint
+	 * @param sqlWorker The SQLWorker that will drive the lookups
 	 */
-	public TSDBEndpoint(final SQLWorker sqlWorker) {
+	private TSDBEndpoint(final SQLWorker sqlWorker) {
 		this.sqlWorker = sqlWorker;
 		knownServers = new CachedGauge<String[]>(60, TimeUnit.SECONDS) {
 			@Override
 			protected String[] loadValue() {
-				return sqlWorker.sqlForFormat(null, null, "SELECT HOST, PORT, URI FROM TSD_KNOWNSERVERS WHERE UP = 'Y'", "http://##0##:##1##/##2##");
+				final String order = (asc.getAndSet(asc.get()) ? "ASC" : "DESC"); 
+				return sqlWorker.sqlForFormat(null, null, "SELECT HOST, PORT, URI FROM TSD_KNOWNSERVERS WHERE UP = 'Y' ORDER BY HOST " + order + ", PORT " + order, "http://##0##:##1##/##2##");
 			}
 		};
 	}

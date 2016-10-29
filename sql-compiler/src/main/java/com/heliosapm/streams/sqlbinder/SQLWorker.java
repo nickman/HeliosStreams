@@ -25,6 +25,7 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.JDBCType;
 import java.sql.ParameterMetaData;
 import java.sql.PreparedStatement;
@@ -151,7 +152,7 @@ public class SQLWorker {
 	
 	/**
 	 * Returns the DB product name
-	 * @return
+	 * @return the db product name
 	 */
 	public String getDBProductName() {
 		Connection conn = null;
@@ -166,6 +167,46 @@ public class SQLWorker {
 			}
 		}
 	}
+	
+	/**
+	 * Returns the DB JDBC URL
+	 * @return the db JDBC URL
+	 */
+	public String getDBURL() {
+		Connection conn = null;
+		try {
+			conn = dataSource.getConnection();
+			return conn.getMetaData().getURL();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to get DB JDBC URL", ex);
+		} finally {
+			if(conn!=null) {
+				try { conn.close(); } catch (Exception x) {/* No Op */}
+			}
+		}
+	}
+	
+	/**
+	 * Returns the DB Unique Key
+	 * @return the db Unique Key
+	 */
+	public String getDBKey() {
+		Connection conn = null;
+		try {
+			conn = dataSource.getConnection();
+			final DatabaseMetaData dbmd = conn.getMetaData();
+			
+			return dbmd.getDatabaseProductName() + "/" + dbmd.getURL();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to get DB KEY", ex);
+		} finally {
+			if(conn!=null) {
+				try { conn.close(); } catch (Exception x) {/* No Op */}
+			}
+		}		
+	}
+	
+	
 	
 	/**
 	 * Returns the number of binders held in state, bound to a transient PreparedStatement
@@ -550,6 +591,8 @@ public class SQLWorker {
 	}
 	
 	public static final Object[][] EMPTY_AUTOKEYS_ARR = {{}};
+	/** An empty string array const */
+	public static final String[] EMPTY_STR_ARR = {};
 	
 	/**
 	 * Executes the passed statement
@@ -1638,7 +1681,7 @@ public class SQLWorker {
 				}
 				results.add(concat);
 			}
-			if(rows==0) return new String[]{defaultValue};
+			if(rows==0) return EMPTY_STR_ARR;
 			return results.toArray(new String[rows]);
 		} catch (Exception ex) {
 			throw new RuntimeException("SQL Query Failure [" + sqlText + "]", ex);

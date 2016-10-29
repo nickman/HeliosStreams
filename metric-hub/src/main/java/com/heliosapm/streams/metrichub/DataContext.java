@@ -18,8 +18,22 @@ under the License.
  */
 package com.heliosapm.streams.metrichub;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.text.SimpleDateFormat;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.heliosapm.streams.buffers.BufferManager;
+
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufOutputStream;
+import net.opentsdb.meta.TSMeta;
+import net.opentsdb.utils.JSON;
+import reactor.core.composable.Stream;
+import reactor.function.Consumer;
 
 /**
  * <p>Title: DataContext</p>
@@ -73,6 +87,9 @@ public class DataContext {
 	/** The simple date formatter for the standard format. Be sure to use via synchronized method */
 	private static final SimpleDateFormat DEFAULT_TS_SDF = new SimpleDateFormat(DEFAULT_TS_FORMAT);
 	
+	/** The format for the minimal query. Tokens are URL prefix, start time, aggregate */
+	public static final String QUERY_API = "%s/query?/start=%s&tsuid=%s:";
+	
 	
 	static class RateOptions {
 		/** Whether or not the underlying data is a monotonically increasing counter that may roll over */
@@ -83,7 +100,7 @@ public class DataContext {
 		long resetValue = 0L;
 		
 		/**
-		 * Renders the options for query building. e.g. <b><code>:rate{counter,,1000}</code></b>
+		 * Renders the options for query building. e.g. <b><code>:rate{counter,1000,499}</code></b>
 		 * {@inheritDoc}
 		 * @see java.lang.Object#toString()
 		 */
@@ -142,6 +159,116 @@ public class DataContext {
 		}
 	}
 	
+	protected void startT(final JsonGenerator jg) throws IOException {
+		if(startTimeMs!=-1L) {
+			jg.writeNumberField("start", TimeUnit.MILLISECONDS.toSeconds(startTimeMs));
+		} else if(startTime!=null) {
+			jg.writeStringField("start", startTime);
+		} else {
+			throw new IllegalStateException("No start time defined. Programmer Error ?");
+		}
+	}
+	
+	protected void endT(final JsonGenerator jg) throws IOException {
+		if(endTimeMs!=-1L) {
+			jg.writeNumberField("end", TimeUnit.MILLISECONDS.toSeconds(endTimeMs));
+		} else if(endTime!=null) {
+			jg.writeStringField("end", endTime);
+		}
+	}
+	
+	
+//	/**
+//	 * Renders the URL to execute the configured query against the endpoints defined by the DB read by the passed SQLWorker
+//	 * @param sqlWorker the SQLWorker that will read the endpoints from the DB
+//	 * @return the rendered URL
+//	 */
+	
+	/**
+	 * Renders the whole JSON query except the tsuids and closers to post the request
+	 * @return the query json header doc
+	 */
+	public ByteBuf renderHeader() {
+		OutputStream os = null;
+		JsonGenerator jg = null;
+		try {
+			final ByteBuf header = BufferManager.getInstance().buffer(1024);
+			os = new ByteBufOutputStream(header);			
+			jg = JSON.getFactory().createGenerator(os);
+
+			jg.writeStartObject();	// start of request
+			//  write start and end times
+			startT(jg);
+			endT(jg);			
+			// Other request options
+			if(!includeAnnotations) jg.writeBooleanField("no_annotations", true);
+			if(includeGlobalAnnotations) jg.writeBooleanField("global_annotations", true);
+			if(msResolution) jg.writeBooleanField("ms", true);
+			if(includeTsuids) jg.writeBooleanField("show_tsuids", true);
+			if(showSummary) jg.writeBooleanField("show_summary", true);
+			if(showQuery) jg.writeBooleanField("show_query", true);
+			if(deletion) jg.writeBooleanField("delete", true);
+			
+			
+			jg.writeArrayFieldStart("queries");
+			jg.writeStartObject();	// start of query
+			jg.writeStringField("aggregator", aggregator.name().toLowerCase());
+			
+			
+			
+			jg.writeArrayFieldStart("tsuids");
+			jg.flush();
+			os.flush();
+//			jg.writeEndArray(); 	// end of tsuids array
+//			jg.writeEndObject();	// end of query
+//			jg.writeEndArray(); 	// end of queries array
+//			jg.writeEndObject(); // end of request
+			return header;
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		} finally {
+			if(jg!=null) try { jg.close(); } catch (Exception x) {/* No Op */}
+			if(os!=null) try { os.close(); } catch (Exception x) {/* No Op */}
+		}
+	}
+	
+	public Stream<JsonNode> merge(final ByteBuf header, final int batchSize, final Stream<List<TSMeta>> metaStream) {
+		try {
+			metaStream.buffer(batchSize).collect().consume(new Consumer<List<List<TSMeta>>>() {
+				@Override
+				public void accept(final List<List<TSMeta>> t) {
+					for(final List<TSMeta> tsMetaBatch: t) {
+						OutputStream os = null;
+						JsonGenerator jg = null;
+						try {
+							final ByteBuf body = BufferManager.getInstance().buffer(header.readableBytes() + (128 * batchSize));  // FIXME: need a better approx.
+							body.writeBytes(header);
+							header.resetReaderIndex();
+							os = new ByteBufOutputStream(body);
+							jg = JSON.getFactory().createGenerator(os);
+							for(final TSMeta tsMeta: tsMetaBatch) {
+								jg.writeString(tsMeta.getTSUID());								
+							}
+							jg.writeEndArray(); 	// end of tsuids array
+							jg.writeEndObject();	// end of query
+							jg.writeEndArray(); 	// end of queries array
+							jg.writeEndObject(); 	// end of request	
+							jg.flush();
+							os.flush();
+						} catch (Exception ex) {
+							
+						} finally {
+							if(jg!=null) try { jg.close(); } catch (Exception x) {/* No Op */}
+							if(os!=null) try { os.close(); } catch (Exception x) {/* No Op */}
+						}
+					}
+				}
+			});
+			return null;
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
+	}
 
 	/**
 	 * Enables rate reporting and sets the reset value
