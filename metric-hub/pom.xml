@@ -143,12 +143,29 @@
 			    <groupId>net.opentsdb</groupId>
 			    <artifactId>opentsdb</artifactId>
 			    <scope>provided</scope>
-			    <exclusions>
-			    	<exclusion>
-          				<groupId>org.slf4j</groupId>
-          				<artifactId>log4j-over-slf4j</artifactId>
-        			</exclusion>
-			    </exclusions>
+			  <exclusions>
+               	<exclusion>
+		          <groupId>ch.qos.logback</groupId>
+		          <artifactId>logback-classic</artifactId>
+		        </exclusion>
+			  	<exclusion>
+		          <groupId>org.slf4j</groupId>
+		          <artifactId>slf4j-log4j12</artifactId>
+		        </exclusion>
+			  	<exclusion>
+		          <groupId>org.slf4j</groupId>
+		          <artifactId>slf4j-api</artifactId>
+		        </exclusion>		        
+			  	<exclusion>
+		          <groupId>log4j</groupId>
+		          <artifactId>log4j</artifactId>
+		        </exclusion>
+	        	<exclusion>
+       				<groupId>org.slf4j</groupId>
+       				<artifactId>log4j-over-slf4j</artifactId>
+       			</exclusion>
+			  </exclusions>			  		    
+			    
 			</dependency>
 
 			<dependency>

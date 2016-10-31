@@ -1680,6 +1680,7 @@ public class SQLWorker {
 					concat = concat.replace(entry.getKey(), v==null ? "" : v.toString());
 				}
 				results.add(concat);
+				rows++;
 			}
 			if(rows==0) return EMPTY_STR_ARR;
 			return results.toArray(new String[rows]);

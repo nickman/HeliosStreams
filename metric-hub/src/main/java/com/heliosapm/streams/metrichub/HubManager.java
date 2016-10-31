@@ -18,36 +18,70 @@ under the License.
  */
 package com.heliosapm.streams.metrichub;
 
+import java.net.InetSocketAddress;
+import java.net.URL;
+import java.nio.charset.Charset;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.sql.DataSource;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
+import com.heliosapm.utils.io.StdInCommandHandler;
+import com.heliosapm.utils.url.URLHelper;
 
 import io.netty.bootstrap.Bootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.AdaptiveRecvByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelOption;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.pool.AbstractChannelPoolMap;
 import io.netty.channel.pool.ChannelPool;
 import io.netty.channel.pool.ChannelPoolHandler;
+import io.netty.channel.pool.ChannelPoolMap;
 import io.netty.channel.pool.SimpleChannelPool;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpContentDecompressor;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpHeaderValues;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpObjectAggregator;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.logging.LogLevel;
+import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.timeout.IdleStateHandler;
+import io.netty.util.concurrent.DefaultEventExecutor;
+import io.netty.util.concurrent.EventExecutor;
+import io.netty.util.concurrent.Future;
+import io.netty.util.concurrent.GenericFutureListener;
+import io.netty.util.internal.logging.InternalLoggerFactory;
+import io.netty.util.internal.logging.Log4J2LoggerFactory;
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.meta.TSMeta;
 import net.opentsdb.meta.UIDMeta;
 import net.opentsdb.uid.UniqueId.UniqueIdType;
 import reactor.core.composable.Promise;
 import reactor.core.composable.Stream;
+import reactor.function.Consumer;
 
 /**
  * <p>Title: HubManager</p>
@@ -71,20 +105,46 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	private final EventLoopGroup group;
 	/** The netty client bootstrap */
 	private final Bootstrap bootstrap;
+	/** The netty channel group event executor  */
+	private final EventExecutor eventExecutor;
+	/** The channel pool map */
+	private final ChannelPoolMap<InetSocketAddress, SimpleChannelPool> poolMap;
+	/** The channel group containing all connnected channels */
+	private final ChannelGroup channelGroup;
+	/** The known up tsdb endpoints */
+	private final List<InetSocketAddress> tsdbAddresses = new CopyOnWriteArrayList<InetSocketAddress>();
+	/** The number of loaded addresses */
+	private final int endpointCount;
+	/** Sequence for getting random endpoint */
+	private final AtomicInteger endpointSequence;
+	/** The logging handler */
+	private final LoggingHandler loggingHandler = new LoggingHandler(getClass(), LogLevel.ERROR); 
+	
+	
+	
+	private final QueryResultDecoder queryResultDecoder = new QueryResultDecoder();
 	
 	/** Instance logger */
 	private final Logger log = LogManager.getLogger(getClass());
 	
+	static {
+		InternalLoggerFactory.setDefaultFactory(Log4J2LoggerFactory.INSTANCE);
+	}
 	
 	private final ChannelInitializer<SocketChannel> channelInitializer = new ChannelInitializer<SocketChannel>() {
 		@Override
-		protected void initChannel(final SocketChannel ch) throws Exception {
+		public void initChannel(final SocketChannel ch) throws Exception {
+			final ChannelPipeline p = ch.pipeline();
+			//p.addLast("timeout",    new IdleStateHandler(0, 0, 60));  // TODO: configurable
 			
+			p.addLast("httpcodec",    new HttpClientCodec());
+			p.addLast("inflater",   new HttpContentDecompressor());
+			//p.addLast("aggregator", new HttpObjectAggregator(1048576));
+			p.addLast("qdecoder", queryResultDecoder);
+			p.addLast("logging", loggingHandler);
 		}
 	};
 	
-	private final ChannelPool channelPool;
-	private final ChannelGroup channelGroup;
 	
 	/**
 	 * Initializes the hub manager
@@ -119,25 +179,176 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 
 	
 	private HubManager(final Properties properties) {
+		log.info(">>>>> Initializing HubManager...");
 		metricMetaService = new MetricsMetaAPIImpl(properties);
 		tsdbEndpoint = TSDBEndpoint.getEndpoint(metricMetaService.getSqlWorker());
+		for(String url: tsdbEndpoint.getUpServers()) {
+			final URL tsdbUrl = URLHelper.toURL(url);
+			tsdbAddresses.add(new InetSocketAddress(tsdbUrl.getHost(), tsdbUrl.getPort()));
+		}
+		endpointCount = tsdbAddresses.size(); 
+		endpointSequence = new AtomicInteger(endpointCount);
 		group = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors() * 2, metricMetaService.getForkJoinPool());
 		bootstrap = new Bootstrap();
-		bootstrap.group(group).channel(NioSocketChannel.class).handler(channelInitializer);
-		channelPool = new SimpleChannelPool(bootstrap, this);
-		channelGroup = new DefaultChannelGroup("", group);
+		bootstrap
+			.handler(channelInitializer)
+			.group(group)
+			.channel(NioSocketChannel.class)
+			.option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator())
+			.option(ChannelOption.ALLOCATOR, BufferManager.getInstance());
+		final ChannelPoolHandler poolHandler = this;
+		poolMap = new AbstractChannelPoolMap<InetSocketAddress, SimpleChannelPool>() {
+		    @Override
+		    protected SimpleChannelPool newPool(final InetSocketAddress key) {
+				final Bootstrap b = new Bootstrap().handler(channelInitializer)
+				.group(group)
+				.remoteAddress(key)
+				.channel(NioSocketChannel.class)
+				.option(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator())
+				.option(ChannelOption.ALLOCATOR, BufferManager.getInstance());		    	
+		        return new SimpleChannelPool(b, poolHandler);
+		    }
+		};
+		eventExecutor = new DefaultEventExecutor(metricMetaService.getForkJoinPool());
+		channelGroup = new DefaultChannelGroup("MetricHubChannelGroup", eventExecutor);
+		log.info("<<<<< HubManager Initialized.");
+	}
+	
+	/**
+	 * Acquires the next tsdb socket address
+	 * @return the next tsdb socket address
+	 */
+	protected InetSocketAddress endpointSocketAddress() {
+		final int key = endpointSequence.incrementAndGet() % endpointCount;
+		return tsdbAddresses.get(key);
+	}
+	
+	/**
+	 * Acquires a channel pool
+	 * @return a channel pool
+	 */
+	protected ChannelPool channelPool() {
+		final InetSocketAddress sockAddr = endpointSocketAddress();
+		return poolMap.get(sockAddr);
 	}
 	
 	
+	public static void main(String[] args) {
+		final HubManager hman = HubManager.init(URLHelper.readProperties(URLHelper.toURL("./src/test/resources/conf/application.properties")));		
+		final QueryContext q = new QueryContext()
+				.setTimeout(-1L)
+				.setContinuous(true)
+				.setPageSize(50)
+				.setMaxSize(1000);
+		final DataContext d = new DataContext("5m-ago", Aggregator.NONE);
+		hman.evaluate(q, d, "os.mem.percent_free:host=*");
+		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
+			public void run() {
+				System.err.println("Done");
+			}
+		}).run();
+
+	}
+	
+	public void evaluate(final QueryContext queryContext, final DataContext dataContext, final String expression) {
+		try {
+			final Stream<List<TSMeta>> metaStream = evaluate(queryContext, expression);
+			final ByteBuf header = dataContext.renderHeader();
+	
+			metaStream.consume(new Consumer<List<TSMeta>>() {			
+				@Override
+				public void accept(final List<TSMeta> t) {
+					log.info("Received Batch of TSMetas: [{}]", t.size());
+					final ChannelPool pool = channelPool();
+					pool.acquire().addListener(new GenericFutureListener<Future<? super Channel>>() {
+						@Override
+						public void operationComplete(final Future<? super Channel> future) throws Exception {
+							final Channel channel = (Channel)future.get();
+							log.info("Acquired Channel: [{}]\n\tPipeline: {}", channel, channel.pipeline());
+							for(TSMeta tsMeta: t) {
+								final ByteBuf requestJson = updateJsonRequest(Collections.singletonList(tsMeta), header);
+								final HttpRequest httpRequest = buildHttpRequest(requestJson);
+								channel.writeAndFlush(httpRequest);
+							}
+							
+							
+						}
+					});
+//					try {
+//						final ByteBuf requestJson = updateJsonRequest(t, header);
+//						log.info("JSON Request: {}", requestJson.toString(UTF8));
+//						final HttpRequest httpRequest = buildHttpRequest(requestJson);
+//						final ChannelPool pool = channelPool();
+//						pool.acquire().addListener(new GenericFutureListener<Future<? super Channel>>() {
+//							@Override
+//							public void operationComplete(final Future<? super Channel> future) throws Exception {								
+//								if(future.isSuccess()) {									
+//									final Channel channel = (Channel) future.get();
+//									log.info("Acquired Channel: [{}]\n\tPipeline: {}", channel, channel.pipeline());
+//									
+//									channel.writeAndFlush(httpRequest).addListener(new GenericFutureListener<Future<? super Void>>() {
+//										@Override
+//										public void operationComplete(final Future<? super Void> future) throws Exception {
+////											pool.release(channel);
+//											if(future.isSuccess()) log.info("Request Dispatched");
+//											else {
+//												log.error("Request Failed", future.cause());
+//											}
+//										}
+//									});
+//								}
+//							}
+//						});
+//					} catch (Exception ex) {
+//						log.error("Failed to build TSUID request", ex);
+//					} 
+				}
+			});
+		} catch (Exception ex) {
+			log.error("eval error", ex);
+		}
+	}
+	
+	public static final Charset UTF8 = Charset.forName("UTF8");
+	public static final String REQUEST_CLOSER = "]}]}"; 
+	
+	protected ByteBuf updateJsonRequest(final List<TSMeta> tsMetas, final ByteBuf header) {
+		try {
+			final ByteBuf request = BufferManager.getInstance().buffer(header.readableBytes() + 1024);
+			request.writeBytes(header);
+			header.resetReaderIndex();
+			request.writerIndex(request.writerIndex()-REQUEST_CLOSER.length());
+			for(TSMeta ts: tsMetas) {
+				request.writeCharSequence(new StringBuilder("\"").append(ts.getTSUID()).append("\","), UTF8);
+			}
+			request.writerIndex(request.writerIndex()-1);
+			request.writeCharSequence(REQUEST_CLOSER, UTF8);
+			return request;
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
+	}
+	
+	protected HttpRequest buildHttpRequest(final ByteBuf jsonRequest) {
+		final String[] endpoints = tsdbEndpoint.getUpServers();
+		final URL postUrl = URLHelper.toURL(endpoints[0] + "/query/");
+		log.info("Http Post to [{}]", postUrl);
+		final DefaultFullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, postUrl.getPath(), jsonRequest);
+		request.headers().set(HttpHeaderNames.HOST, postUrl.getHost());
+		request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
+		request.headers().set(HttpHeaderNames.ACCEPT_ENCODING, HttpHeaderValues.GZIP);
+		request.headers().set(HttpHeaderNames.CONTENT_LENGTH, jsonRequest.readableBytes());
+		request.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON);
+		return request;
+	}
 	
 	/**
 	 * {@inheritDoc}
 	 * @see io.netty.channel.pool.ChannelPoolHandler#channelAcquired(io.netty.channel.Channel)
 	 */
 	@Override
-	public void channelAcquired(Channel ch) throws Exception {
-		// TODO Auto-generated method stub
-		
+	public void channelAcquired(final Channel ch) throws Exception {
+		log.info("Channel Acquired: {}", ch);
 	}
 	
 	/**
@@ -145,8 +356,16 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	 * @see io.netty.channel.pool.ChannelPoolHandler#channelCreated(io.netty.channel.Channel)
 	 */
 	@Override
-	public void channelCreated(Channel ch) throws Exception {
-		// TODO Auto-generated method stub
+	public void channelCreated(final Channel ch) throws Exception {
+		log.info("Channel Created: {}", ch);
+		channelGroup.add(ch);
+		final ChannelPipeline p = ch.pipeline();
+		//p.addLast("timeout",    new IdleStateHandler(0, 0, 60));  // TODO: configurable		
+		p.addLast("httpcodec",    new HttpClientCodec());
+		p.addLast("inflater",   new HttpContentDecompressor());
+		p.addLast("aggregator", new HttpObjectAggregator(1048576));
+		p.addLast("logging", loggingHandler);
+		p.addLast("qdecoder", queryResultDecoder);
 		
 	}
 	
@@ -155,9 +374,10 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	 * @see io.netty.channel.pool.ChannelPoolHandler#channelReleased(io.netty.channel.Channel)
 	 */
 	@Override
-	public void channelReleased(Channel ch) throws Exception {
-		// TODO Auto-generated method stub
-		
+	public void channelReleased(final Channel ch) throws Exception {
+		log.info("Channel Released: {}", ch);
+		final ChannelPipeline p = ch.pipeline();
+		p.names().stream().forEach(name -> p.remove(name));
 	}
 	
 	

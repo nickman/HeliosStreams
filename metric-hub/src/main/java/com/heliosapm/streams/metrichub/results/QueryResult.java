@@ -22,20 +22,17 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
-import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
+import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.heliosapm.streams.metrichub.DataContext;
+import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.tracing.TagKeySorter.TagMap;
+import com.heliosapm.utils.url.URLHelper;
 
 /**
  * <p>Title: QueryResult</p>
@@ -52,25 +49,22 @@ public class QueryResult {
 	/** Aggregated tags */
 	protected final String[] aggregatedTags;
 	/** The data points */
-	protected final SortedSet<long[]> dps;
+	protected final TreeSet<long[]> dps = new TreeSet<long[]>(DPS_COMPARATOR);
 	
 	/** Type reference for a tag key sorted map */
 	public static final TypeReference<TagMap> TREE_MAP_TYPE_REF = new TypeReference<TagMap>(){};
-	/** Jackson de/serializer initialized, configured and shared */
-	private static final ObjectMapper jsonMapper = new ObjectMapper();
+	/** Type reference for a QueryResult array */
+	public static final TypeReference<QueryResult[]> QR_ARR_TYPE_REF = new TypeReference<QueryResult[]>(){};
+	
+	
+	
+	
 	
 	/** Empty string array const */
 	public static final String[] EMPTY_STR_ARR = {};
 	/** Empty dps set const */
 	public static final SortedSet<long[]> EMPTY_DPS_SET = Collections.unmodifiableSortedSet(new TreeSet<long[]>());
 	
-	static {
-		// allows parsing NAN and such without throwing an exception. This is
-		// important
-		// for incoming data points with multiple points per put so that we can
-		// toss only the bad ones but keep the good
-		jsonMapper.configure(JsonParser.Feature.ALLOW_NON_NUMERIC_NUMBERS, true);
-	}
 	
 	/**
 	 * <p>Title: DPSComparator</p>
@@ -88,33 +82,16 @@ public class QueryResult {
 	/** DPS comparator */
 	public static final Comparator<long[]> DPS_COMPARATOR = new DPSComparator();
 	
-	/**
-	 * Creates a new QueryResult
-	 */
-	QueryResult(final JsonNode node) {
-		metricName = node.get("metric").textValue();
-		tags = Collections.unmodifiableMap(jsonMapper.convertValue(node.get("tags"), TREE_MAP_TYPE_REF));
-		if(node.has("aggregatedTags")) {
-			aggregatedTags = jsonMapper.convertValue(node.get("aggregatedTags"), String[].class);
-		} else {
-			aggregatedTags = EMPTY_STR_ARR;
-		}
-		if(node.has("dps")) {
-			final JsonNode dpsNodes = node.get("dps");
-			if(dpsNodes.size()==0) {
-				dps = EMPTY_DPS_SET;
-			} else {
-				dps = new TreeSet<long[]>(DPS_COMPARATOR);
-				final Iterable<Entry<String, JsonNode>> iterable = () -> dpsNodes.fields();				
-				StreamSupport.stream(iterable.spliterator(), true).forEach(dp -> 
-					dps.add(new long[]{DataContext.toMsTime(dp.getKey()), dp.getValue().asLong()})
-				);
-				dps.size();
-			}
-		} else {
-			dps = EMPTY_DPS_SET;
-		}		
+	
+	
+	
+	public QueryResult(final String metricName, final Map<String, String> tags, final String[] aggregatedTags, final Set<long[]> dps) {		
+		this.metricName = metricName;
+		this.tags = tags;
+		this.aggregatedTags = aggregatedTags;
+		this.dps.addAll(dps);
 	}
+
 	
 	public String toString() {
 		final StringBuilder b = new StringBuilder("QResult [\n\tm:")
@@ -130,13 +107,14 @@ public class QueryResult {
 	
 	public static void main(String[] args) {
 		try {
-			final String jsonResponse = "[    {        \"metric\": \"tsd.hbase.puts\",        \"tags\": {            \"host\": \"tsdb-1.mysite.com\"        },        \"aggregatedTags\": [],        \"dps\": {            \"1365966001\": 3758788892,            \"1365966061\": 3758804070,            \"1365974281\": 3778141673        }    },    {        \"metric\": \"tsd.hbase.puts\",        \"tags\": {            \"host\": \"tsdb-2.mysite.com\"        },        \"aggregatedTags\": [],        \"dps\": {            \"1365966001\": 3902179270,            \"1365966062\": 3902197769,            \"1365974281\": 3922266478        }    }]";
-			final List<QueryResult> results = new CopyOnWriteArrayList<QueryResult>();
-			StreamSupport.stream(jsonMapper.readTree(jsonResponse).spliterator(), true).forEach(node ->
-					results.add(new QueryResult(node))
-			);
-			for(QueryResult q: results) {
-				System.out.println(q);
+			JSONOps.registerDeserializer(QueryResult.class, new QueryResultDeserializer());
+			JSONOps.registerDeserializer(QueryResult[].class, new QueryResultArrayDeserializer());
+			
+			final String jsonResponse = URLHelper.getTextFromURL("./src/test/resources/responses/response-multi.js");
+			final QueryResult[] qrs = JSONOps.parseToObject(jsonResponse, QueryResult[].class);
+			System.out.println("Results:" + qrs.length);
+			for(QueryResult q: qrs) {
+				//System.out.println(q);
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace(System.err);
