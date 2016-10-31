@@ -1290,6 +1290,14 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	public SQLWorker getSqlWorker() {
 		return sqlWorker;
 	}
+
+	/**
+	 * Returns the service's fork join pool
+	 * @return the service's fork join pool
+	 */
+	public ForkJoinPool getForkJoinPool() {
+		return fjPool;
+	}
 	
 
 }

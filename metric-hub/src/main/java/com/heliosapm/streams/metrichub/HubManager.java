@@ -30,6 +30,18 @@ import org.apache.logging.log4j.Logger;
 import com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
 
+import io.netty.bootstrap.Bootstrap;
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.group.ChannelGroup;
+import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.pool.ChannelPool;
+import io.netty.channel.pool.ChannelPoolHandler;
+import io.netty.channel.pool.SimpleChannelPool;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.channel.socket.nio.NioSocketChannel;
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.meta.TSMeta;
 import net.opentsdb.meta.UIDMeta;
@@ -45,7 +57,7 @@ import reactor.core.composable.Stream;
  * <p><code>com.heliosapm.streams.metrichub.HubManager</code></p>
  */
 
-public class HubManager implements MetricsMetaAPI {
+public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	/** The singleton instance */
 	private static volatile HubManager instance = null;
 	/** The singleton instance ctor guard */
@@ -55,10 +67,24 @@ public class HubManager implements MetricsMetaAPI {
 	private final MetricsMetaAPIImpl metricMetaService;
 	/** The TSDBEndpoint to get updates lists of available endpoints */
 	private final TSDBEndpoint tsdbEndpoint;
+	/** The netty client event loop group */
+	private final EventLoopGroup group;
+	/** The netty client bootstrap */
+	private final Bootstrap bootstrap;
 	
 	/** Instance logger */
 	private final Logger log = LogManager.getLogger(getClass());
-
+	
+	
+	private final ChannelInitializer<SocketChannel> channelInitializer = new ChannelInitializer<SocketChannel>() {
+		@Override
+		protected void initChannel(final SocketChannel ch) throws Exception {
+			
+		}
+	};
+	
+	private final ChannelPool channelPool;
+	private final ChannelGroup channelGroup;
 	
 	/**
 	 * Initializes the hub manager
@@ -95,7 +121,46 @@ public class HubManager implements MetricsMetaAPI {
 	private HubManager(final Properties properties) {
 		metricMetaService = new MetricsMetaAPIImpl(properties);
 		tsdbEndpoint = TSDBEndpoint.getEndpoint(metricMetaService.getSqlWorker());
+		group = new NioEventLoopGroup(Runtime.getRuntime().availableProcessors() * 2, metricMetaService.getForkJoinPool());
+		bootstrap = new Bootstrap();
+		bootstrap.group(group).channel(NioSocketChannel.class).handler(channelInitializer);
+		channelPool = new SimpleChannelPool(bootstrap, this);
+		channelGroup = new DefaultChannelGroup("", group);
 	}
+	
+	
+	
+	/**
+	 * {@inheritDoc}
+	 * @see io.netty.channel.pool.ChannelPoolHandler#channelAcquired(io.netty.channel.Channel)
+	 */
+	@Override
+	public void channelAcquired(Channel ch) throws Exception {
+		// TODO Auto-generated method stub
+		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see io.netty.channel.pool.ChannelPoolHandler#channelCreated(io.netty.channel.Channel)
+	 */
+	@Override
+	public void channelCreated(Channel ch) throws Exception {
+		// TODO Auto-generated method stub
+		
+	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see io.netty.channel.pool.ChannelPoolHandler#channelReleased(io.netty.channel.Channel)
+	 */
+	@Override
+	public void channelReleased(Channel ch) throws Exception {
+		// TODO Auto-generated method stub
+		
+	}
+	
+	
 
 	/**
 	 * Returns the data source
@@ -219,6 +284,15 @@ public class HubManager implements MetricsMetaAPI {
 	@Override
 	public Stream<List<Annotation>> getGlobalAnnotations(final QueryContext queryContext, final long... startTimeEndTime) {
 		return metricMetaService.getGlobalAnnotations(queryContext, startTimeEndTime);
+	}
+
+	/**
+	 * Returns an array of URLs to accessible OpenTSDB api endpoints
+	 * @return an array of URLs
+	 * @see com.heliosapm.streams.metrichub.TSDBEndpoint#getUpServers()
+	 */
+	public String[] getUpServers() {
+		return tsdbEndpoint.getUpServers();
 	}
 	
 	
