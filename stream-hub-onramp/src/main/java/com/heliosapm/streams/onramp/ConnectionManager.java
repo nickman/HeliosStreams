@@ -34,7 +34,14 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInitializer;
+import io.netty.channel.ChannelPipeline;
 import io.netty.channel.group.DefaultChannelGroup;
+import io.netty.channel.socket.SocketChannel;
+import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpContentCompressor;
+import io.netty.handler.codec.http.HttpContentDecompressor;
+import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.util.IllegalReferenceCountException;
 import io.netty.util.ReferenceCountUtil;
@@ -94,6 +101,18 @@ public class ConnectionManager extends ChannelDuplexHandler implements Connectio
 					return t;
 				}
 			}));
+	
+	/** The http client channel initializer */
+	private final ChannelInitializer<SocketChannel> channelInitializer = new ChannelInitializer<SocketChannel>() {
+		@Override
+		protected void initChannel(final SocketChannel sc) throws Exception {
+			 ChannelPipeline p = sc.pipeline();			 
+			 p.addLast(new HttpContentCompressor());
+			 p.addLast(new HttpClientCodec());
+			 p.addLast(new HttpContentDecompressor());		
+			 p.addLast(new HttpObjectAggregator(1048576));
+		}
+	};
 	
 
 	
