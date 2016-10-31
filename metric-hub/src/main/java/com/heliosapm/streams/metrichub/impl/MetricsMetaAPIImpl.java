@@ -32,16 +32,14 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import javax.management.ObjectName;
+import javax.sql.DataSource;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -1275,6 +1273,22 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 			);
 		}
 		return b.toString();				
+	}
+
+	/**
+	 * Returns the data source
+	 * @return the data source
+	 */
+	public DataSource getDataSource() {
+		return dataSource.getDataSource();
+	}
+
+	/**
+	 * Returns the SQLWorker
+	 * @return the SQLWorker
+	 */
+	public SQLWorker getSqlWorker() {
+		return sqlWorker;
 	}
 	
 
