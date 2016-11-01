@@ -236,6 +236,13 @@ public class RequestBuilder {
 			for(final TSMeta tsMeta: metas) {
 				jg.writeStartObject();				// start of query
 				jg.writeStringField("aggregator", aggregator.name().toLowerCase());
+				if(rateOptions!=null) {
+					jg.writeStringField("rate", "true");  // FIXME
+				}
+				if(downSampling!=null) {
+					jg.writeStringField("downsample", downSampling);
+				}
+				
 				jg.writeArrayFieldStart("tsuids");								
 				jg.writeString(tsMeta.getTSUID());
 				jg.writeEndArray();					// end of tsuids
@@ -295,6 +302,11 @@ public class RequestBuilder {
 		if(rateOptions==null) rateOptions = new RateOptions();
 		rateOptions.monotonic = true;
 		return this;
+	}
+	
+	public RequestBuilder rate() {
+		if(rateOptions==null) rateOptions = new RateOptions();
+		return this;		
 	}
 	
 	/**

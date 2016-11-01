@@ -97,11 +97,11 @@ public enum Downsampler {
 		for(int i = 0; i < values.length; i++) {
 			b.append(values[i].name().toLowerCase()).append("|");
 		}
-		b.deleteCharAt(b.length()-1).append(")\\-(");
+		b.deleteCharAt(b.length()-1).append(")(?:\\-(");
 		for(FillPolicy fp: FillPolicy.values()) {
 			b.append(fp.name().toLowerCase()).append("|");
 		}
-		b.deleteCharAt(b.length()-1).append(")$");
+		b.deleteCharAt(b.length()-1).append("))?$");
 		DOWNSAMPLER_PATTERN = Pattern.compile(b.toString(), Pattern.CASE_INSENSITIVE);
 	}
 	

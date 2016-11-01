@@ -40,9 +40,6 @@ public class QueryResultDecoder extends MessageToMessageDecoder<FullHttpResponse
 	@Override
 	protected void decode(final ChannelHandlerContext ctx, final FullHttpResponse msg, final List<Object> out) throws Exception {
 		final QueryResult[] qrs = JSONOps.parseToObject(msg.content(), QueryResult[].class);
-		for(QueryResult q: qrs) {
-			System.err.println(q);
-		}
 		Collections.addAll(out, qrs);		
 	}
 	

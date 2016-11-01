@@ -21,11 +21,16 @@ package com.heliosapm.streams.metrichub;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
 import javax.sql.DataSource;
 
@@ -36,6 +41,7 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl;
 import com.heliosapm.streams.metrichub.results.QueryResultDecoder;
+import com.heliosapm.streams.metrichub.results.RequestCompletion;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.url.URLHelper;
@@ -73,14 +79,12 @@ import io.netty.util.concurrent.DefaultEventExecutor;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Log4J2LoggerFactory;
-
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.meta.TSMeta;
 import net.opentsdb.meta.UIDMeta;
 import net.opentsdb.uid.UniqueId.UniqueIdType;
 import reactor.core.composable.Promise;
 import reactor.core.composable.Stream;
-import reactor.function.Consumer;
 
 /**
  * <p>Title: HubManager</p>
@@ -210,6 +214,21 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		};
 		eventExecutor = new DefaultEventExecutor(metricMetaService.getForkJoinPool());
 		channelGroup = new DefaultChannelGroup("MetricHubChannelGroup", eventExecutor);
+		
+		tsdbAddresses.parallelStream().forEach(addr -> {
+			final Set<Channel> channels = Collections.synchronizedSet(new HashSet<Channel>(3));
+			IntStream.of(1,2,3).parallel().forEach(i -> {
+				final ChannelPool pool = poolMap.get(addr); 
+				try {channels.add(pool.acquire().awaitUninterruptibly().get());
+				} catch (Exception e) {}
+				log.info("Acquired [{}] Channels", channels.size());
+				channels.parallelStream().forEach(ch -> pool.release(ch));
+			});
+		});
+		
+		
+		
+		
 		log.info("<<<<< HubManager Initialized.");
 	}
 	
@@ -234,14 +253,21 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	
 	public static void main(String[] args) {
 		final HubManager hman = HubManager.init(URLHelper.readProperties(URLHelper.toURL("./src/test/resources/conf/application.properties")));		
-		final QueryContext q = new QueryContext()
+		final QueryContext q = new QueryContext()				
 				.setTimeout(-1L)
 				.setContinuous(true)
 				.setPageSize(100)
 				.setMaxSize(1000);
-		final RequestBuilder d = new RequestBuilder("5m-ago", Aggregator.NONE);
+		final RequestBuilder d = new RequestBuilder("1h-ago", Aggregator.AVG).rate(); //.downSampling("1m-avg");
 		//hman.evaluate(q, d, "sys.cpu:host=*,*");
-		hman.evaluate(q, d, "os.cpu:host=*");
+		final AtomicInteger rowCount = new AtomicInteger(0);
+		final RequestCompletion rc = hman.evaluate(q, d, "linux.cpu.percpu:host=*,cpu=*");
+		rc
+			.get()
+			.stream()
+			.forEach(qr -> 
+				System.err.println("QR[" + rowCount.incrementAndGet() + "]: " + qr)
+			);
 		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
 			public void run() {
 				System.err.println("Done");
@@ -250,60 +276,25 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 
 	}
 	
-	public void evaluate(final QueryContext queryContext, final RequestBuilder requestBuilder, final String expression) {
+	public RequestCompletion evaluate(final QueryContext queryContext, final RequestBuilder requestBuilder, final String expression) {
 		try {
 			final JsonGenerator jg = requestBuilder.renderHeader();
 			final ChannelPool pool = channelPool();
+			final Channel channel = pool.acquire().get();
+			final CompletableFuture<RequestCompletion> completionFuture = new CompletableFuture<RequestCompletion>();
+ 
 			evaluate(queryContext, expression).flush().consume(lmt -> {
+				final RequestCompletion rc = new RequestCompletion(lmt.size(), pool);
+				channel.pipeline().addLast("completion", rc);
+				completionFuture.complete(rc);
 				final ByteBuf bb = requestBuilder.merge(jg, lmt);
-				log.info("CREQUEST:\n{}", bb.toString(UTF8));
-				pool.acquire().addListener(f ->{
-					final HttpRequest httpRequest = buildHttpRequest(bb);
-					final Channel channel = (Channel)f.get();
-					channel.writeAndFlush(httpRequest);
-					
-				});
+				log.info("CREQUEST:\n{}", bb.toString(UTF8));				
+				final HttpRequest httpRequest = buildHttpRequest(bb);
+				channel.writeAndFlush(httpRequest);					
 			});
-			
-			
-//			final Stream<List<TSMeta>> metaStream = evaluate(queryContext, expression);
-//			final JsonGenerator jg = requestBuilder.renderHeader();			
-//			requestBuilder.merge(jg, metricMetaService.getDispatcher(), metaStream, new Consumer<ByteBuf>() {
-//				@Override
-//				public void accept(ByteBuf t) {
-//					log.info("CREQUEST:\n{}", t.toString(UTF8));
-//				}
-//			});
-			////////////////////////////////////////////////////////////////////////////////////
-//			});.onSuccess(p -> {
-//				log.info("REQUEST:\n{}", p.toString(UTF8));
-//			});
-//			metricMetaService.getDispatcher().execute(() -> {
-//				try {
-//					fullRequestPromise.consume(bb -> {						
-//						log.info("REQUEST:\n{}", bb.toString(UTF8));
-//					});
-//				} catch (Exception ex) {
-//					ex.printStackTrace(System.err);
-//				}
-//			});
-//			fullRequestPromise.consume(new Consumer<ByteBuf>() {
-//				
-//			});
-//			fullRequestPromise.consume(new Consumer<ByteBuf>() {
-//				@Override
-//				public void accept(final ByteBuf bb) {
-//					log.info("REQUEST:\n{}", bb.toString(UTF8));
-//					final ChannelPool pool = channelPool();
-//					pool.acquire().addListener((GenericFutureListener<? extends Future<? super Channel>>) f -> {
-//						final HttpRequest httpRequest = buildHttpRequest(bb);
-//						final Channel channel = (Channel)f.get();
-//						channel.writeAndFlush(httpRequest);										
-//					});
-//				}
-//			});
+			return completionFuture.get();
 		} catch (Exception ex) {
-			log.error("eval error", ex);
+			throw new RuntimeException("eval error", ex);
 		}
 	}
 	
@@ -375,6 +366,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	@Override
 	public void channelReleased(final Channel ch) throws Exception {
 		log.info("Channel Released: {}", ch);
+		try { ch.pipeline().remove("completion"); } catch (Exception ex) {}
 	}
 	
 	
