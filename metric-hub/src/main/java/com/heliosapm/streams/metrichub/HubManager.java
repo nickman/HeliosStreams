@@ -240,8 +240,8 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 				.setPageSize(100)
 				.setMaxSize(1000);
 		final RequestBuilder d = new RequestBuilder("5m-ago", Aggregator.NONE);
-		//hman.evaluate(q, d, "sys.cpu:host=*,*");
-		hman.evaluate(q, d, "os.cpu:host=*");
+		hman.evaluate(q, d, "sys.cpu:host=*,*");
+		//hman.evaluate(q, d, "os.cpu:host=*");
 		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
 			public void run() {
 				System.err.println("Done");
