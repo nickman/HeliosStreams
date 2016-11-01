@@ -73,13 +73,13 @@ import io.netty.util.concurrent.DefaultEventExecutor;
 import io.netty.util.concurrent.EventExecutor;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Log4J2LoggerFactory;
+
 import net.opentsdb.meta.Annotation;
 import net.opentsdb.meta.TSMeta;
 import net.opentsdb.meta.UIDMeta;
 import net.opentsdb.uid.UniqueId.UniqueIdType;
 import reactor.core.composable.Promise;
 import reactor.core.composable.Stream;
-import reactor.event.Event;
 import reactor.function.Consumer;
 
 /**
@@ -237,10 +237,11 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		final QueryContext q = new QueryContext()
 				.setTimeout(-1L)
 				.setContinuous(true)
-				.setPageSize(10)
+				.setPageSize(100)
 				.setMaxSize(1000);
 		final RequestBuilder d = new RequestBuilder("5m-ago", Aggregator.NONE);
-		hman.evaluate(q, d, "sys.cpu:host=*,*");
+		//hman.evaluate(q, d, "sys.cpu:host=*,*");
+		hman.evaluate(q, d, "os.cpu:host=*");
 		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
 			public void run() {
 				System.err.println("Done");
@@ -251,21 +252,56 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	
 	public void evaluate(final QueryContext queryContext, final RequestBuilder requestBuilder, final String expression) {
 		try {
-			final Stream<List<TSMeta>> metaStream = evaluate(queryContext, expression);
-			final JsonGenerator jg = requestBuilder.renderHeader();			
-			final Promise<ByteBuf> fullRequestPromise = requestBuilder.merge(jg, metricMetaService.getDispatcher(), metaStream);
+			final JsonGenerator jg = requestBuilder.renderHeader();
+			final ChannelPool pool = channelPool();
+			evaluate(queryContext, expression).flush().consume(lmt -> {
+				final ByteBuf bb = requestBuilder.merge(jg, lmt);
+				log.info("CREQUEST:\n{}", bb.toString(UTF8));
+				pool.acquire().addListener(f ->{
+					final HttpRequest httpRequest = buildHttpRequest(bb);
+					final Channel channel = (Channel)f.get();
+					channel.writeAndFlush(httpRequest);
+					
+				});
+			});
+			
+			
+//			final Stream<List<TSMeta>> metaStream = evaluate(queryContext, expression);
+//			final JsonGenerator jg = requestBuilder.renderHeader();			
+//			requestBuilder.merge(jg, metricMetaService.getDispatcher(), metaStream, new Consumer<ByteBuf>() {
+//				@Override
+//				public void accept(ByteBuf t) {
+//					log.info("CREQUEST:\n{}", t.toString(UTF8));
+//				}
+//			});
+			////////////////////////////////////////////////////////////////////////////////////
+//			});.onSuccess(p -> {
+//				log.info("REQUEST:\n{}", p.toString(UTF8));
+//			});
+//			metricMetaService.getDispatcher().execute(() -> {
+//				try {
+//					fullRequestPromise.consume(bb -> {						
+//						log.info("REQUEST:\n{}", bb.toString(UTF8));
+//					});
+//				} catch (Exception ex) {
+//					ex.printStackTrace(System.err);
+//				}
+//			});
 //			fullRequestPromise.consume(new Consumer<ByteBuf>() {
 //				
 //			});
-			fullRequestPromise.consume(bb -> {
-				log.info("REQUEST:\n{}", bb.toString(UTF8));
-				final ChannelPool pool = channelPool();
-				pool.acquire().addListener(ch -> {
-					final HttpRequest httpRequest = buildHttpRequest(bb);
-					ch.writeAndFlush(httpRequest);					
-				});
-				
-			});
+//			fullRequestPromise.consume(new Consumer<ByteBuf>() {
+//				@Override
+//				public void accept(final ByteBuf bb) {
+//					log.info("REQUEST:\n{}", bb.toString(UTF8));
+//					final ChannelPool pool = channelPool();
+//					pool.acquire().addListener((GenericFutureListener<? extends Future<? super Channel>>) f -> {
+//						final HttpRequest httpRequest = buildHttpRequest(bb);
+//						final Channel channel = (Channel)f.get();
+//						channel.writeAndFlush(httpRequest);										
+//					});
+//				}
+//			});
 		} catch (Exception ex) {
 			log.error("eval error", ex);
 		}

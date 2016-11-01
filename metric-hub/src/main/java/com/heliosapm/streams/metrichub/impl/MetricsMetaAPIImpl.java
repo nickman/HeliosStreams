@@ -646,7 +646,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	 * @return the deferred result
 	 */
 	protected Stream<List<TSMeta>> getTSMetas(final Deferred<TSMeta, Stream<TSMeta>> priorDeferred, final QueryContext queryContext, final String metricName, final Map<String, String> tags, final String tsuid) {
-		final reactor.core.composable.Deferred<TSMeta, Stream<TSMeta>> def = getDeferred(priorDeferred, queryContext);
+		final Deferred<TSMeta, Stream<TSMeta>> def = getDeferred(priorDeferred, queryContext);
 		final Stream<List<TSMeta>> stream = def.compose().collect();		
 		final String _metricName = (metricName==null || metricName.trim().isEmpty()) ? "*" : metricName.trim();
 		final Map<String, String> _tags = (tags==null) ? EMPTY_TAGS : tags;

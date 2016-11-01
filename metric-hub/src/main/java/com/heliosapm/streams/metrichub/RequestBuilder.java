@@ -29,6 +29,7 @@ import com.heliosapm.streams.buffers.BufferManager;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
+import kafka.log.Log;
 import net.opentsdb.meta.TSMeta;
 import net.opentsdb.utils.JSON;
 import reactor.core.composable.Deferred;
@@ -38,6 +39,7 @@ import reactor.core.composable.spec.Promises;
 import reactor.core.composable.spec.Streams;
 import reactor.event.dispatch.Dispatcher;
 import reactor.function.Consumer;
+import reactor.function.Supplier;
 
 /**
  * <p>Title: RequestBuilder</p>
@@ -226,38 +228,29 @@ public class RequestBuilder {
 		}
 	}
 	
-	public Promise<ByteBuf> merge(final JsonGenerator jg, final Dispatcher dispatcher, final Stream<List<TSMeta>> metaStream) {
+	public ByteBuf merge(final JsonGenerator jg, final List<TSMeta> metas) {
 		final ByteBufOutputStream os = (ByteBufOutputStream)jg.getOutputTarget();
 		final ByteBuf buff = os.buffer();
-		final Deferred<ByteBuf, Promise<ByteBuf>> def = Promises.<ByteBuf>defer().dispatcher(dispatcher).get();
-		final Promise<ByteBuf> promise = def.compose();		
-		metaStream.collect().consume(new Consumer<List<List<TSMeta>>>() {
-			@Override
-			public void accept(final List<List<TSMeta>> t) {
-				try {
-					for(final List<TSMeta> tsMetaBatch: t) {
-						for(final TSMeta tsMeta: tsMetaBatch) {
-							jg.writeStartObject();				// start of query
-							jg.writeStringField("aggregator", aggregator.name().toLowerCase());
-							jg.writeArrayFieldStart("tsuids");								
-							jg.writeString(tsMeta.getTSUID());
-							jg.writeEndArray();					// end of tsuids
-							jg.writeEndObject();				// end of query								
-						}
-					}  // end of TSMetas
-					jg.writeEndArray(); // end of queries array
-					jg.writeEndObject(); // end of request
-					jg.flush();
-					os.flush();
-					jg.close();
-					os.close();
-					def.accept(buff);
-				} catch (Exception ex) {
-					def.accept(ex);
-				}
-			} // end of accept
-		});
-		return promise;
+		System.err.println("MetaBatch:" + metas.size());
+		try {
+			for(final TSMeta tsMeta: metas) {
+				jg.writeStartObject();				// start of query
+				jg.writeStringField("aggregator", aggregator.name().toLowerCase());
+				jg.writeArrayFieldStart("tsuids");								
+				jg.writeString(tsMeta.getTSUID());
+				jg.writeEndArray();					// end of tsuids
+				jg.writeEndObject();				// end of query								
+			}  // end of TSMetas
+			jg.writeEndArray(); // end of queries array
+			jg.writeEndObject(); // end of request
+			jg.flush();
+			os.flush();
+			jg.close();
+			os.close();
+			return buff;
+		} catch (Exception ex) {
+			throw new RuntimeException(ex);
+		}
 	}
 
 	/**
