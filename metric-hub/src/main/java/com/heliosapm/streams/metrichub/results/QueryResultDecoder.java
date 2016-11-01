@@ -18,6 +18,7 @@ under the License.
  */
 package com.heliosapm.streams.metrichub.results;
 
+import java.util.Collections;
 import java.util.List;
 
 import com.heliosapm.streams.json.JSONOps;
@@ -25,26 +26,30 @@ import com.heliosapm.streams.json.JSONOps;
 import io.netty.channel.ChannelHandler.Sharable;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
-import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.FullHttpResponse;
 
 /**
  * <p>Title: QueryResultDecoder</p>
- * <p>Description: </p> 
+ * <p>Description: Decoder to convert ByteBufs containing JSON to instances of {@link QueryResult}</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrichub.results.QueryResultDecoder</code></p>
  */
 @Sharable
-public class QueryResultDecoder extends MessageToMessageDecoder<FullHttpRequest> {
+public class QueryResultDecoder extends MessageToMessageDecoder<FullHttpResponse> {
+
+	@Override
+	protected void decode(final ChannelHandlerContext ctx, final FullHttpResponse msg, final List<Object> out) throws Exception {
+		final QueryResult[] qrs = JSONOps.parseToObject(msg.content(), QueryResult[].class);
+		for(QueryResult q: qrs) {
+			System.err.println(q);
+		}
+		Collections.addAll(out, qrs);		
+	}
 	
 	static {
 		JSONOps.registerDeserializer(QueryResult.class, QueryResultDeserializer.INSTANCE);
 		JSONOps.registerDeserializer(QueryResult[].class, QueryResultArrayDeserializer.INSTANCE);
 	}
 	
-
-	@Override
-	protected void decode(final ChannelHandlerContext ctx, final FullHttpRequest msg, final List<Object> out) throws Exception {
-		out.add(JSONOps.parseToObject(msg.content(), QueryResult[].class));
-	}
 
 }

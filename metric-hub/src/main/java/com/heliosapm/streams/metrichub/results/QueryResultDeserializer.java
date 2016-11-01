@@ -31,7 +31,7 @@ import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.heliosapm.streams.json.JSONOps;
-import com.heliosapm.streams.metrichub.DataContext;
+import com.heliosapm.streams.metrichub.RequestBuilder;
 import com.heliosapm.streams.tracing.TagKeySorter.TagMap;
 
 /**
@@ -66,7 +66,7 @@ public class QueryResultDeserializer extends JsonDeserializer<QueryResult> {
 		
 		final Iterable<Entry<String, JsonNode>> iterable = () -> dpsNode.fields();				
 		StreamSupport.stream(iterable.spliterator(), true).forEach(dp -> 
-			dps.add(new long[]{DataContext.toMsTime(dp.getKey()), dp.getValue().asLong()})
+			dps.add(new long[]{RequestBuilder.toMsTime(dp.getKey()), dp.getValue().asLong()})
 		);
 		return new QueryResult(metric, tags, aggregatedTags, dps);		
 	}

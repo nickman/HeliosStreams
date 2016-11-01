@@ -30,6 +30,7 @@ import java.util.TreeSet;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.tracing.TagKeySorter.TagMap;
 import com.heliosapm.utils.url.URLHelper;
@@ -40,6 +41,7 @@ import com.heliosapm.utils.url.URLHelper;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrichub.results.QueryResult</code></p>
  */
+@JsonDeserialize(using=QueryResultDeserializer.class)
 
 public class QueryResult {
 	/** The metric name */
@@ -93,17 +95,22 @@ public class QueryResult {
 	}
 
 	
+//	public String toString() {
+//		final StringBuilder b = new StringBuilder("QResult [\n\tm:")
+//			.append(metricName).append(tags)
+//			.append("\n\tAggTags:").append(Arrays.toString(aggregatedTags))
+//			.append("\n\tDPS:");
+//		for(long[] dp: dps) {
+//			b.append("\n\t\t").append(new Date(dp[0])).append(" : ").append(dp[1]);
+//		}
+//		b.append("\n]");
+//		return b.toString();
+//	}
+	
 	public String toString() {
-		final StringBuilder b = new StringBuilder("QResult [\n\tm:")
-			.append(metricName).append(tags)
-			.append("\n\tAggTags:").append(Arrays.toString(aggregatedTags))
-			.append("\n\tDPS:");
-		for(long[] dp: dps) {
-			b.append("\n\t\t").append(new Date(dp[0])).append(" : ").append(dp[1]);
-		}
-		b.append("\n]");
-		return b.toString();
+		return new StringBuilder(metricName).append(":").append(tags).append(", aggtags:").append(Arrays.toString(aggregatedTags)).append(", dps:").append(dps.size()).toString();
 	}
+	
 	
 	public static void main(String[] args) {
 		try {

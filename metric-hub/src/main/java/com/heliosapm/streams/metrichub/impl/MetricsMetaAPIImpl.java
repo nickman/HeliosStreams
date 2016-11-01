@@ -70,6 +70,7 @@ import reactor.core.composable.Promise;
 import reactor.core.composable.Stream;
 import reactor.core.composable.spec.Promises;
 import reactor.core.composable.spec.Streams;
+import reactor.event.dispatch.Dispatcher;
 import reactor.event.dispatch.WorkQueueDispatcher;
 import reactor.function.Consumer;
 
@@ -350,6 +351,10 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		metaReader = new DefaultMetaReader(sqlWorker);
 		dispatcher = new WorkQueueDispatcher("MetricsMetaDispatcher", Runtime.getRuntime().availableProcessors(), 1024, this, ProducerType.MULTI, new LiteBlockingWaitStrategy());
 		log.info("Dispatcher Alive: {}", dispatcher.alive());
+	}
+	
+	public Dispatcher getDispatcher() {
+		return dispatcher;
 	}
 	
 	/**
@@ -713,7 +718,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		if(tsuid==null || tsuid.trim().isEmpty()) {
 			throw new IllegalArgumentException("The passed tsuid was null or empty");
 		}
-		final reactor.core.composable.Deferred<Boolean, Promise<Boolean>> def = Promises.<Boolean>defer().dispatcher(this.dispatcher).get();
+		final Deferred<Boolean, Promise<Boolean>> def = Promises.<Boolean>defer().dispatcher(this.dispatcher).get();
 		final Promise<Boolean> promise = def.compose();		
 		dispatcher.execute(new Runnable(){
 			public void run() {
@@ -902,8 +907,8 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	 * @param name The name pattern to match
 	 * @return a deferred stream of lists of matching UIDMetas
 	 */
-	public Stream<List<UIDMeta>> find(final reactor.core.composable.Deferred<UIDMeta, Stream<UIDMeta>> priorDeferred, final QueryContext queryContext, final UniqueIdType type, final String name) {
-		final reactor.core.composable.Deferred<UIDMeta, Stream<UIDMeta>> def = getDeferred(priorDeferred, queryContext);
+	public Stream<List<UIDMeta>> find(final Deferred<UIDMeta, Stream<UIDMeta>> priorDeferred, final QueryContext queryContext, final UniqueIdType type, final String name) {
+		final Deferred<UIDMeta, Stream<UIDMeta>> def = getDeferred(priorDeferred, queryContext);
 		final Stream<List<UIDMeta>> stream = def.compose().collect();
 		
 		if(name==null || name.trim().isEmpty()) { 
@@ -1055,8 +1060,11 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		boolean exh = false;
 		while(rowsRead < pageRows) {
 			if(iter.hasNext()) {
-				def.accept(iter.next());
-				rowsRead++;
+				final T t = iter.next();
+				if(t!=null) {
+					def.accept(iter.next());
+					rowsRead++;
+				}
 			} else {
 				exh = true;
 				break;

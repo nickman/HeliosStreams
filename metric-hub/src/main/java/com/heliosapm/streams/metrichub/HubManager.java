@@ -21,7 +21,6 @@ package com.heliosapm.streams.metrichub;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -33,8 +32,10 @@ import javax.sql.DataSource;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl;
+import com.heliosapm.streams.metrichub.results.QueryResultDecoder;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
 import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.url.URLHelper;
@@ -68,11 +69,8 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
-import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.concurrent.DefaultEventExecutor;
 import io.netty.util.concurrent.EventExecutor;
-import io.netty.util.concurrent.Future;
-import io.netty.util.concurrent.GenericFutureListener;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.netty.util.internal.logging.Log4J2LoggerFactory;
 import net.opentsdb.meta.Annotation;
@@ -81,6 +79,7 @@ import net.opentsdb.meta.UIDMeta;
 import net.opentsdb.uid.UniqueId.UniqueIdType;
 import reactor.core.composable.Promise;
 import reactor.core.composable.Stream;
+import reactor.event.Event;
 import reactor.function.Consumer;
 
 /**
@@ -141,7 +140,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 			p.addLast("inflater",   new HttpContentDecompressor());
 			//p.addLast("aggregator", new HttpObjectAggregator(1048576));
 			p.addLast("qdecoder", queryResultDecoder);
-			p.addLast("logging", loggingHandler);
+//			p.addLast("logging", loggingHandler);
 		}
 	};
 	
@@ -238,10 +237,10 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		final QueryContext q = new QueryContext()
 				.setTimeout(-1L)
 				.setContinuous(true)
-				.setPageSize(50)
+				.setPageSize(10)
 				.setMaxSize(1000);
-		final DataContext d = new DataContext("5m-ago", Aggregator.NONE);
-		hman.evaluate(q, d, "os.mem.percent_free:host=*");
+		final RequestBuilder d = new RequestBuilder("5m-ago", Aggregator.NONE);
+		hman.evaluate(q, d, "sys.cpu:host=*,*");
 		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
 			public void run() {
 				System.err.println("Done");
@@ -250,59 +249,22 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 
 	}
 	
-	public void evaluate(final QueryContext queryContext, final DataContext dataContext, final String expression) {
+	public void evaluate(final QueryContext queryContext, final RequestBuilder requestBuilder, final String expression) {
 		try {
 			final Stream<List<TSMeta>> metaStream = evaluate(queryContext, expression);
-			final ByteBuf header = dataContext.renderHeader();
-	
-			metaStream.consume(new Consumer<List<TSMeta>>() {			
-				@Override
-				public void accept(final List<TSMeta> t) {
-					log.info("Received Batch of TSMetas: [{}]", t.size());
-					final ChannelPool pool = channelPool();
-					pool.acquire().addListener(new GenericFutureListener<Future<? super Channel>>() {
-						@Override
-						public void operationComplete(final Future<? super Channel> future) throws Exception {
-							final Channel channel = (Channel)future.get();
-							log.info("Acquired Channel: [{}]\n\tPipeline: {}", channel, channel.pipeline());
-							for(TSMeta tsMeta: t) {
-								final ByteBuf requestJson = updateJsonRequest(Collections.singletonList(tsMeta), header);
-								final HttpRequest httpRequest = buildHttpRequest(requestJson);
-								channel.writeAndFlush(httpRequest);
-							}
-							
-							
-						}
-					});
-//					try {
-//						final ByteBuf requestJson = updateJsonRequest(t, header);
-//						log.info("JSON Request: {}", requestJson.toString(UTF8));
-//						final HttpRequest httpRequest = buildHttpRequest(requestJson);
-//						final ChannelPool pool = channelPool();
-//						pool.acquire().addListener(new GenericFutureListener<Future<? super Channel>>() {
-//							@Override
-//							public void operationComplete(final Future<? super Channel> future) throws Exception {								
-//								if(future.isSuccess()) {									
-//									final Channel channel = (Channel) future.get();
-//									log.info("Acquired Channel: [{}]\n\tPipeline: {}", channel, channel.pipeline());
-//									
-//									channel.writeAndFlush(httpRequest).addListener(new GenericFutureListener<Future<? super Void>>() {
-//										@Override
-//										public void operationComplete(final Future<? super Void> future) throws Exception {
-////											pool.release(channel);
-//											if(future.isSuccess()) log.info("Request Dispatched");
-//											else {
-//												log.error("Request Failed", future.cause());
-//											}
-//										}
-//									});
-//								}
-//							}
-//						});
-//					} catch (Exception ex) {
-//						log.error("Failed to build TSUID request", ex);
-//					} 
-				}
+			final JsonGenerator jg = requestBuilder.renderHeader();			
+			final Promise<ByteBuf> fullRequestPromise = requestBuilder.merge(jg, metricMetaService.getDispatcher(), metaStream);
+//			fullRequestPromise.consume(new Consumer<ByteBuf>() {
+//				
+//			});
+			fullRequestPromise.consume(bb -> {
+				log.info("REQUEST:\n{}", bb.toString(UTF8));
+				final ChannelPool pool = channelPool();
+				pool.acquire().addListener(ch -> {
+					final HttpRequest httpRequest = buildHttpRequest(bb);
+					ch.writeAndFlush(httpRequest);					
+				});
+				
 			});
 		} catch (Exception ex) {
 			log.error("eval error", ex);
@@ -349,6 +311,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	@Override
 	public void channelAcquired(final Channel ch) throws Exception {
 		log.info("Channel Acquired: {}", ch);
+		
 	}
 	
 	/**
@@ -364,7 +327,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		p.addLast("httpcodec",    new HttpClientCodec());
 		p.addLast("inflater",   new HttpContentDecompressor());
 		p.addLast("aggregator", new HttpObjectAggregator(1048576));
-		p.addLast("logging", loggingHandler);
+//		p.addLast("logging", loggingHandler);
 		p.addLast("qdecoder", queryResultDecoder);
 		
 	}
@@ -376,8 +339,6 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	@Override
 	public void channelReleased(final Channel ch) throws Exception {
 		log.info("Channel Released: {}", ch);
-		final ChannelPipeline p = ch.pipeline();
-		p.names().stream().forEach(name -> p.remove(name));
 	}
 	
 	

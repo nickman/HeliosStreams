@@ -25,25 +25,29 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.heliosapm.streams.buffers.BufferManager;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
 import net.opentsdb.meta.TSMeta;
 import net.opentsdb.utils.JSON;
+import reactor.core.composable.Deferred;
+import reactor.core.composable.Promise;
 import reactor.core.composable.Stream;
+import reactor.core.composable.spec.Promises;
+import reactor.core.composable.spec.Streams;
+import reactor.event.dispatch.Dispatcher;
 import reactor.function.Consumer;
 
 /**
- * <p>Title: DataContext</p>
+ * <p>Title: RequestBuilder</p>
  * <p>Description: Accepts a {@link MetricsMetaAPI} expression and a number of data query parameters to build an OpenTSDB <b>/api/query</b>
  * JSON request, and executes it against the provided server.</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.metrichub.DataQuery</code></p>
  */
 
-public class DataContext {
+public class RequestBuilder {
 	/** The start time in ms */
 	protected long startTimeMs = -1L;
 	/** The start time as an expression */
@@ -113,22 +117,22 @@ public class DataContext {
 	
 	
 	/**
-	 * Creates a new DataContext
+	 * Creates a new RequestBuilder
 	 * @param startTime The start time in seconds or millis
 	 * @param aggregator The aggregator to apply
 	 */
-	public DataContext(final long startTime, final Aggregator aggregator) {
+	public RequestBuilder(final long startTime, final Aggregator aggregator) {
 		if(aggregator==null) throw new IllegalArgumentException("The passed aggregator was null");
 		this.aggregator = aggregator;
 		this.startTimeMs = toMsTime(startTime);
 	}
 	
 	/**
-	 * Creates a new DataContext
+	 * Creates a new RequestBuilder
 	 * @param startTime The start time in the standard format ({@link #DEFAULT_TS_FORMAT} or an "ago" expression, e.g. <b>4h-ago</b>
 	 * @param aggregator The aggregator to apply
 	 */
-	public DataContext(final String startTime, final Aggregator aggregator) {
+	public RequestBuilder(final String startTime, final Aggregator aggregator) {
 		if(startTime==null || startTime.trim().isEmpty()) throw new IllegalArgumentException("The passed startTime was null or empty");
 		if(aggregator==null) throw new IllegalArgumentException("The passed aggregator was null");		
 		this.aggregator = aggregator;
@@ -141,12 +145,12 @@ public class DataContext {
 	}
 	
 	/**
-	 * Creates a new DataContext
+	 * Creates a new RequestBuilder
 	 * @param startTime The start time in a non-standard format 
 	 * @param format The simple date format of the supplied start time
 	 * @param aggregator The aggregator to apply
 	 */
-	public DataContext(final String startTime, final String format, final Aggregator aggregator) {
+	public RequestBuilder(final String startTime, final String format, final Aggregator aggregator) {
 		if(aggregator==null) throw new IllegalArgumentException("The passed aggregator was null");
 		if(startTime==null || startTime.trim().isEmpty()) throw new IllegalArgumentException("The passed startTime was null or empty");
 		if(format==null || format.trim().isEmpty()) throw new IllegalArgumentException("The passed time format was null or empty");
@@ -188,13 +192,12 @@ public class DataContext {
 	 * Renders the whole JSON query except the tsuids and closers to post the request
 	 * @return the query json header doc
 	 */
-	public ByteBuf renderHeader() {
+	public JsonGenerator renderHeader() {
 		OutputStream os = null;
-		JsonGenerator jg = null;
 		try {
 			final ByteBuf header = BufferManager.getInstance().buffer(1024);
 			os = new ByteBufOutputStream(header);			
-			jg = JSON.getFactory().createGenerator(os);
+			JsonGenerator jg = JSON.getFactory().createGenerator(os);
 
 			jg.writeStartObject();	// start of request
 			//  write start and end times
@@ -208,66 +211,53 @@ public class DataContext {
 			if(showSummary) jg.writeBooleanField("show_summary", true);
 			if(showQuery) jg.writeBooleanField("show_query", true);
 			if(deletion) jg.writeBooleanField("delete", true);
-			
-			
 			jg.writeArrayFieldStart("queries");
-			jg.writeStartObject();	// start of query
-			jg.writeStringField("aggregator", aggregator.name().toLowerCase());
 			
 			
 			
-			jg.writeArrayFieldStart("tsuids");
-			jg.flush();
-			os.flush();
+//			jg.writeStartObject();	// start of query
+//			jg.flush();
+//			os.flush();
 //			jg.writeEndArray(); 	// end of tsuids array
 //			jg.writeEndObject();	// end of query
-//			jg.writeEndArray(); 	// end of queries array
-//			jg.writeEndObject(); // end of request
-			return header;
+			return jg;
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
-		} finally {
-			if(jg!=null) try { jg.close(); } catch (Exception x) {/* No Op */}
-			if(os!=null) try { os.close(); } catch (Exception x) {/* No Op */}
 		}
 	}
 	
-	public Stream<JsonNode> merge(final ByteBuf header, final int batchSize, final Stream<List<TSMeta>> metaStream) {
-		try {
-			metaStream.buffer(batchSize).collect().consume(new Consumer<List<List<TSMeta>>>() {
-				@Override
-				public void accept(final List<List<TSMeta>> t) {
+	public Promise<ByteBuf> merge(final JsonGenerator jg, final Dispatcher dispatcher, final Stream<List<TSMeta>> metaStream) {
+		final ByteBufOutputStream os = (ByteBufOutputStream)jg.getOutputTarget();
+		final ByteBuf buff = os.buffer();
+		final Deferred<ByteBuf, Promise<ByteBuf>> def = Promises.<ByteBuf>defer().dispatcher(dispatcher).get();
+		final Promise<ByteBuf> promise = def.compose();		
+		metaStream.collect().consume(new Consumer<List<List<TSMeta>>>() {
+			@Override
+			public void accept(final List<List<TSMeta>> t) {
+				try {
 					for(final List<TSMeta> tsMetaBatch: t) {
-						OutputStream os = null;
-						JsonGenerator jg = null;
-						try {
-							final ByteBuf body = BufferManager.getInstance().buffer(header.readableBytes() + (128 * batchSize));  // FIXME: need a better approx.
-							body.writeBytes(header);
-							header.resetReaderIndex();
-							os = new ByteBufOutputStream(body);
-							jg = JSON.getFactory().createGenerator(os);
-							for(final TSMeta tsMeta: tsMetaBatch) {
-								jg.writeString(tsMeta.getTSUID());								
-							}
-							jg.writeEndArray(); 	// end of tsuids array
-							jg.writeEndObject();	// end of query
-							jg.writeEndArray(); 	// end of queries array
-							jg.writeEndObject(); 	// end of request	
-							jg.flush();
-							os.flush();
-						} catch (Exception ex) {
-							
-						} finally {
-							if(jg!=null) try { jg.close(); } catch (Exception x) {/* No Op */}
-							if(os!=null) try { os.close(); } catch (Exception x) {/* No Op */}
+						for(final TSMeta tsMeta: tsMetaBatch) {
+							jg.writeStartObject();				// start of query
+							jg.writeStringField("aggregator", aggregator.name().toLowerCase());
+							jg.writeArrayFieldStart("tsuids");								
+							jg.writeString(tsMeta.getTSUID());
+							jg.writeEndArray();					// end of tsuids
+							jg.writeEndObject();				// end of query								
 						}
-					}
+					}  // end of TSMetas
+					jg.writeEndArray(); // end of queries array
+					jg.writeEndObject(); // end of request
+					jg.flush();
+					os.flush();
+					jg.close();
+					os.close();
+					def.accept(buff);
+				} catch (Exception ex) {
+					def.accept(ex);
 				}
-			});
-			return null;
-		} catch (Exception ex) {
-			throw new RuntimeException(ex);
-		}
+			} // end of accept
+		});
+		return promise;
 	}
 
 	/**
@@ -275,7 +265,7 @@ public class DataContext {
 	 * @param resetValue The value at which the aggregator returns zero instead of the calculated rate
 	 * @return this data context
 	 */
-	public DataContext rateResetValue(final long resetValue) {
+	public RequestBuilder rateResetValue(final long resetValue) {
 		if(rateOptions==null) rateOptions = new RateOptions();
 		rateOptions.resetValue = resetValue;
 		return this;
@@ -287,7 +277,7 @@ public class DataContext {
 	 * @param counterMax A positive number representing the maximum value for the counter
 	 * @return this data context
 	 */
-	public DataContext rateCounterMax(final long counterMax) {
+	public RequestBuilder rateCounterMax(final long counterMax) {
 		if(counterMax < 1) throw new IllegalArgumentException("Countermax must be positive");
 		if(rateOptions==null) rateOptions = new RateOptions();
 		rateOptions.counterMax = counterMax;
@@ -299,7 +289,7 @@ public class DataContext {
 	 * Disables rate reporting
 	 * @return this data context
 	 */
-	public DataContext unrate() {
+	public RequestBuilder unrate() {
 		rateOptions = null;
 		return this;
 	}
@@ -308,7 +298,7 @@ public class DataContext {
 	 * Enables rate reporting and sets the rate options monotonic counter to true
 	 * @return this data context
 	 */
-	public DataContext rateMonotonic() {
+	public RequestBuilder rateMonotonic() {
 		if(rateOptions==null) rateOptions = new RateOptions();
 		rateOptions.monotonic = true;
 		return this;
@@ -374,7 +364,7 @@ public class DataContext {
 	 * @param startTime the start time
 	 * @return this data context
 	 */
-	public DataContext start(final long startTime) {
+	public RequestBuilder start(final long startTime) {
 		this.startTimeMs = toMsTime(startTimeMs);
 		this.startTime = null;
 		return this;
@@ -393,7 +383,7 @@ public class DataContext {
 	 * @param startTime the startTime to set
 	 * @return this data context
 	 */
-	public DataContext startTime(final String startTime) {
+	public RequestBuilder startTime(final String startTime) {
 		Interval.toMsTime(startTime); // to validate
 		this.startTime = startTime;
 		startTimeMs = -1L;
@@ -413,7 +403,7 @@ public class DataContext {
 	 * @param endTime the endTime to set
 	 * @return this data context
 	 */
-	public DataContext endTime(final String endTime) {
+	public RequestBuilder endTime(final String endTime) {
 		Interval.toMsTime(endTime); // to validate
 		this.endTime = endTime;
 		endTimeMs = -1L;
@@ -433,7 +423,7 @@ public class DataContext {
 	 * @param aggregator the aggregator to set
 	 * @return this data context
 	 */
-	public DataContext aggregator(final Aggregator aggregator) {
+	public RequestBuilder aggregator(final Aggregator aggregator) {
 		if(aggregator==null) throw new IllegalArgumentException("The passed aggregator was null");
 		this.aggregator = aggregator;
 		return this;
@@ -452,7 +442,7 @@ public class DataContext {
 	 * @param downSampling the downSampling to set
 	 * @return this data context
 	 */
-	public DataContext downSampling(final String downSampling) {
+	public RequestBuilder downSampling(final String downSampling) {
 		if(downSampling==null || downSampling.trim().isEmpty()) throw new IllegalArgumentException("The passed downsampling expression was null or empty");
 		Downsampler.validateDownsamplerExpression(downSampling);  // validates
 		this.downSampling = downSampling.trim();
@@ -463,7 +453,7 @@ public class DataContext {
 	 * Disables downsampling
 	 * @return this data context
 	 */
-	public DataContext noDownSample() {
+	public RequestBuilder noDownSample() {
 		this.downSampling = null;
 		return this;
 	}
@@ -482,7 +472,7 @@ public class DataContext {
 	 * @param msResolution true for millisecond resolution, false for second resolution
 	 * @return this data context
 	 */
-	public DataContext msResolution(final boolean msResolution) {
+	public RequestBuilder msResolution(final boolean msResolution) {
 		this.msResolution = msResolution;
 		return this;
 	}
@@ -501,7 +491,7 @@ public class DataContext {
 	 * @param includeAnnotations true if TSUID related annotations should be returned, false otherwise
 	 * @return this data context
 	 */
-	public DataContext includeAnnotations(boolean includeAnnotations) {
+	public RequestBuilder includeAnnotations(boolean includeAnnotations) {
 		this.includeAnnotations = includeAnnotations;
 		return this;
 	}
@@ -520,7 +510,7 @@ public class DataContext {
 	 * @param includeAnnotations true if timestamp related (global) annotations should be returned, false otherwise
 	 * @return this data context
 	 */
-	public DataContext includeGlobalAnnotations(boolean includeAnnotations) {
+	public RequestBuilder includeGlobalAnnotations(boolean includeAnnotations) {
 		this.includeGlobalAnnotations = includeAnnotations;
 		return this;
 	}
@@ -540,7 +530,7 @@ public class DataContext {
 	 * @param includeTsuids true if TSUIDs should be returned in the response, false otherwise
 	 * @return this data context
 	 */
-	public DataContext includeTsuids(final boolean includeTsuids) {
+	public RequestBuilder includeTsuids(final boolean includeTsuids) {
 		this.includeTsuids = includeTsuids;
 		return this;
 	}
@@ -558,7 +548,7 @@ public class DataContext {
 	 * @param showSummary true to include a summary, false otherwise
 	 * @return this data context
 	 */
-	public DataContext showSummary(final boolean showSummary) {
+	public RequestBuilder showSummary(final boolean showSummary) {
 		this.showSummary = showSummary;
 		return this;
 	}
@@ -576,7 +566,7 @@ public class DataContext {
 	 * @param showQuery the showQuery to set
 	 * @return this data context
 	 */
-	public DataContext showQuery(final boolean showQuery) {
+	public RequestBuilder showQuery(final boolean showQuery) {
 		this.showQuery = showQuery;
 		return this;
 	}
@@ -594,7 +584,7 @@ public class DataContext {
 	 * @param deletion true if the submitted request should be a deletion, false for a query
 	 * @return this data context
 	 */
-	public DataContext deletion(final boolean deletion) {
+	public RequestBuilder deletion(final boolean deletion) {
 		this.deletion = deletion;
 		return this;
 	}	
