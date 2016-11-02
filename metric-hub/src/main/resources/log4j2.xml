@@ -26,8 +26,8 @@
            
            
            
-           <Logger name="com.heliosapm.streams.metrichub.HubManager" level="debug" additivity="false">
-               <AppenderRef ref="Console-Appender" level="debug"/>               
+           <Logger name="com.heliosapm.streams.metrichub.HubManager" level="info" additivity="false">
+               <AppenderRef ref="Console-Appender" level="info"/>               
            </Logger>           
            
            <Logger name="com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl" level="debug" additivity="false">

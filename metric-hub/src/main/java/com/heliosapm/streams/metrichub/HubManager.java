@@ -119,6 +119,10 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	/** The logging handler */
 	private final LoggingHandler loggingHandler = new LoggingHandler(getClass(), LogLevel.ERROR); 
 	
+	/** The UTF8 character set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
+	/** The closing characters of an OpenTSDB JSON request */
+	public static final String REQUEST_CLOSER = "]}]}"; 
 	
 	
 	private final QueryResultDecoder queryResultDecoder = new QueryResultDecoder();
@@ -150,7 +154,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	 * @param properties The configuration properties
 	 * @return the HubManager singleton instance
 	 */
-	static HubManager init(final Properties properties) {
+	public static HubManager init(final Properties properties) {
 		if(instance==null) {
 			synchronized(lock) {
 				if(instance==null) {
@@ -249,28 +253,15 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	
 	public static void main(String[] args) {
 		final HubManager hman = HubManager.init(URLHelper.readProperties(URLHelper.toURL("./src/test/resources/conf/application.properties")));		
-		final QueryContext q = new QueryContext()				
-				.setTimeout(-1L)
-				.setContinuous(true)
-				.setPageSize(100)
-				.setMaxSize(1000);
-		final RequestBuilder d = new RequestBuilder("1h-ago", Aggregator.AVG).rate(); //.downSampling("1m-avg");
-		//hman.evaluate(q, d, "sys.cpu:host=*,*");
-		final AtomicInteger rowCount = new AtomicInteger(0);
-		//final RequestCompletion rc = hman.evaluate(q, d, "linux.cpu.percpu:host=*,cpu=*");
-		final RequestCompletion rc = hman.evaluate(q, d, "sys.cpu:host=*, cpu=*, dc=*, type=*");
-		rc
-			.get()
-			.stream()
-			.forEach(qr -> 
-				System.err.println("QR[" + rowCount.incrementAndGet() + "]: " + qr)
-			);
-//		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
-//			public void run() {
-//				System.err.println("Done");
-//			}
-//		}).run();
-
+		new RequestBuilder("1h-ago", Aggregator.AVG)
+			.context()
+				.setPageSize(5000)
+				.setTimeout(Integer.MAX_VALUE)
+			.parent()
+			.downSampling("10m-avg")
+			
+			.execute("linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1")				// "sys.cpu:host=*,*"
+			.stream().forEach(qr -> System.err.println(qr));
 	}
 	
 	public RequestCompletion evaluate(final QueryContext queryContext, final RequestBuilder requestBuilder, final String expression) {
@@ -282,6 +273,9 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
  
 			evaluate(queryContext, expression).flush().consume(lmt -> {
 				final RequestCompletion rc = new RequestCompletion(lmt.size(), pool);
+				if(channel.pipeline().get("completion")!=null) {
+					try { channel.pipeline().remove("completion"); } catch (Exception ex) {}
+				}
 				channel.pipeline().addLast("completion", rc);
 				completionFuture.complete(rc);
 				final ByteBuf bb = requestBuilder.merge(jg, lmt);
@@ -295,8 +289,6 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		}
 	}
 	
-	public static final Charset UTF8 = Charset.forName("UTF8");
-	public static final String REQUEST_CLOSER = "]}]}"; 
 	
 	protected ByteBuf updateJsonRequest(final List<TSMeta> tsMetas, final ByteBuf header) {
 		try {
@@ -336,6 +328,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	@Override
 	public void channelAcquired(final Channel ch) throws Exception {
 		log.debug("Channel Acquired: {}", ch);
+		try { ch.pipeline().remove("completion"); } catch (Exception ex) {}
 		
 	}
 	
@@ -352,7 +345,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		p.addLast("httpcodec",    new HttpClientCodec());
 		p.addLast("inflater",   new HttpContentDecompressor());
 //		p.addLast("deflater",   new HttpContentCompressor());
-		p.addLast("aggregator", new HttpObjectAggregator(1048576));
+		p.addLast("aggregator", new HttpObjectAggregator(20485760));
 //		p.addLast("logging", loggingHandler);
 		p.addLast("qdecoder", queryResultDecoder);
 		

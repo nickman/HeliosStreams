@@ -26,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.streams.metrichub.results.QueryResult;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
@@ -72,6 +73,17 @@ public class RequestBuilder {
 	protected boolean showSummary = false;
 	/** Whether or not to show a the submitted query in the response (true) or not (false). */
 	protected boolean showQuery = false;
+	
+	/** The configured query context */
+	protected QueryContext context = new QueryContext(DEFAULT_CONTEXT, this);
+	
+	/** The default query context */
+	protected static final QueryContext DEFAULT_CONTEXT = new QueryContext()
+			.setTimeout(-1L)
+			.setContinuous(true)
+			.setPageSize(1000)
+			.setMaxSize(102400);
+
 	
 	
 	/** Indicates if the call to OpenTSDB is for a deletion. <b>BE CAREFUL !</b> */
@@ -219,10 +231,13 @@ public class RequestBuilder {
 		}
 	}
 	
+	int merges = 0;
+	
 	public ByteBuf merge(final JsonGenerator jg, final List<TSMeta> metas) {
+		merges++;
 		final ByteBufOutputStream os = (ByteBufOutputStream)jg.getOutputTarget();
 		final ByteBuf buff = os.buffer();
-		System.err.println("MetaBatch:" + metas.size());
+		System.err.println("MetaBatch:" + metas.size() + ", Merges:" + merges);
 		try {
 			for(final TSMeta tsMeta: metas) {
 				jg.writeStartObject();				// start of query
@@ -445,6 +460,16 @@ public class RequestBuilder {
 		return this;
 	}
 	
+	
+	/**
+	 * Executes the query built by this builder and returns a list of the results
+	 * @param expression The MetricMetaAPI TSMeta expression
+	 * @return a [possibly empty] list of QueryResults
+	 */
+	public List<QueryResult> execute(final String expression) {
+		return HubManager.getInstance().evaluate(context, this, expression).get();
+	}
+	
 	/**
 	 * Disables downsampling
 	 * @return this data context
@@ -583,6 +608,14 @@ public class RequestBuilder {
 	public RequestBuilder deletion(final boolean deletion) {
 		this.deletion = deletion;
 		return this;
+	}
+
+	/**
+	 * Returns the query context for this request builder
+	 * @return the query context
+	 */
+	public QueryContext context() {
+		return context;
 	}	
 
 }

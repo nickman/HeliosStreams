@@ -83,6 +83,10 @@ public class QueryContext {
 	/** Indicates if retrieved TSMetas should have the metric and tag UIDMetas populated. See {@link MetaReader#readTSMetas(java.sql.ResultSet, boolean)} */
 	protected boolean includeUIDs = false;
 	
+	/** The parent RequestBuilder */
+	@JsonIgnore
+	protected RequestBuilder parent = null;
+	
 
 	/** Recorded context events such as timings etc. */
 	protected final Map<String, Object> ctx = new LinkedHashMap<String, Object>();
@@ -105,6 +109,45 @@ public class QueryContext {
 		RSETITER;
 	}
 	
+	/**
+	 * Creates a new default QueryContext
+	 */
+	public QueryContext() {}
+	
+	/**
+	 * Creates a new QueryContext from the configured fields of the passed context
+	 * @param ctx The context to copy from
+	 * @param requestBuilder The parent request builder
+	 */
+	public QueryContext(final QueryContext ctx, final RequestBuilder requestBuilder) {
+		this.pageSize = ctx.pageSize;
+		this.timeout = ctx.timeout;
+		this.continuous = ctx.continuous;
+		this.format = ctx.format;
+		this.includeUIDs = ctx.includeUIDs;
+		this.maxSize = ctx.maxSize;		
+		this.parent = requestBuilder;
+	}
+	
+	/**
+	 * Creates a new QueryContext from the configured fields of the passed context
+	 * @param ctx The context to copy from
+	 */
+	public QueryContext(final QueryContext ctx) {
+		this(ctx, null);
+		this.parent = ctx.parent;
+	}
+	
+	
+	/**
+	 * <p>Clones this context producing a copy with all the configured (not dynamic) fields copied.</p>
+	 * {@inheritDoc}
+	 * @see java.lang.Object#clone()
+	 */
+	public QueryContext clone() {
+		return new QueryContext(this);
+	}
+
 	/**
 	 * Resets the non-configuration fields of this query context
 	 * @return this query context
@@ -493,6 +536,15 @@ public class QueryContext {
 	 */
 	public byte[] toJSON() {
 		return JSON.serializeToBytes(this);
+	}
+
+	/**
+	 * Returns the parent request builder
+	 * @return the parent request builder
+	 */
+	public RequestBuilder parent() {
+		if(this.parent==null) throw new IllegalStateException("This QueryContext was not created by a RequestBuilder (i.e. it has no parent)");
+		return parent;
 	}
 
 

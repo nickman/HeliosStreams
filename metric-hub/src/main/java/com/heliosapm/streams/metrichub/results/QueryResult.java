@@ -27,15 +27,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.function.LongBinaryOperator;
 import java.util.stream.LongStream;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.tracing.TagKeySorter.TagMap;
-import com.heliosapm.utils.url.URLHelper;
 
 /**
  * <p>Title: QueryResult</p>
@@ -102,20 +102,36 @@ public class QueryResult {
 	
 	
 	/**
+	 * Converts all of the either timestamps (index 0) or values (index 1) to a reduced long  
+	 * @param index the index of the dps items to stream: 0 for timestamp, 1 for values
+	 * @param parallel true to run in parallel (at the cost of loss of ordering), false to run single-threaded
+	 * @param op The long binary operator to apply.
+	 * @return the resulting long
+	 */
+	protected long dpsReduce(final int index, final boolean parallel, final LongBinaryOperator op) {
+		return dpsStream(index, parallel).reduce(op).getAsLong();
+	}
+	
+	
+	
+	/**
 	 * Converts all of the either timestamps (index 0) or values (index 1) to a LongStream  
 	 * @param index the index of the dps items to stream: 0 for timestamp, 1 for values
+	 * @param parallel true to run in parallel (at the cost of loss of ordering), false to run single-threaded
 	 * @return a LongStream
 	 */
-	protected LongStream dpsStream(final int index) {
-		return StreamSupport.stream(dps.spliterator(), true).flatMapToLong(arr -> LongStream.of(arr[index])).parallel();
+	protected LongStream dpsStream(final int index, final boolean parallel) {
+		if(parallel) return StreamSupport.stream(dps.spliterator(), true).parallel().flatMapToLong(arr -> LongStream.of(arr[index])).parallel();
+		return StreamSupport.stream(dps.spliterator(), true).flatMapToLong(arr -> LongStream.of(arr[index]));
 	}
+	
 
 	/**
 	 * Returns a long stream of the ms timestamps of the result's DPS
 	 * @return a long stream
 	 */
 	public LongStream times() {
-		return dpsStream(0).sorted();
+		return dpsStream(0, true).sorted();
 	}
 	
 	/**
@@ -123,7 +139,7 @@ public class QueryResult {
 	 * @return a stream of dates
 	 */
 	public Stream<Date> dates() {
-		return dpsStream(0).parallel().mapToObj(t -> new Date(t)).sorted();
+		return dpsStream(0, true).parallel().mapToObj(t -> new Date(t)).sorted();
 	}
 	
 	/**
@@ -131,7 +147,7 @@ public class QueryResult {
 	 * @return a long stream
 	 */
 	public LongStream values() {
-		return dpsStream(1);
+		return dpsStream(1, false);
 	}
 	
 	/**
@@ -139,46 +155,91 @@ public class QueryResult {
 	 * @return a long value summary
 	 */
 	public LongSummaryStatistics valueSummary() {
-		return dpsStream(1).summaryStatistics();
+		return dpsStream(1, true).summaryStatistics();
+	}
+	
+	/**
+	 * Returns the sum of the values
+	 * @return the sum of the values
+	 */
+	public long valuesSum() {
+		return dpsReduce(1, true, Long::sum);
+	}
+	
+	/**
+	 * Returns the minimum dps value
+	 * @return the minimum dps value
+	 */
+	public long valuesMin() {
+		return dpsReduce(1, true, Long::min);
+	}
+	
+	/**
+	 * Returns the maximum dps value
+	 * @return the maximum dps value
+	 */
+	public long valuesMax() {
+		return dpsReduce(1, true, Long::max);
+	}
+	
+	/**
+	 * Returns the average of the values
+	 * @return the average of the values
+	 */
+	public double valuesAvg() {
+		return dpsStream(1, true).average().getAsDouble();
+	}
+
+	/**
+	 * Returns the number of DP's
+	 * @return the number of DP's
+	 */
+	public int count() {
+		return dps.size();
+	}
+	
+	/**
+	 * Returns a map of values keyed by the effective date/timestamp for that value 
+	 * @return a map of values keyed by the date
+	 */
+	public Map<Date, Long> dps() {
+		final Map<Date, Long> dpmap = new ConcurrentSkipListMap<Date, Long>();
+		StreamSupport.stream(dps.spliterator(), true).forEach(arr -> dpmap.put(new Date(arr[0]), arr[1]));
+		return dpmap;
 	}
 	
 	
-//	public String toString() {
-//		final StringBuilder b = new StringBuilder("QResult [\n\tm:")
-//			.append(metricName).append(tags)
-//			.append("\n\tAggTags:").append(Arrays.toString(aggregatedTags))
-//			.append("\n\tDPS:");
-//		for(long[] dp: dps) {
-//			b.append("\n\t\t").append(new Date(dp[0])).append(" : ").append(dp[1]);
-//		}
-//		b.append("\n]");
-//		return b.toString();
-//	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see java.lang.Object#toString()
+	 */
 	public String toString() {
 		if(dps.isEmpty()) {
 			return new StringBuilder(metricName).append(":").append(tags).append(", aggtags:").append(Arrays.toString(aggregatedTags)).append(", dps:").append(dps.size()).toString();
 		} else {
-			return new StringBuilder(metricName).append(":").append(tags).append(", aggtags:").append(Arrays.toString(aggregatedTags)).append(", dps:").append(dps.size())
-					.append(", summary:").append(valueSummary()).toString();
+			return new StringBuilder(metricName).append(":").append(tags)
+					.append((aggregatedTags!=null && aggregatedTags.length > 0) ? (", aggtags:" + Arrays.toString(aggregatedTags)) : "")
+					.append(", dps:").append(dps.size())
+					.append(", summary:").append(valueSummary().toString().replace("LongSummaryStatistics", "")).toString();
 		}
 	}
 	
 	
-	public static void main(String[] args) {
-		try {
-			JSONOps.registerDeserializer(QueryResult.class, new QueryResultDeserializer());
-			JSONOps.registerDeserializer(QueryResult[].class, new QueryResultArrayDeserializer());
-			
-			final String jsonResponse = URLHelper.getTextFromURL("./src/test/resources/responses/response-multi.js");
-			final QueryResult[] qrs = JSONOps.parseToObject(jsonResponse, QueryResult[].class);
-			System.out.println("Results:" + qrs.length);
-			for(QueryResult q: qrs) {
-				//System.out.println(q);
-			}
-		} catch (Exception ex) {
-			ex.printStackTrace(System.err);
-		}
-	}
+//	public static void main(String[] args) {
+//		try {
+//			JSONOps.registerDeserializer(QueryResult.class, new QueryResultDeserializer());
+//			JSONOps.registerDeserializer(QueryResult[].class, new QueryResultArrayDeserializer());
+//			
+//			final String jsonResponse = URLHelper.getTextFromURL("./src/test/resources/responses/response-multi.js");
+//			final QueryResult[] qrs = JSONOps.parseToObject(jsonResponse, QueryResult[].class);
+//			System.out.println("Results:" + qrs.length);
+//			for(QueryResult q: qrs) {
+//				//System.out.println(q);
+//			}
+//		} catch (Exception ex) {
+//			ex.printStackTrace(System.err);
+//		}
+//	}
 
 }
