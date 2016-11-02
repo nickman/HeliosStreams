@@ -21,12 +21,14 @@ package com.heliosapm.streams.metrichub.results;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Date;
+import java.util.LongSummaryStatistics;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.function.Function;
 import java.util.stream.LongStream;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -97,18 +99,47 @@ public class QueryResult {
 
 	}
 	
+	
+	
+	/**
+	 * Converts all of the either timestamps (index 0) or values (index 1) to a LongStream  
+	 * @param index the index of the dps items to stream: 0 for timestamp, 1 for values
+	 * @return a LongStream
+	 */
 	protected LongStream dpsStream(final int index) {
-		final LongStream.Builder builder = LongStream.builder();
-		StreamSupport.stream(dps.spliterator(), false).forEach(a -> builder.add(a[index]));
-		return builder.build();
+		return StreamSupport.stream(dps.spliterator(), true).flatMapToLong(arr -> LongStream.of(arr[index])).parallel();
 	}
 
+	/**
+	 * Returns a long stream of the ms timestamps of the result's DPS
+	 * @return a long stream
+	 */
 	public LongStream times() {
-		return dpsStream(0);
+		return dpsStream(0).sorted();
 	}
 	
+	/**
+	 * Returns a long stream of the timestamps of the result's DPS as java dates
+	 * @return a stream of dates
+	 */
+	public Stream<Date> dates() {
+		return dpsStream(0).parallel().mapToObj(t -> new Date(t)).sorted();
+	}
+	
+	/**
+	 * Returns a long stream of the values of the result's DPS
+	 * @return a long stream
+	 */
 	public LongStream values() {
 		return dpsStream(1);
+	}
+	
+	/**
+	 * Returns a summary of the values in the DPS for this result
+	 * @return a long value summary
+	 */
+	public LongSummaryStatistics valueSummary() {
+		return dpsStream(1).summaryStatistics();
 	}
 	
 	
@@ -128,14 +159,8 @@ public class QueryResult {
 		if(dps.isEmpty()) {
 			return new StringBuilder(metricName).append(":").append(tags).append(", aggtags:").append(Arrays.toString(aggregatedTags)).append(", dps:").append(dps.size()).toString();
 		} else {
-			final long[] first = dps.first();
-			final long[] last = dps.last();
-			final LongStream v = values();
 			return new StringBuilder(metricName).append(":").append(tags).append(", aggtags:").append(Arrays.toString(aggregatedTags)).append(", dps:").append(dps.size())
-					.append(", first:").append(first[1]).append(", last:").append(last[1])
-					.append(", min:").append(values().min().getAsLong()).append(", max:").append(values().max().getAsLong()).append(", avg:").append(values().average().getAsDouble())
-					.append("\n\t").append(values().summaryStatistics())
-					.toString();
+					.append(", summary:").append(valueSummary()).toString();
 		}
 	}
 	

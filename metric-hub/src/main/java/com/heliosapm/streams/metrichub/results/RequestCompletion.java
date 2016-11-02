@@ -18,11 +18,11 @@ under the License.
  */
 package com.heliosapm.streams.metrichub.results;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.LongStream;
@@ -61,13 +61,22 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 	/** The pool to return a non-errored out channel to */
 	private final ChannelPool pool;
 	
+	/**
+	 * Creates a new RequestCompletion
+	 * @param queryCount The number of queries submitted
+	 * @param pool the pool to return the channel to
+	 */
 	public RequestCompletion(final int queryCount, final ChannelPool pool) {
 		expected = queryCount;
 		latch = new CountDownLatch(queryCount);
 		this.pool = pool;
-		results = new ArrayList<QueryResult>(queryCount);
+		results = new CopyOnWriteArrayList<QueryResult>();
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see io.netty.channel.SimpleChannelInboundHandler#channelRead0(io.netty.channel.ChannelHandlerContext, java.lang.Object)
+	 */
 	@Override
 	protected void channelRead0(final ChannelHandlerContext ctx, final QueryResult msg) throws Exception {
 		received++;
@@ -78,6 +87,10 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 		}
 	}
 	
+	/**
+	 * {@inheritDoc}
+	 * @see io.netty.channel.ChannelInboundHandlerAdapter#exceptionCaught(io.netty.channel.ChannelHandlerContext, java.lang.Throwable)
+	 */
 	@Override
 	public void exceptionCaught(final ChannelHandlerContext ctx, final Throwable cause) throws Exception {
 		t = cause;
@@ -87,6 +100,10 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 		channel.close();
 	}
 	
+	/**
+	 * Return the list of query results for the submitted query set
+	 * @return the list of query results 
+	 */
 	public List<QueryResult> get() {
 		if(t!=null) throw new RuntimeException("Query failure", t);
 		try {

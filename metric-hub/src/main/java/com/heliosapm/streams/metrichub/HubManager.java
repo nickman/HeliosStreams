@@ -21,16 +21,12 @@ package com.heliosapm.streams.metrichub;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.IntStream;
 
 import javax.sql.DataSource;
 
@@ -43,7 +39,6 @@ import com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl;
 import com.heliosapm.streams.metrichub.results.QueryResultDecoder;
 import com.heliosapm.streams.metrichub.results.RequestCompletion;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
-import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.url.URLHelper;
 
 import io.netty.bootstrap.Bootstrap;
@@ -66,6 +61,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
+import io.netty.handler.codec.http.HttpContentCompressor;
 import io.netty.handler.codec.http.HttpContentDecompressor;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -215,16 +211,16 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		eventExecutor = new DefaultEventExecutor(metricMetaService.getForkJoinPool());
 		channelGroup = new DefaultChannelGroup("MetricHubChannelGroup", eventExecutor);
 		
-		tsdbAddresses.parallelStream().forEach(addr -> {
-			final Set<Channel> channels = Collections.synchronizedSet(new HashSet<Channel>(3));
-			IntStream.of(1,2,3).parallel().forEach(i -> {
-				final ChannelPool pool = poolMap.get(addr); 
-				try {channels.add(pool.acquire().awaitUninterruptibly().get());
-				} catch (Exception e) {}
-				log.info("Acquired [{}] Channels", channels.size());
-				channels.parallelStream().forEach(ch -> pool.release(ch));
-			});
-		});
+//		tsdbAddresses.parallelStream().forEach(addr -> {
+//			final Set<Channel> channels = Collections.synchronizedSet(new HashSet<Channel>(3));
+//			IntStream.of(1,2,3).parallel().forEach(i -> {
+//				final ChannelPool pool = poolMap.get(addr); 
+//				try {channels.add(pool.acquire().awaitUninterruptibly().get());
+//				} catch (Exception e) {}
+//				log.info("Acquired [{}] Channels", channels.size());
+//				channels.parallelStream().forEach(ch -> pool.release(ch));
+//			});
+//		});
 		
 		
 		
@@ -261,18 +257,19 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		final RequestBuilder d = new RequestBuilder("1h-ago", Aggregator.AVG).rate(); //.downSampling("1m-avg");
 		//hman.evaluate(q, d, "sys.cpu:host=*,*");
 		final AtomicInteger rowCount = new AtomicInteger(0);
-		final RequestCompletion rc = hman.evaluate(q, d, "linux.cpu.percpu:host=*,cpu=*");
+		//final RequestCompletion rc = hman.evaluate(q, d, "linux.cpu.percpu:host=*,cpu=*");
+		final RequestCompletion rc = hman.evaluate(q, d, "sys.cpu:host=*, cpu=*, dc=*, type=*");
 		rc
 			.get()
 			.stream()
 			.forEach(qr -> 
 				System.err.println("QR[" + rowCount.incrementAndGet() + "]: " + qr)
 			);
-		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
-			public void run() {
-				System.err.println("Done");
-			}
-		}).run();
+//		StdInCommandHandler.getInstance().registerCommand("stop", new Runnable(){
+//			public void run() {
+//				System.err.println("Done");
+//			}
+//		}).run();
 
 	}
 	
@@ -288,7 +285,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 				channel.pipeline().addLast("completion", rc);
 				completionFuture.complete(rc);
 				final ByteBuf bb = requestBuilder.merge(jg, lmt);
-				log.info("CREQUEST:\n{}", bb.toString(UTF8));				
+				if(log.isDebugEnabled()) log.debug("CREQUEST:\n{}", bb.toString(UTF8));				
 				final HttpRequest httpRequest = buildHttpRequest(bb);
 				channel.writeAndFlush(httpRequest);					
 			});
@@ -321,11 +318,12 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	protected HttpRequest buildHttpRequest(final ByteBuf jsonRequest) {
 		final String[] endpoints = tsdbEndpoint.getUpServers();
 		final URL postUrl = URLHelper.toURL(endpoints[0] + "/query/");
-		log.info("Http Post to [{}]", postUrl);
+		log.debug("Http Post to [{}]", postUrl);
 		final DefaultFullHttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, postUrl.getPath(), jsonRequest);
 		request.headers().set(HttpHeaderNames.HOST, postUrl.getHost());
 		request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 		request.headers().set(HttpHeaderNames.ACCEPT_ENCODING, HttpHeaderValues.GZIP);
+//		request.headers().set(HttpHeaderNames.CONTENT_ENCODING, HttpHeaderValues.GZIP);
 		request.headers().set(HttpHeaderNames.CONTENT_LENGTH, jsonRequest.readableBytes());
 		request.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON);
 		return request;
@@ -337,7 +335,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	 */
 	@Override
 	public void channelAcquired(final Channel ch) throws Exception {
-		log.info("Channel Acquired: {}", ch);
+		log.debug("Channel Acquired: {}", ch);
 		
 	}
 	
@@ -347,12 +345,13 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	 */
 	@Override
 	public void channelCreated(final Channel ch) throws Exception {
-		log.info("Channel Created: {}", ch);
+		log.debug("Channel Created: {}", ch);
 		channelGroup.add(ch);
 		final ChannelPipeline p = ch.pipeline();
 		//p.addLast("timeout",    new IdleStateHandler(0, 0, 60));  // TODO: configurable		
 		p.addLast("httpcodec",    new HttpClientCodec());
 		p.addLast("inflater",   new HttpContentDecompressor());
+//		p.addLast("deflater",   new HttpContentCompressor());
 		p.addLast("aggregator", new HttpObjectAggregator(1048576));
 //		p.addLast("logging", loggingHandler);
 		p.addLast("qdecoder", queryResultDecoder);
@@ -365,7 +364,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 	 */
 	@Override
 	public void channelReleased(final Channel ch) throws Exception {
-		log.info("Channel Released: {}", ch);
+		log.debug("Channel Released: {}", ch);
 		try { ch.pipeline().remove("completion"); } catch (Exception ex) {}
 	}
 	
