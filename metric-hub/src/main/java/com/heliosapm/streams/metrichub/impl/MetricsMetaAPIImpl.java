@@ -304,8 +304,9 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 			//mq.topic.subs.queue.onqtime-recent:{app=icemqmgr, host=pdk-pt-cefmq-01, q=ifeu.to.mwy.liffe.lqueue, subscription=ifeu.to.mwy.liffe.sub, topic=ifeu.to.mwy.liffe.topic}
 			//final String QUERY = "mq.topic.subs.queue.*:app=*, host=pdk-pt-cefmq-0*|pdk-pt-cebmq-0*,subscription=*,topic=ifeu*,*";
 			//final String QUERY = "linux.mem.*:host=pdk-pt-cltsdb-*";			
-			//final String QUERY = "sys.cpu:host=mad-server,cpu=0,dc=dcX,type=combined";
-			final String QUERY = "*:*";
+//			final String QUERY = "sys.cpu:host=mad-server,cpu=0,dc=dcX,type=*";
+			final String QUERY = "sys.cpu:host=mad-server,cpu=0,dc=*";			
+//			final String QUERY = "*:*";
 			final ElapsedTime et1 = SystemClock.startClock();
 			Stream<List<TSMeta>> metaStream = api.evaluate(q, QUERY);
 			metaStream.consume(consumer).when(Throwable.class, errorHandler);
@@ -392,7 +393,6 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 				log.info("Dispatcher still running after grade period. It was halted.");
 			}
 		}
-		
 		log.info("<<<<< MetricsMetaAPIImpl Closed.");
 	}
 	
@@ -632,7 +632,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	 */
 	@Override
 	public Stream<List<TSMeta>> getTSMetas(final QueryContext queryContext, final String metricName, final Map<String, String> tags) {
-		return getTSMetas(null, queryContext.startExpiry(), metricName, tags, null);
+		return getTSMetas(null, queryContext.startExpiry(), metricName, tags, false, null);
 	}
 	
 	/**
@@ -642,10 +642,11 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 	 * @param queryContext The query context
 	 * @param metricName The optional TSMeta metric name or expression. Will be substituted with <b><code>*</code></b> if null or empty
 	 * @param tags The optional TSMeta tags. Will be substituted with an empty map if null.
+	 * @param propertyListPattern Indicates if the expression is a {@link ObjectName#isPropertyListPattern()}, i.e. if it ends with a <b><code>,*</code></b>.
 	 * @param tsuid The optional TSMeta UID used for matching patterns. Ignored if null.
 	 * @return the deferred result
 	 */
-	protected Stream<List<TSMeta>> getTSMetas(final Deferred<TSMeta, Stream<TSMeta>> priorDeferred, final QueryContext queryContext, final String metricName, final Map<String, String> tags, final String tsuid) {
+	protected Stream<List<TSMeta>> getTSMetas(final Deferred<TSMeta, Stream<TSMeta>> priorDeferred, final QueryContext queryContext, final String metricName, final Map<String, String> tags, final boolean propertyListPattern, final String tsuid) {
 		final Deferred<TSMeta, Stream<TSMeta>> def = getDeferred(priorDeferred, queryContext);
 		final Stream<List<TSMeta>> stream = def.compose().collect();		
 		final String _metricName = (metricName==null || metricName.trim().isEmpty()) ? "*" : metricName.trim();
@@ -657,7 +658,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 				final List<Object> binds = new ArrayList<Object>();
 				final StringBuilder sqlBuffer = new StringBuilder();
 				try {
-					generateTSMetaSQL(sqlBuffer, binds, queryContext, _metricName, _tags, "INTERSECT", tsuid);		
+					generateTSMetaSQL(sqlBuffer, binds, queryContext, _metricName, _tags, (propertyListPattern ? "UNION ALL" : "INTERSECT"), tsuid);		
 					final int expectedRows = queryContext.getNextMaxLimit(); 
 //					final int expectedRows = queryContext.getPageSize();
 					binds.add(expectedRows);
@@ -679,7 +680,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 					if(queryContext.isContinuous() && queryContext.shouldContinue()) {
 						fjPool.execute(new Runnable(){
 							public void run() {
-								getTSMetas(def, queryContext, metricName, tags, tsuid);
+								getTSMetas(def, queryContext, metricName, tags, propertyListPattern, tsuid);
 							}
 						});
 					}
@@ -725,7 +726,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 				final String expr = expression.trim();
 				try {			
 					final ObjectName on = JMXHelper.objectName(expr);
-					getTSMetas(null, new QueryContext().setPageSize(1).setMaxSize(1).startExpiry(), on.getDomain(), on.getKeyPropertyList(), tsuid)
+					getTSMetas(null, new QueryContext().setPageSize(1).setMaxSize(1).startExpiry(), on.getDomain(), on.getKeyPropertyList(), on.isPropertyListPattern(), tsuid)
 						.consume(new Consumer<List<TSMeta>>() {
 							@Override
 							public void accept(List<TSMeta> t) {
@@ -863,7 +864,7 @@ public class MetricsMetaAPIImpl implements MetricsMetaAPI, UncaughtExceptionHand
 		final String expr = expression.trim();
 		try {			
 			final ObjectName on = JMXHelper.objectName(expr);
-			return getTSMetas(null, queryContext.startExpiry(), on.getDomain(), on.getKeyPropertyList(), null);
+			return getTSMetas(null, queryContext.startExpiry(), on.getDomain(), on.getKeyPropertyList(), on.isPropertyListPattern(), null);
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to process expression [" + expr + "]", ex);
 		}

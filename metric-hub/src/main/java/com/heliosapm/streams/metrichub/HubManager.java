@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.streams.metrichub;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.nio.charset.Charset;
@@ -26,6 +28,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.sql.DataSource;
@@ -61,7 +64,6 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.HttpClientCodec;
-import io.netty.handler.codec.http.HttpContentCompressor;
 import io.netty.handler.codec.http.HttpContentDecompressor;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpHeaderValues;
@@ -90,7 +92,7 @@ import reactor.core.composable.Stream;
  * <p><code>com.heliosapm.streams.metrichub.HubManager</code></p>
  */
 
-public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
+public class HubManager implements MetricsMetaAPI, ChannelPoolHandler, Closeable {
 	/** The singleton instance */
 	private static volatile HubManager instance = null;
 	/** The singleton instance ctor guard */
@@ -179,9 +181,45 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler {
 		}
 		return instance;
 	}
+	
+	public void close() throws IOException {
+		
+		if(channelGroup!=null) channelGroup.close().addListener(f -> {
+			if(f.isSuccess()) {
+				log.info("NettyClient ChannelGroup Closed");
+			}
+		});
+		if(eventExecutor!=null) eventExecutor.shutdownGracefully(1, 5, TimeUnit.SECONDS).addListener(f -> {
+			if(f.isSuccess()) {
+				log.info("NettyClient EventExecutor Closed");
+			} else {
+				@SuppressWarnings("deprecation")
+				final int runnables = eventExecutor.shutdownNow().size();
+				log.info("NettyClient EventExecutor Terminated. Pending tasks: {}", runnables);
+			}
+		});
+
+		if(group!=null) group.shutdownGracefully(1, 5, TimeUnit.SECONDS).addListener(f -> {
+			if(f.isSuccess()) {
+				log.info("NettyClient EventGroup Closed");
+			} else {
+				@SuppressWarnings("deprecation")
+				final int runnables = group.shutdownNow().size();
+				log.info("NettyClient EventGroup Terminated. Pending tasks: {}", runnables);
+			}
+		});
+		if(metricMetaService!=null) try { 
+			metricMetaService.close();
+			log.info("MetricMetaService Closed");
+		} catch (Exception ex) {/* No Op */}
+		instance = null;
+	}
 
 	
 	private HubManager(final Properties properties) {
+		Runtime.getRuntime().addShutdownHook(new Thread(){
+			public void run() { try { close(); } catch (Exception x) {/* No Op */} }
+		});
 		log.info(">>>>> Initializing HubManager...");
 		metricMetaService = new MetricsMetaAPIImpl(properties);
 		tsdbEndpoint = TSDBEndpoint.getEndpoint(metricMetaService.getSqlWorker());
