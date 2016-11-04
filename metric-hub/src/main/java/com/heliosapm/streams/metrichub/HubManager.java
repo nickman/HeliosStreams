@@ -39,6 +39,7 @@ import org.apache.logging.log4j.Logger;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.heliosapm.streams.buffers.BufferManager;
 import com.heliosapm.streams.metrichub.impl.MetricsMetaAPIImpl;
+import com.heliosapm.streams.metrichub.results.QueryResult;
 import com.heliosapm.streams.metrichub.results.QueryResultDecoder;
 import com.heliosapm.streams.metrichub.results.RequestCompletion;
 import com.heliosapm.streams.sqlbinder.SQLWorker;
@@ -291,15 +292,20 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler, Closeable
 	
 	public static void main(String[] args) {
 		final HubManager hman = HubManager.init(URLHelper.readProperties(URLHelper.toURL("./src/test/resources/conf/application.properties")));		
-		new RequestBuilder("1h-ago", Aggregator.AVG)
+		final java.util.stream.Stream<QueryResult> resultStream = new RequestBuilder("1h-ago", Aggregator.AVG)
 			.context()
 				.setPageSize(5000)
 				.setTimeout(Integer.MAX_VALUE)
 			.parent()
 			.downSampling("10m-avg")
 			
-			.execute("linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1")				// "sys.cpu:host=*,*"
-			.stream().forEach(qr -> System.err.println(qr));
+//			.execute("sys.cpu:host=*,*")				// "linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1"
+			.execute("linux.cpu.percpu:host=*,cpu=1")				// "linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1"
+//			.execute("*:host=heliosleopard")
+			.stream();
+//			.forEach(qr -> System.err.println(qr));
+		
+		System.err.println("Count:" + resultStream.count());
 	}
 	
 	public RequestCompletion evaluate(final QueryContext queryContext, final RequestBuilder requestBuilder, final String expression) {
@@ -310,7 +316,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler, Closeable
 			final CompletableFuture<RequestCompletion> completionFuture = new CompletableFuture<RequestCompletion>();
  
 			evaluate(queryContext, expression).flush().consume(lmt -> {
-				final RequestCompletion rc = new RequestCompletion(lmt.size(), pool);
+				final RequestCompletion rc = new RequestCompletion(lmt.size(), queryContext.getTimeout(), pool);
 				if(channel.pipeline().get("completion")!=null) {
 					try { channel.pipeline().remove("completion"); } catch (Exception ex) {}
 				}

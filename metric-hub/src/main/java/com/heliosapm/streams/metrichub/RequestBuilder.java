@@ -240,6 +240,7 @@ public class RequestBuilder {
 		System.err.println("MetaBatch:" + metas.size() + ", Merges:" + merges);
 		try {
 			for(final TSMeta tsMeta: metas) {
+				if(tsMeta==null) continue;
 				jg.writeStartObject();				// start of query
 				jg.writeStringField("aggregator", aggregator.name().toLowerCase());
 				if(rateOptions!=null) {

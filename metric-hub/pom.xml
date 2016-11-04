@@ -274,6 +274,13 @@
 		  <scope>compile</scope>
 		</dependency>
 		
+		
+    <dependency>
+        <groupId>com.speedment</groupId>
+        <artifactId>runtime</artifactId>
+        <version>3.0.1</version>
+        <type>pom</type>
+    </dependency>		
 	
 
 
@@ -401,6 +408,20 @@
             </execution>
           </executions>	  
 	</plugin>
+	    
+	    
+        <plugin>
+            <groupId>com.speedment</groupId>
+            <artifactId>speedment-maven-plugin</artifactId>
+            <version>3.0.1</version>
+            <dependencies>
+                <dependency>
+                    <groupId>org.postgresql</groupId>
+                    <artifactId>postgresql</artifactId>
+                    <version>${postgres.version}</version>
+                </dependency>
+            </dependencies> 
+        </plugin>	    
 	    
    </plugins>
  </build>

@@ -58,16 +58,20 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 	
 	/** The number of received results */
 	private int received = 0;
+	/** The timeout in ms. */
+	private final long timeoutMs;
 	/** The pool to return a non-errored out channel to */
 	private final ChannelPool pool;
 	
 	/**
 	 * Creates a new RequestCompletion
 	 * @param queryCount The number of queries submitted
+	 * @param timeoutMs The timeout in ms.
 	 * @param pool the pool to return the channel to
 	 */
-	public RequestCompletion(final int queryCount, final ChannelPool pool) {
+	public RequestCompletion(final int queryCount, final long timeoutMs, final ChannelPool pool) {
 		expected = queryCount;
+		this.timeoutMs = timeoutMs;
 		latch = new CountDownLatch(queryCount);
 		this.pool = pool;
 		results = new CopyOnWriteArrayList<QueryResult>();
@@ -108,7 +112,7 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 		if(t!=null) throw new RuntimeException("Query failure", t);
 		try {
 			waitingThreads.add(Thread.currentThread());
-			if(latch.await(15, TimeUnit.SECONDS)) {
+			if(latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
 				waitingThreads.remove(Thread.currentThread());
 				if(t!=null) throw new RuntimeException("Query failure", t);
 				return results;
