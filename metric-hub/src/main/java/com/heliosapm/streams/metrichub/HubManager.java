@@ -292,20 +292,36 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler, Closeable
 	
 	public static void main(String[] args) {
 		final HubManager hman = HubManager.init(URLHelper.readProperties(URLHelper.toURL("./src/test/resources/conf/application.properties")));		
-		final java.util.stream.Stream<QueryResult> resultStream = new RequestBuilder("1h-ago", Aggregator.AVG)
+		java.util.stream.Stream<QueryResult> resultStream = new RequestBuilder("1h-ago", Aggregator.AVG)
 			.context()
 				.setPageSize(5000)
 				.setTimeout(Integer.MAX_VALUE)
 			.parent()
-			.downSampling("10m-avg")
+//			.downSampling("10m-avg")
 			
 //			.execute("sys.cpu:host=*,*")				// "linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1"
-			.execute("linux.cpu.percpu:host=*,cpu=1")				// "linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1"
+			.execute("linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1")				// "linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1"
 //			.execute("*:host=heliosleopard")
 			.stream();
-//			.forEach(qr -> System.err.println(qr));
+			
+		resultStream.forEach(qr -> System.err.println(qr));
 		
-		System.err.println("Count:" + resultStream.count());
+		resultStream = new RequestBuilder("1h-ago", Aggregator.AVG)
+				.context()
+					.setPageSize(5000)
+					.setTimeout(Integer.MAX_VALUE)
+				.parent()
+				.downSampling("10m-avg")
+				.rate()
+				
+//				.execute("sys.cpu:host=*,*")				// "linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1"
+				.execute("linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1")				// "linux.cpu.percpu:host=pdk-pt-cltsdb-05,cpu=1"
+//				.execute("*:host=heliosleopard")
+				.stream();
+				
+			resultStream.forEach(qr -> System.out.println(qr));
+		
+//		System.err.println("Count:" + resultStream.count());
 	}
 	
 	public RequestCompletion evaluate(final QueryContext queryContext, final RequestBuilder requestBuilder, final String expression) {
@@ -316,7 +332,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler, Closeable
 			final CompletableFuture<RequestCompletion> completionFuture = new CompletableFuture<RequestCompletion>();
  
 			evaluate(queryContext, expression).flush().consume(lmt -> {
-				final RequestCompletion rc = new RequestCompletion(lmt.size(), queryContext.getTimeout(), pool);
+				final RequestCompletion rc = new RequestCompletion(queryContext.getTimeout(), pool);
 				if(channel.pipeline().get("completion")!=null) {
 					try { channel.pipeline().remove("completion"); } catch (Exception ex) {}
 				}
@@ -325,6 +341,7 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler, Closeable
 				final ByteBuf bb = requestBuilder.merge(jg, lmt);
 				if(log.isDebugEnabled()) log.debug("CREQUEST:\n{}", bb.toString(UTF8));				
 				final HttpRequest httpRequest = buildHttpRequest(bb);
+				log.info("Flushed request. Size: {} bytes", bb.readableBytes());
 				channel.writeAndFlush(httpRequest);					
 			});
 			return completionFuture.get();

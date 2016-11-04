@@ -26,6 +26,7 @@ import java.util.LongSummaryStatistics;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.LongBinaryOperator;
@@ -35,6 +36,7 @@ import java.util.stream.StreamSupport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.heliosapm.streams.tracing.TagKeySorter;
 import com.heliosapm.streams.tracing.TagKeySorter.TagMap;
 
 /**
@@ -93,11 +95,46 @@ public class QueryResult {
 	
 	public QueryResult(final String metricName, final Map<String, String> tags, final String[] aggregatedTags, final Set<long[]> dps) {		
 		this.metricName = metricName;
-		this.tags = tags;
+		this.tags = Collections.unmodifiableSortedMap(new TagMap(tags));
 		this.aggregatedTags = aggregatedTags;
 		this.dps.addAll(dps);
 
 	}
+	
+	
+	/**
+	 * Returns the metric name
+	 * @return the metric name
+	 */
+	public String metricName() {
+		return metricName;
+	}
+	
+	/**
+	 * Returns the tags
+	 * @return the tags
+	 */
+	public Map<String, String> tags() {
+		return tags;
+	}
+	
+	/**
+	 * Returns the tags as a string
+	 * @return the tags as a string
+	 */
+	public String tagstr() {
+		return tags.toString();
+	}
+	
+	
+	/**
+	 * Returns the fully qualified metric name
+	 * @return the fully qualified metric name
+	 */
+	public String fqn() {
+		return metricName + tags.toString();
+	}
+	
 	
 	
 	

@@ -20,9 +20,13 @@ package com.heliosapm.streams.metrichub;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.heliosapm.streams.buffers.BufferManager;
@@ -59,6 +63,12 @@ public class RequestBuilder {
 	
 	/** The downsampling expression */
 	protected String downSampling = null;
+	
+	/** Static class logger */
+	protected static Logger log = LogManager.getLogger(RequestBuilder.class);
+	/** The UTF8 character set */
+	public static final Charset UTF8 = Charset.forName("UTF8");
+
 
 	
 	/** Whether or not to output data point timestamps in milliseconds (true) or seconds (false). */
@@ -142,6 +152,7 @@ public class RequestBuilder {
 		if(aggregator==null) throw new IllegalArgumentException("The passed aggregator was null");		
 		this.aggregator = aggregator;
 		if(startTime.toLowerCase().contains("-ago")) {
+			Interval.toMsTime(startTime); // to validate
 			this.startTime = startTime.trim();
 			startTimeMs = -1L;
 		} else {		
@@ -237,8 +248,9 @@ public class RequestBuilder {
 		merges++;
 		final ByteBufOutputStream os = (ByteBufOutputStream)jg.getOutputTarget();
 		final ByteBuf buff = os.buffer();
-		System.err.println("MetaBatch:" + metas.size() + ", Merges:" + merges);
+		//System.err.println("MetaBatch:" + metas.size() + ", Merges:" + merges);
 		try {
+			int cnt = 0;
 			for(final TSMeta tsMeta: metas) {
 				if(tsMeta==null) continue;
 				jg.writeStartObject();				// start of query
@@ -253,14 +265,17 @@ public class RequestBuilder {
 				jg.writeArrayFieldStart("tsuids");								
 				jg.writeString(tsMeta.getTSUID());
 				jg.writeEndArray();					// end of tsuids
-				jg.writeEndObject();				// end of query								
+				jg.writeEndObject();				// end of query
+				cnt++;
 			}  // end of TSMetas
+			log.info("Wrote {} TSDUID Queries", cnt);
 			jg.writeEndArray(); // end of queries array
 			jg.writeEndObject(); // end of request
 			jg.flush();
 			os.flush();
 			jg.close();
 			os.close();
+			log.info("TSDB Request:\n{}", buff.toString(UTF8));
 			return buff;
 		} catch (Exception ex) {
 			throw new RuntimeException(ex);
@@ -411,16 +426,44 @@ public class RequestBuilder {
 	}
 
 	/**
-	 * Sets the end time expression
-	 * @param endTime the endTime to set
+	 * Sets the end time expression or timestamp
+	 * @param endTime The end time in the standard format ({@link #DEFAULT_TS_FORMAT} or an "ago" expression, e.g. <b>4h-ago</b>
 	 * @return this data context
 	 */
 	public RequestBuilder endTime(final String endTime) {
-		Interval.toMsTime(endTime); // to validate
-		this.endTime = endTime;
-		endTimeMs = -1L;
+		if(endTime==null || endTime.trim().isEmpty()) throw new IllegalArgumentException("The passed endTime was null or empty");
+		if(endTime.toLowerCase().contains("-ago")) {
+			Interval.toMsTime(endTime); // to validate
+			this.endTime = endTime.trim();
+			endTimeMs = -1L;
+		} else {		
+			endTimeMs = standardFormatToMs(endTime);
+			this.endTime = null;
+		}
 		return this;
 	}
+	
+	/**
+	 * Sets the end time timestamp
+	 * @param endTime The end time in the passed format 
+	 * @param format The {@link SimpleDateFormatter} defined format defined for the passed end time
+	 * @return this data context
+	 */
+	public RequestBuilder endTime(final String endTime, final String format) {
+		if(endTime==null || endTime.trim().isEmpty()) throw new IllegalArgumentException("The passed endTime was null or empty");
+		if(format==null || format.trim().isEmpty()) throw new IllegalArgumentException("The passed format was null or empty");
+		final SimpleDateFormat sdf = new SimpleDateFormat(format.trim());
+		try {
+			endTimeMs = sdf.parse(endTime.trim()).getTime();
+			this.endTime = null;
+		} catch (Exception ex) {
+			throw new IllegalArgumentException("Failed to convert time [" + endTime + "] to supplied format [" + format + "]", ex);
+		}		
+		return this;
+	}
+	
+	
+	
 
 	/**
 	 * Returns the aggregator

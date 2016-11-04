@@ -18,7 +18,6 @@ under the License.
  */
 package com.heliosapm.streams.metrichub.results;
 
-import java.util.Collections;
 import java.util.List;
 
 import com.heliosapm.streams.json.JSONOps;
@@ -40,7 +39,7 @@ public class QueryResultDecoder extends MessageToMessageDecoder<FullHttpResponse
 	@Override
 	protected void decode(final ChannelHandlerContext ctx, final FullHttpResponse msg, final List<Object> out) throws Exception {
 		final QueryResult[] qrs = JSONOps.parseToObject(msg.content(), QueryResult[].class);
-		Collections.addAll(out, qrs);		
+		out.add(qrs);
 	}
 	
 	static {

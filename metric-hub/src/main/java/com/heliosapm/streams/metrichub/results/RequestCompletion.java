@@ -18,11 +18,11 @@ under the License.
  */
 package com.heliosapm.streams.metrichub.results;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.LongStream;
@@ -42,7 +42,7 @@ import io.netty.channel.pool.ChannelPool;
  * <p><code>com.heliosapm.streams.metrichub.results.RequestCompletion</code></p>
  */
 
-public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> {
+public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult[]> {
 	/** Static class log */
 	private static final Logger log = LogManager.getLogger(RequestCompletion.class);
 	/** Completion latch */
@@ -50,14 +50,10 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 	/** A possible throwable thrown in the pipeline */
 	private volatile Throwable t = null;
 	/** The completed results */
-	private final List<QueryResult> results;
-	/** The number of expected results */
-	private int expected = 0;
+	private List<QueryResult> results;
 	
 	private final Set<Thread> waitingThreads = Collections.synchronizedSet(new HashSet<Thread>(1));
 	
-	/** The number of received results */
-	private int received = 0;
 	/** The timeout in ms. */
 	private final long timeoutMs;
 	/** The pool to return a non-errored out channel to */
@@ -69,12 +65,10 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 	 * @param timeoutMs The timeout in ms.
 	 * @param pool the pool to return the channel to
 	 */
-	public RequestCompletion(final int queryCount, final long timeoutMs, final ChannelPool pool) {
-		expected = queryCount;
+	public RequestCompletion(final long timeoutMs, final ChannelPool pool) {
 		this.timeoutMs = timeoutMs;
-		latch = new CountDownLatch(queryCount);
+		latch = new CountDownLatch(1);
 		this.pool = pool;
-		results = new CopyOnWriteArrayList<QueryResult>();
 	}
 	
 	/**
@@ -82,13 +76,11 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 	 * @see io.netty.channel.SimpleChannelInboundHandler#channelRead0(io.netty.channel.ChannelHandlerContext, java.lang.Object)
 	 */
 	@Override
-	protected void channelRead0(final ChannelHandlerContext ctx, final QueryResult msg) throws Exception {
-		received++;
+	protected void channelRead0(final ChannelHandlerContext ctx, final QueryResult[] msgs) throws Exception {
 		latch.countDown();
-		results.add(msg);
-		if(received==expected) {
-			pool.release(ctx.channel());			
-		}
+		results = Collections.synchronizedList(new ArrayList<QueryResult>(msgs.length));
+		Collections.addAll(results, msgs);
+		pool.release(ctx.channel());			
 	}
 	
 	/**
@@ -112,7 +104,8 @@ public class RequestCompletion extends SimpleChannelInboundHandler<QueryResult> 
 		if(t!=null) throw new RuntimeException("Query failure", t);
 		try {
 			waitingThreads.add(Thread.currentThread());
-			if(latch.await(timeoutMs, TimeUnit.MILLISECONDS)) {
+			
+			if(latch.await(timeoutMs>0 ? timeoutMs : Long.MAX_VALUE, TimeUnit.MILLISECONDS)) {
 				waitingThreads.remove(Thread.currentThread());
 				if(t!=null) throw new RuntimeException("Query failure", t);
 				return results;
