@@ -1,0 +1,58 @@
+SELECT
+X.*
+FROM TSD_TSMETA X,
+TSD_METRIC M
+WHERE M.XUID = X.METRIC_UID
+AND (M.NAME = 'linux.cpu.percpu')
+AND 3 = (
+   SELECT COUNT(*)
+   FROM TSD_TSMETA X2,
+   TSD_FQN_TAGPAIR T2
+   WHERE X2.FQNID = T2.FQNID
+   AND X.FQNID = X2.FQNID
+)
+AND EXISTS (
+ SELECT X2.FQNID
+ FROM TSD_TSMETA X2,
+ TSD_FQN_TAGPAIR T2,
+ TSD_TAGPAIR P2,
+ TSD_TAGK K2,
+ TSD_TAGV V2
+ WHERE X2.FQNID = T2.FQNID
+ AND X.FQNID = X2.FQNID
+ AND P2.xuid = T2.xuid
+ AND P2.tagk = K2.xuid
+ AND P2.tagv = V2.xuid
+ AND K2.name = 'cpu'
+ AND V2.name like any (values('0'), ('1'))
+)   
+AND EXISTS (
+ SELECT X2.FQNID
+ FROM TSD_TSMETA X2,
+ TSD_FQN_TAGPAIR T2,
+ TSD_TAGPAIR P2,
+ TSD_TAGK K2,
+ TSD_TAGV V2
+ WHERE X2.FQNID = T2.FQNID
+ AND X.FQNID = X2.FQNID
+ AND P2.xuid = T2.xuid
+ AND P2.tagk = K2.xuid
+ AND P2.tagv = V2.xuid
+ AND K2.name = 'type'
+ AND V2.name = 'system'
+)
+AND EXISTS (
+   SELECT X2.FQNID
+   FROM TSD_TSMETA X2,
+   TSD_FQN_TAGPAIR T2,
+   TSD_TAGPAIR P2,
+   TSD_TAGK K2,
+   TSD_TAGV V2
+   WHERE X2.FQNID = T2.FQNID
+   AND X.FQNID = X2.FQNID
+   AND P2.xuid = T2.xuid
+   AND P2.tagk = K2.xuid
+   AND P2.tagv = V2.xuid
+   AND K2.name = 'host'
+   AND V2.name like 'p%'
+)
