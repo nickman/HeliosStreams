@@ -287,6 +287,22 @@ ALTER TABLE TSD_LASTSYNC_FAILS ADD CONSTRAINT TSD_LASTSYNC_FAILS_PK PRIMARY KEY 
 ALTER TABLE TSD_LASTSYNC_FAILS ADD CONSTRAINT TSD_LASTSYNC_FAILS_FK FOREIGN KEY(TABLE_NAME) REFERENCES TSD_LASTSYNC ( TABLE_NAME );
 
 -- ==============================================================================================
+--   ALL FQNIDs VIEW
+-- ==============================================================================================
+
+CREATE OR REPLACE VIEW V_ALL_FQNID AS (
+   SELECT
+   X.FQNID, K.XUID KXUID, K.NAME KNAME, V.XUID VXUID, V.NAME VNAME
+   FROM TSD_TSMETA X, TSD_FQN_TAGPAIR T, TSD_TAGPAIR P, TSD_TAGK K, TSD_TAGV V
+   WHERE X.FQNID = T.FQNID
+   AND P.XUID = T.XUID
+   AND P.TAGK = K.XUID
+   AND P.TAGV = V.XUID
+);
+
+
+
+-- ==============================================================================================
 --   UPDATE TRIGGERS
 -- ==============================================================================================
 
