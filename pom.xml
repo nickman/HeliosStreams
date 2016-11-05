@@ -25,6 +25,7 @@
 		<module>tsdb-query</module>
 		<module>sql-compiler</module>
 		<module>metric-hub</module>
+		<module>web-rpc</module>
 	</modules>
 	
     <properties>    	 

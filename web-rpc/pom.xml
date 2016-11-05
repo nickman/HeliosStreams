@@ -1,0 +1,211 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+  	<parent>
+	    <groupId>com.heliosapm.streams</groupId>
+	    <artifactId>helios-streams-parent</artifactId>
+    	<version>0.0.1-SNAPSHOT</version>
+  	</parent>
+    
+    <groupId>com.heliosapm.streams</groupId>
+    <artifactId>web-rpc</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>Helios Streams :: WebRPC</name>
+    <description>Helios Streams Web RPC</description>
+    <packaging>jar</packaging>
+    <url>https://github.com/nickman</url>
+	
+    <dependencies>
+      
+      
+		<dependency>
+		    <groupId>junit</groupId>
+		    <artifactId>junit</artifactId>
+		</dependency>
+		
+
+		<!-- ==========================================================
+		    Misc Dependencies
+		    ========================================================== -->
+
+			<dependency>				
+				<groupId>com.heliosapm.utils</groupId>
+				<artifactId>heliosutils</artifactId>
+			</dependency>
+			
+            <dependency>
+                <groupId>io.dropwizard.metrics</groupId>
+                <artifactId>metrics-core</artifactId>
+            </dependency>
+
+			<dependency>
+			  <groupId>io.netty</groupId>
+			  <artifactId>netty-all</artifactId>
+			</dependency>
+
+
+
+		<!-- ==========================================================
+		    Logging Dependencies
+		    ========================================================== -->
+
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-api</artifactId>
+		  </dependency>
+
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-core</artifactId>
+		  </dependency>
+	
+	
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-slf4j-impl</artifactId>
+		  </dependency>
+
+		  <dependency>
+		    <groupId>org.apache.logging.log4j</groupId>
+		    <artifactId>log4j-1.2-api</artifactId>
+		  </dependency>
+			
+
+		  <!-- Runtime class buidling -->
+
+			<dependency>
+			  <groupId>org.javassist</groupId>
+			  <artifactId>javassist</artifactId>
+			</dependency>
+		
+    
+    </dependencies>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${compiler-plugin.version}</version>
+                <configuration>
+                    <source>${compiler-source.version}</source>
+                    <target>${compiler-target.version}</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>${javadoc-plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <show>public</show>
+                    <nohelp>true</nohelp>
+                    <quiet>true</quiet>
+                </configuration>
+            </plugin>
+	    <plugin>
+		    <groupId>org.apache.maven.plugins</groupId>
+		    <artifactId>maven-source-plugin</artifactId>
+		    <version>${source-plugin.version}</version>
+		    <executions>
+			    <execution>
+				    <id>attach-sources</id>
+				    <phase>verify</phase>
+				    <goals>
+					    <goal>jar</goal>
+				    </goals>
+			    </execution>
+		    </executions>
+	    </plugin>
+	    <plugin>
+		<groupId>org.apache.maven.plugins</groupId>
+		<artifactId>maven-jar-plugin</artifactId>
+		<version>${jar-plugin.version}</version>
+		<configuration>
+		  <forceCreation>true</forceCreation>
+		</configuration>
+	    </plugin>
+	    <plugin>
+		<groupId>org.apache.maven.plugins</groupId>
+		<artifactId>maven-eclipse-plugin</artifactId>
+		<version>${eclipse-plugin.version}</version>
+		<configuration>
+		    <downloadJavadocs>${downloadJavadocs}</downloadJavadocs>
+		    <downloadSources>${downloadSources}</downloadSources>
+		    <classpathContainers>
+		    </classpathContainers>
+		</configuration>
+	    </plugin>
+        <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+	     <artifactId>maven-surefire-plugin</artifactId>
+	     <version>${surefire.version}</version>
+	</plugin>
+
+	<plugin>
+	  <groupId>org.apache.maven.plugins</groupId>
+	  <artifactId>maven-shade-plugin</artifactId>
+	  <version>${shade.version}</version>
+        <executions>
+            <execution>
+              <phase>package</phase>
+              <goals>
+                <goal>shade</goal>
+              </goals>
+              <configuration>
+              
+                <artifactSet>
+                  <excludes>
+                  <!-- 
+                  	<exclude>log4j:log4j:jar:</exclude>
+                  	<exclude>org.slf4j:*:jar:</exclude>
+                  	<exclude>org.codehaus.groovy:*:jar:</exclude>
+                  -->
+					  <exclude>META-INF/*.SF</exclude>
+	                  <exclude>META-INF/*.DSA</exclude>
+	                  <exclude>META-INF/*.RSA</exclude>                      	
+                  </excludes>
+                  <includes>
+                    
+                  </includes>
+                </artifactSet>
+              
+          		<addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+          		<addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+          		<includePluginDependencies>false</includePluginDependencies>
+          		
+        		<transformers>
+					<transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+	                  <resource>META-INF/spring.handlers</resource>
+	                </transformer>
+	                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+	                  <resource>META-INF/spring.schemas</resource>
+	                </transformer>        			
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.ComponentsXmlResourceTransformer"/>
+                	<transformer implementation="org.apache.maven.plugins.shade.resource.DontIncludeResourceTransformer">
+                		<resource>.SF</resource>
+                		<resource>.DSA</resource>
+                		<resource>.RSA</resource>
+            		</transformer>
+                </transformers>
+              </configuration>
+            </execution>
+          </executions>	  
+	</plugin>
+	    
+   </plugins>
+ </build>
+    
+    
+</project>
