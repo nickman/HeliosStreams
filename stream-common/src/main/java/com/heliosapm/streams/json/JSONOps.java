@@ -595,6 +595,11 @@ public class JSONOps {
 		}
 	}
 	
+	/**
+	 * Serializes the passed object to the passed output stream
+	 * @param object The object to serialize
+	 * @param os The output stream to write to
+	 */
 	public static void serialize(final Object object, final OutputStream os) {
 		if (object == null) throw new IllegalArgumentException("Object was null");
 		if (os == null) throw new IllegalArgumentException("OutputStream was null");
@@ -605,6 +610,38 @@ public class JSONOps {
 			throw new JSONException(ex);
 		}
 	}
+	
+	/**
+	 * Serializes the passed object to the passed byte buffer or a new one if the passed one is null
+	 * @param object The object to serialize
+	 * @param buff The buffer to write to, or null to create a new one
+	 * @return the written buffer
+	 */
+	public static ByteBuf serialize(final Object object, final ByteBuf buff) {
+		if (object == null) throw new IllegalArgumentException("Object was null");
+		final ByteBuf _buff = buff==null ? byteBufAllocator.buffer() : buff;
+		final OutputStream os = new ByteBufOutputStream(_buff);
+		try {
+			serialize(object, os);
+			os.flush();
+			os.close();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to write object to buffer", ex);
+		} finally {
+			try { os.close(); } catch (Exception x) {/* No Op */}
+		}
+		return _buff;
+	}
+	
+	/**
+	 * Serializes the passed object to a new byte buffer
+	 * @param object The object to serialize
+	 * @return the written buffer
+	 */
+	public static ByteBuf serialize(final Object object) {
+		return serialize(object, (ByteBuf)null);
+	}
+
 	
 	/**
 	 * Serializes the passed object to an off-heap buffer and returns an InputStream to read it back

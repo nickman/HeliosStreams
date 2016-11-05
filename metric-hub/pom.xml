@@ -30,6 +30,13 @@
 			<version>1.0-SNAPSHOT</version>
 			<scope>test</scope>
 		</dependency>
+			
+			<dependency>
+			    <groupId>com.heliosapm.streams</groupId>
+			    <artifactId>web-rpc</artifactId>
+				<version>${project.version}</version>			
+			</dependency>
+		
 		
 			<dependency>
 			  <groupId>com.fasterxml.jackson.core</groupId>

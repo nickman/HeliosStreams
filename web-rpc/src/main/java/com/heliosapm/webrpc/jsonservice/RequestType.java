@@ -16,14 +16,15 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package com.heliosapm.webrpc.wwebsocket;
+package com.heliosapm.webrpc.jsonservice;
 
 /**
  * <p>Title: RequestType</p>
- * <p>Description: Places requests into specific categories and decodes the smallish json codes to the actual</p> 
+ * <p>Description: Defines the incoming request type. Intended to provide the client with the meta-data
+ * so it can setup pending request handling correctly.</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.webrpc.wwebsocket.RequestType</code></p>
+ * <p><code>org.helios.tsdb.plugins.remoting.json.RequestType</code></p>
  */
 
 public enum RequestType {
@@ -42,5 +43,4 @@ public enum RequestType {
 	
 	/** The request type code */
 	public final String code;
-
 }

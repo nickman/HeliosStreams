@@ -44,6 +44,11 @@
 			  <artifactId>netty-all</artifactId>
 			</dependency>
 
+			<dependency>
+			    <groupId>com.heliosapm.streams</groupId>
+			    <artifactId>stream-common</artifactId>
+			    <version>${project.version}</version>
+			</dependency>
 
 
 		<!-- ==========================================================
@@ -70,6 +75,29 @@
 		    <groupId>org.apache.logging.log4j</groupId>
 		    <artifactId>log4j-1.2-api</artifactId>
 		  </dependency>
+		  
+		    <!--
+		      ========================================
+		      Reactor Artifacts
+		      ========================================
+		      -->
+
+			<dependency>
+			  <groupId>org.projectreactor</groupId>
+			  <artifactId>reactor-core</artifactId>
+			</dependency>
+		  
+
+		<!-- ==========================================================
+		    OpenTSDB Dependencies
+		    ========================================================== -->
+
+		<dependency>
+		    <groupId>net.opentsdb</groupId>
+		    <artifactId>opentsdb</artifactId>
+		    <scope>provided</scope>
+		</dependency>
+
 			
 
 		  <!-- Runtime class buidling -->

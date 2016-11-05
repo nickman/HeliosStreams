@@ -16,40 +16,34 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package com.heliosapm.webrpc.wwebsocket.annotations;
+package com.heliosapm.webrpc.websocket.annotations;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
+import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
-import com.heliosapm.webrpc.wwebsocket.RequestType;
-
 /**
- * <p>Title: JSONRequestHandler</p>
- * <p>Description: Marks a method as a json web-rpc endpoint</p> 
- * <p>Annotated methods must implement the signature defined in {@literal JSONDataService#processRequest(org.json.JSONObject, org.jboss.netty.channel.Channel)}.</p>
+ * <p>Title: JSONRequestService</p>
+ * <p>Description: Marks a class</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.webrpc.wwebsocket.annotations.JSONRequestHandler</code></p>
+ * <p><code>com.heliosapm.webrpc.wwebsocket.annotations.JSONRequestService</code></p>
  */
-@Target({ElementType.METHOD})
+@Target({ElementType.TYPE, ElementType.PACKAGE})
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
-public @interface JSONRequestHandler {
+@Inherited
+public @interface JSONRequestService {
 	/**
-	 * The name of the request handler which maps to the <b><code>op name</code></b> of a {@link JSONRequest}
+	 * The name of the request service which maps to the <b><code>service name</code></b> of a {@link JSONRequest}
 	 */
 	public String name();
 	/**
-	 * A description of the operation
+	 * A description of the request service
 	 */
-	public String description() default "A JSON Request Operation";	
-
-	/**
-	 * The request type
-	 */
-	public RequestType type() default RequestType.REQUEST;
+	public String description() default "A JSON Request Service";
 
 }
