@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.heliosapm.streams.json.JSONOps;
+import com.heliosapm.webrpc.json.JSONOps;
 import com.heliosapm.webrpc.jsonservice.JSONRequest;
 import com.heliosapm.webrpc.jsonservice.JSONRequestRouter;
 import com.heliosapm.webrpc.jsonservice.JSONResponse;

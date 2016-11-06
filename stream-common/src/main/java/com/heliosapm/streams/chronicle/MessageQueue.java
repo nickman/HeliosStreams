@@ -45,7 +45,7 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.buffers.ByteBufMarshallable;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;

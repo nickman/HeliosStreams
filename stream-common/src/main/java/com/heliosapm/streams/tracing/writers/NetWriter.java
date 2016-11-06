@@ -35,7 +35,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.tracing.AbstractMetricWriter;
 import com.heliosapm.utils.config.ConfigurationHelper;

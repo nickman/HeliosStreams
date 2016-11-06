@@ -32,7 +32,7 @@ import java.util.Set;
 import org.junit.Assert;
 import org.junit.Test;
 
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.jmx.JMXHelper;
 

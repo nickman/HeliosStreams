@@ -29,7 +29,7 @@ import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.state.KeyValueStore;
 
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.utils.enums.TimeUnitSymbol;

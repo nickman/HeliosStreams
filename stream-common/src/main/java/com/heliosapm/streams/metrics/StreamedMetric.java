@@ -38,7 +38,7 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.GZIPInputStream;
 
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.tracing.TagKeySorter;
 import com.heliosapm.utils.reflect.PrivateAccessor;
 

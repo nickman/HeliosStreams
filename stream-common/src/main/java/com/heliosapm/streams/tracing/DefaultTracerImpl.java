@@ -37,7 +37,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.codahale.metrics.Meter;
 import com.google.common.base.Predicate;
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
 import com.heliosapm.streams.metrics.StreamedMetricValue;

@@ -4,7 +4,6 @@
   <comment>Helios Streams Web RPC. NO_M2ECLIPSE_SUPPORT: Project files created with the maven-eclipse-plugin are not supported in M2Eclipse.</comment>
   <projects>
     <project>heliosutils</project>
-    <project>stream-common</project>
   </projects>
   <buildSpec>
     <buildCommand>

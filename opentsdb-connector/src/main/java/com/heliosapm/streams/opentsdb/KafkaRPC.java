@@ -47,7 +47,7 @@ import com.codahale.metrics.Meter;
 import com.codahale.metrics.Snapshot;
 import com.codahale.metrics.Timer;
 import com.codahale.metrics.Timer.Context;
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.buffers.ByteBufSerde.ByteBufDeserializer;
 import com.heliosapm.streams.chronicle.MessageListener;
 import com.heliosapm.streams.chronicle.MessageQueue;

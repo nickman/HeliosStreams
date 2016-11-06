@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Metric API POC</title>
+	</head>
+	<meta charset="utf-8">
+	<link href="index.css" type="text/css" rel="stylesheet" />
+	<link href="jqueryui/css/pepper-grinder/jquery-ui-1.10.3.custom.min.css" type="text/css" rel="stylesheet" />
+	
+	<script src="prototypes.js" type="text/javascript" ></script>
+	<script src="jquery-2.1.1.min.js" type="text/javascript" ></script>
+  <script src="jsonpath.js" type="text/javascript" ></script>
+  <script src="clone.js" type="text/javascript" ></script>
+	<script src="bacon.js" type="text/javascript" ></script>
+  <script src="bacontest.js" type="text/javascript" ></script>
+  <script src="websockapi.js" type="text/javascript" ></script>
+  <script src="js-reactor.js" type="text/javascript" ></script>
+	<script src="d3.js" type="text/javascript" ></script>
+  <script src="querycontext.js" type="text/javascript" ></script>
+  <script src="metatree.js" type="text/javascript" ></script>
+	<script src="metricapi.js" type="text/javascript" ></script>
+	<script src="jquery-svgpan.js" type="text/javascript" ></script>
+  <script src="jqueryui/js/jquery-ui-1.10.3.custom.min.js" type="text/javascript" ></script>
+  
+    
+  
+	
+	
+	<!-- 
+	<script src="jquery.json2html.js" type="text/javascript" ></script>	
+	<script src="json2html.js" type="text/javascript" ></script>
+	<script src="index.js" type="text/javascript" ></script>
+	-->
+	
+		
+	<body>
+		<script src="index.js" type="text/javascript" ></script>		
+	<div id="leftbar">
+    <br>
+		<form id="inputQCForm">
+			<fieldset>
+				<legend>Input Query Context:</legend>
+				Page Size:<input type="number" id="qinPageSize" size="5" value="100"><br>
+				Max Size:<input type="number" id="qinMaxSize" size="5" value="2000"><br>
+				Timeout (ms):<input type="number" id="qinTimeout" size="5" value="1000"><br>
+				Continuous:<input type="checkbox" id="qinContinuous"><br>
+				Format:<select id="qinFormat">  
+					<option value="FULL">Full</option>
+					<option value="DEFAULT" selected="selected">Default</option>
+					<option value="NAME">Names Only</option>
+					<option value="D3">D3.js (TSMetas)</option>
+				</select><br>
+        Clear Initial Query Context: <input type="checkbox" name="clearqc" id="clearqc" checked="checked">
+			</fieldset>
+		</form>
+
+    <form id="goAction">
+      <fieldset>
+          <legend>Output:</legend>
+          <input type="radio" name="goaction" value="json" checked="checked">JSON
+          <input type="radio" name="goaction" value="fulltree">Full Tree
+          <input type="radio" name="goaction" value="incrtree">Incr. Tree
+        </fieldset> 
+    </form>
+
+    <form id="metricExpressionTest">
+      <fieldset>
+          <legend>Metric Expression:</legend>
+          <input class="runAction" id="exprfield" type="text" value="sys*:dc=dc*,host=WebServer1|WebServer5" size="40"><br>          
+          <button class="runAction">Run</button>
+        </fieldset> 
+    </form>
+		
+    <form id="findUIDTest">
+      <fieldset>
+          <legend>Find UID:</legend>
+          UID Name: <input id="uidwc" class="runAction" type="text" value=""><br>
+          Type:<select id="uidType">  
+          <option value="METRIC" selected="selected">Metric</option>
+          <option value="TAGK">Tag Key</option>
+          <option value="TAGV">Tag Value</option>
+        </select>
+         <button class="runAction">Run</button>
+        </fieldset> 
+    </form>
+		
+    <form id="findTagKeysTest">
+      <fieldset>
+          <legend>Find Tag Keys:</legend>
+          Metric: <input class="runAction" id="tkMetric" type="text" value=""><br>
+          Tag Keys: <input class="runAction"  id="tkTagsKeys" type="text" value="">
+         <button class="runAction">Run</button>
+        </fieldset> 
+    </form>
+		
+    <form id="findTagValuesTest">
+      <fieldset>
+          <legend>Find Tag Values:</legend>
+          Metric: <input class="runAction" id="tvMetric" type="text" value=""><br>
+          Tag Pairs: <input class="runAction" id="tvTagsPairs" type="text" value="{}"><br>
+          Tag Key: <input class="runAction" id="tvTagKey" type="text" value="">
+         <button class="runAction">Run</button>
+        </fieldset> 
+    </form>
+
+    <form id="findMetricNamesTest">
+      <fieldset>
+          <legend>Find Metric Names:</legend>          
+          Keys/Pairs:<input class="runAction" id="fmTags" type="text" value="">Tags:<input id="fmByTags" type="checkbox">
+          <br>
+         <button class="runAction">Run</button>
+        </fieldset> 
+    </form>
+		
+	</div>
+	<div id="main">
+		<div id="content">
+			<form id="outputDataForm">
+				<fieldset>
+					<legend>Output Data:</legend>
+					<div id="jsonOutput"></div>
+				</fieldset>
+			</form>
+			
+			<form id="outputQCForm">
+				<fieldset>
+					<legend>Output Query Context:</legend>
+					Count:<input type="text" id="qoutCummulative" disabled="disabled" size="7">
+					Elapsed (ms):<input type="text" id="qoutElapsed" disabled="disabled"size="7">          
+          RTrip (ms):<input type="text" id="qoutRTElapsed" disabled="disabled"size="7">
+					Next Index:<input type="text" id="qoutNextIndex" disabled="disabled" size="70">					
+					Exhausted:<input type="text" id="qoutExhausted" disabled="disabled" size="5">
+					Expired:<input type="text" id="qoutExpired" disabled="disabled" size="5">
+
+				</fieldset>
+			</form>
+			
+		</div>
+	</div>
+	</body>
+</html>
+
+<!-- 
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.node {
+  cursor: pointer;
+}
+
+.node circle {
+  fill: #fff;
+  stroke: steelblue;
+  stroke-width: 1.5px;
+}
+
+.node text {
+  font: 10px sans-serif;
+}
+
+.link {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.5px;
+}
+
+</style>
+<body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script>
+
+var margin = {top: 20, right: 120, bottom: 20, left: 120},
+    width = 960 - margin.right - margin.left,
+    height = 800 - margin.top - margin.bottom;
+    
+var i = 0,
+    duration = 750,
+    root;
+
+var tree = d3.layout.tree()
+    .size([height, width]);
+
+var diagonal = d3.svg.diagonal()
+    .projection(function(d) { return [d.y, d.x]; });
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.right + margin.left)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+d3.json("/d/4063550/flare.json", function(error, flare) {
+  root = flare;
+  root.x0 = height / 2;
+  root.y0 = 0;
+
+  function collapse(d) {
+    if (d.children) {
+      d._children = d.children;
+      d._children.forEach(collapse);
+      d.children = null;
+    }
+  }
+
+  root.children.forEach(collapse);
+  update(root);
+});
+
+d3.select(self.frameElement).style("height", "800px");
+
+function update(source) {
+
+  // Compute the new tree layout.
+  var nodes = tree.nodes(root).reverse(),
+      links = tree.links(nodes);
+
+  // Normalize for fixed-depth.
+  nodes.forEach(function(d) { d.y = d.depth * 180; });
+
+  // Update the nodes…
+  var node = svg.selectAll("g.node")
+      .data(nodes, function(d) { return d.id || (d.id = ++i); });
+
+  // Enter any new nodes at the parent's previous position.
+  var nodeEnter = node.enter().append("g")
+      .attr("class", "node")
+      .attr("transform", function(d) { return "translate(" + source.y0 + "," + source.x0 + ")"; })
+      .on("click", click);
+
+  nodeEnter.append("circle")
+      .attr("r", 1e-6)
+      .style("fill", function(d) { return d._children ? "lightsteelblue" : "#fff"; });
+
+  nodeEnter.append("text")
+      .attr("x", function(d) { return d.children || d._children ? -10 : 10; })
+      .attr("dy", ".35em")
+      .attr("text-anchor", function(d) { return d.children || d._children ? "end" : "start"; })
+      .text(function(d) { return d.name; })
+      .style("fill-opacity", 1e-6);
+
+  // Transition nodes to their new position.
+  var nodeUpdate = node.transition()
+      .duration(duration)
+      .attr("transform", function(d) { return "translate(" + d.y + "," + d.x + ")"; });
+
+  nodeUpdate.select("circle")
+      .attr("r", 4.5)
+      .style("fill", function(d) { return d._children ? "lightsteelblue" : "#fff"; });
+
+  nodeUpdate.select("text")
+      .style("fill-opacity", 1);
+
+  // Transition exiting nodes to the parent's new position.
+  var nodeExit = node.exit().transition()
+      .duration(duration)
+      .attr("transform", function(d) { return "translate(" + source.y + "," + source.x + ")"; })
+      .remove();
+
+  nodeExit.select("circle")
+      .attr("r", 1e-6);
+
+  nodeExit.select("text")
+      .style("fill-opacity", 1e-6);
+
+  // Update the links…
+  var link = svg.selectAll("path.link")
+      .data(links, function(d) { return d.target.id; });
+
+  // Enter any new links at the parent's previous position.
+  link.enter().insert("path", "g")
+      .attr("class", "link")
+      .attr("d", function(d) {
+        var o = {x: source.x0, y: source.y0};
+        return diagonal({source: o, target: o});
+      });
+
+  // Transition links to their new position.
+  link.transition()
+      .duration(duration)
+      .attr("d", diagonal);
+
+  // Transition exiting nodes to the parent's new position.
+  link.exit().transition()
+      .duration(duration)
+      .attr("d", function(d) {
+        var o = {x: source.x, y: source.y};
+        return diagonal({source: o, target: o});
+      })
+      .remove();
+
+  // Stash the old positions for transition.
+  nodes.forEach(function(d) {
+    d.x0 = d.x;
+    d.y0 = d.y;
+  });
+}
+
+// Toggle children on click.
+function click(d) {
+  if (d.children) {
+    d._children = d.children;
+    d.children = null;
+  } else {
+    d.children = d._children;
+    d._children = null;
+  }
+  update(d);
+}
+
+</script>
+ -->

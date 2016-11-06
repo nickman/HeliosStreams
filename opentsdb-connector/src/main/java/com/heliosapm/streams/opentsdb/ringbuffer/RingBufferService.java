@@ -25,7 +25,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.codahale.metrics.Counter;
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.buffers.ByteBufSerde;
 import com.heliosapm.streams.common.kafka.producer.KafkaProducerService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;

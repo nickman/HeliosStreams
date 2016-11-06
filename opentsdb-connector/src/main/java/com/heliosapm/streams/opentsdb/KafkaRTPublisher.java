@@ -33,7 +33,7 @@ import org.slf4j.LoggerFactory;
 import com.codahale.metrics.Counter;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.Timer;
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.chronicle.MessageListener;
 import com.heliosapm.streams.chronicle.MessageQueue;
 import com.heliosapm.streams.common.kafka.producer.KafkaProducerService;

@@ -39,8 +39,9 @@ import org.apache.logging.log4j.Logger;
 import org.codehaus.groovy.control.Janitor;
 import org.codehaus.groovy.control.io.ReaderSource;
 
-import com.heliosapm.streams.buffers.BufferManager;
+
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.utils.collections.Props;
 import com.heliosapm.utils.enums.Primitive;
 import com.heliosapm.utils.lang.StringHelper;

@@ -35,7 +35,7 @@ import org.junit.Test;
 
 import com.google.common.collect.ImmutableMap;
 import com.heliosapm.aop.retransformer.Retransformer;
-import com.heliosapm.streams.buffers.BufferManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.opentsdb.mocks.TSDBTestTemplate;
 import com.heliosapm.utils.jmx.JMXHelper;

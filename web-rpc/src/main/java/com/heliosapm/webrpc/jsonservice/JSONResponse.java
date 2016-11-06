@@ -28,8 +28,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonStreamContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.heliosapm.streams.buffers.BufferManager;
-import com.heliosapm.streams.json.JSONOps;
+import com.heliosapm.utils.buffer.BufferManager;
+import com.heliosapm.webrpc.json.JSONOps;
 import com.heliosapm.webrpc.serialization.ChannelBufferizable;
 
 import io.netty.buffer.ByteBuf;
