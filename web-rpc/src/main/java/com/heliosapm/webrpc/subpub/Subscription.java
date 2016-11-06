@@ -20,7 +20,6 @@ package com.heliosapm.webrpc.subpub;
 
 import java.nio.charset.Charset;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -31,12 +30,21 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import javax.management.ObjectName;
 
-import net.opentsdb.meta.TSMeta;
-import net.opentsdb.uid.UniqueId;
-
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 import org.hbase.async.jsr166e.LongAdder;
 
+import com.google.common.hash.BloomFilter;
+import com.google.common.hash.Funnel;
+import com.google.common.hash.Funnels;
+import com.google.common.hash.PrimitiveSink;
+import com.heliosapm.utils.jmx.JMXHelper;
+import com.heliosapm.webrpc.SingletonEnvironment;
+import com.heliosapm.webrpc.serialization.Datapoint;
+
+import net.opentsdb.meta.TSMeta;
+import net.opentsdb.uid.UniqueId;
 import reactor.core.Reactor;
 import reactor.core.composable.Deferred;
 import reactor.core.composable.Promise;
@@ -52,15 +60,6 @@ import reactor.function.Consumer;
 import reactor.function.Function;
 import reactor.timer.TimeUtils;
 import reactor.tuple.Tuple2;
-
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-
-import com.google.common.hash.BloomFilter;
-import com.google.common.hash.Funnel;
-import com.google.common.hash.Funnels;
-import com.google.common.hash.PrimitiveSink;
 
 
 /**
@@ -104,15 +103,11 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 	/** A serial number sequence for Subscription instances */
 	private static final AtomicLong serial = new AtomicLong();
 	
-	/** A EWMA for measuring the elapsed time of isMemberOf */
-	protected final ConcurrentDirectEWMA ewma = new ConcurrentDirectEWMA(1024);
 	/** The reactor  */
 	protected final Reactor reactor;
 	
 	/** The reactor async dispatcher */
 	protected final Dispatcher dispatcher;
-	/** The metrics meta access service */
-	protected final MetricsMetaAPI metricsMeta;
 	
 	/** Registration for TSDBEvent stream */
 	protected final Registration<Consumer<Event<TSDBEvent>>>  registration;
@@ -155,7 +150,7 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 	 * @param expectedInsertions The number of expected insertions
 	 * @param types The TSDBEvent types to subscribe to
 	 */
-	public Subscription(final Reactor reactor, final MetricsMetaAPI metricsMeta, final CharSequence pattern, final int expectedInsertions, final TSDBEventType...types) {
+	public Subscription(final Reactor reactor, final CharSequence pattern, final int expectedInsertions, final TSDBEventType...types) {
 		filter = BloomFilter.create(SubFunnel.INSTANCE, expectedInsertions, DEFAULT_PROB);
 		this.pattern = pattern.toString().trim();
 		selector = new TSMetaPatternSelector(this.pattern.toString());
@@ -164,7 +159,7 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 		accumulation = new ConcurrentHashMap<String, Datapoint>(this.expectedInsertions);
 		this.reactor = reactor;
 		this.dispatcher = reactor.getDispatcher();
-		this.metricsMeta = metricsMeta;
+		
 		this.patternObjectName = JMXHelper.objectName(pattern);
 		subscriptionId = serial.incrementAndGet();				
 		flushDef = Streams.defer(SingletonEnvironment.getInstance().getEnv());
@@ -313,13 +308,12 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 	/**
 	 * Creates a new Subscription
 	 * @param reactor The reactor for event listening and async dispatch
-	 * @param metricsMeta The metrics meta access service
 	 * @param pattern The subscription pattern
 	 * @param expectedInsertions The number of expected insertions
 	 * @param types The TSDBEvent types to subscribe to
 	 */
-	public Subscription(final Reactor reactor, final MetricsMetaAPI metricsMeta, final ObjectName pattern, final int expectedInsertions, final TSDBEventType...types) {
-		this(reactor, metricsMeta, pattern.toString(), expectedInsertions);
+	public Subscription(final Reactor reactor, final ObjectName pattern, final int expectedInsertions, final TSDBEventType...types) {
+		this(reactor, pattern.toString(), expectedInsertions);
 	}
 	
 	
@@ -371,23 +365,21 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 	/**
 	 * Creates a new Subscription with the default expected insertions
 	 * @param reactor The reactor for event listening and async dispatch
-	 * @param metricsMeta The metrics meta access service
 	 * @param pattern The subscription pattern
 	 * @param types The TSDBEvent types to subscribe to
 	 */
-	public Subscription(final Reactor reactor, final MetricsMetaAPI metricsMeta, ObjectName pattern, final TSDBEventType...types) {
-		this(reactor, metricsMeta, pattern, DEFAULT_INSERTIONS);
+	public Subscription(final Reactor reactor, ObjectName pattern, final TSDBEventType...types) {
+		this(reactor, pattern, DEFAULT_INSERTIONS);
 	}
 	
 	/**
 	 * Creates a new Subscription with the default expected insertions
 	 * @param reactor The reactor for event listening and async dispatch
-	 * @param metricsMeta The metrics meta access service
 	 * @param pattern The subscription pattern
 	 * @param types The TSDBEvent types to subscribe to
 	 */
-	public Subscription(final Reactor reactor, final MetricsMetaAPI metricsMeta, CharSequence pattern, final TSDBEventType...types) {
-		this(reactor, metricsMeta, pattern, DEFAULT_INSERTIONS);
+	public Subscription(final Reactor reactor, CharSequence pattern, final TSDBEventType...types) {
+		this(reactor, pattern, DEFAULT_INSERTIONS);
 	}
 	
 	
@@ -411,26 +403,26 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 					try {
 						if(metric!=null && tags!=null) {
 //							final String fqn = SubscriptionManager.buildObjectName(metric, tags).toString();							
-							metricsMeta.match(pattern, bytes).consume(new Consumer<Boolean>() {
-								@Override
-								public void accept(final Boolean t) {
-									final boolean b = t==null ? false : t;
-									def.accept(b);
-									if(b) {
-										index(bytes);
-										totalMatched.increment();
-									} else {
-										mightDropped.increment();
-									}
-									ewma.append(System.nanoTime() - start);
-								}
-							}).when(Throwable.class, new Consumer<Throwable>() {
-								@Override
-								public void accept(final Throwable t) {
-									def.accept(t);
-									ewma.append(System.nanoTime() - start);
-								}
-							});
+//							metricsMeta.match(pattern, bytes).consume(new Consumer<Boolean>() {
+//								@Override
+//								public void accept(final Boolean t) {
+//									final boolean b = t==null ? false : t;
+//									def.accept(b);
+//									if(b) {
+//										index(bytes);
+//										totalMatched.increment();
+//									} else {
+//										mightDropped.increment();
+//									}
+//									
+//								}
+//							}).when(Throwable.class, new Consumer<Throwable>() {
+//								@Override
+//								public void accept(final Throwable t) {
+//									def.accept(t);
+//									
+//								}
+//							});
 						} else {
 							def.accept(false);
 						}						
@@ -439,7 +431,7 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 					}					
 				} else {
 					def.accept(false);
-					ewma.append(System.nanoTime() - start);
+					
 				}
 			}
 		});
@@ -586,23 +578,6 @@ public class Subscription implements SubscriptionMBean, Consumer<Map<String,Data
 		return toString();
 	}
 	
-	/**
-	 * {@inheritDoc}
-	 * @see org.helios.tsdb.plugins.remoting.subpub.SubscriptionMBean#getMeanMatch()
-	 */
-	@Override
-	public double getMeanMatch() {
-		return ewma.getMean();
-	}
-	
-	/**
-	 * {@inheritDoc}
-	 * @see org.helios.tsdb.plugins.remoting.subpub.SubscriptionMBean#getAverageMatch()
-	 */
-	@Override
-	public double getAverageMatch() {
-		return ewma.getAverage();
-	}
 	
 
 	/**

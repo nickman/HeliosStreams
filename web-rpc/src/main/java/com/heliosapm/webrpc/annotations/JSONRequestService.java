@@ -16,7 +16,7 @@ KIND, either express or implied.  See the License for the
 specific language governing permissions and limitations
 under the License.
  */
-package com.heliosapm.webrpc.websocket.annotations;
+package com.heliosapm.webrpc.annotations;
 
 import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
@@ -30,7 +30,7 @@ import java.lang.annotation.Target;
  * <p>Description: Marks a class</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.webrpc.wwebsocket.annotations.JSONRequestService</code></p>
+ * <p><code>com.heliosapm.webrpc.annotations.JSONRequestService</code></p>
  */
 @Target({ElementType.TYPE, ElementType.PACKAGE})
 @Retention(RetentionPolicy.RUNTIME)

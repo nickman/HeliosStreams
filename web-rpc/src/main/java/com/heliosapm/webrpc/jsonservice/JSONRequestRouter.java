@@ -26,8 +26,9 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestHandler;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestService;
+import com.heliosapm.webrpc.annotations.JSONRequestHandler;
+import com.heliosapm.webrpc.annotations.JSONRequestService;
+import com.heliosapm.webrpc.jsonservice.services.SystemJSONServices;
 
 
 /**
@@ -72,7 +73,7 @@ public class JSONRequestRouter {
 	private JSONRequestRouter() {
 		registerJSONService(this);
 		//FIXME
-//		registerJSONService(new SystemJSONServices());
+		registerJSONService(new SystemJSONServices());
 //		registerJSONService(new TSDBJSONService());
 	}
 	

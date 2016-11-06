@@ -31,8 +31,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.utils.lang.StringHelper;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import net.opentsdb.utils.JSON;
 
@@ -103,10 +105,33 @@ public class JSONRequest {
 	/**
 	 * Creates a new JSONRequest
 	 * @param channel The channel the request came in on
+	 * @param jsonContent The buffer containing the json content to build the request from
+	 * @return a new JSONRequest
+	 */
+	public static JSONRequest newJSONRequest(final Channel channel, final ByteBuf jsonContent) {
+		if(jsonContent==null || jsonContent.readableBytes() < 2) throw new IllegalArgumentException("The passed json content was null or empty");
+		try {
+			final JsonNode jsonNode = JSONOps.parseToNode(jsonContent);
+			return new JSONRequest(channel, 
+					jsonNode.get("t").asText(),
+					jsonNode.get("rid").asLong(-1L),
+					-1L,
+					jsonNode.get("svc").asText(),
+					jsonNode.get("op").asText(),
+					jsonNode);
+		} catch (Exception e) {
+			throw new RuntimeException("Failed to parse JsonNode from passed buffer [" + jsonContent + "]", e);
+		}		
+		
+	}
+	
+	/**
+	 * Creates a new JSONRequest
+	 * @param channel The channel the request came in on
 	 * @param jsonContent The json content to build the request from
 	 * @return a new JSONRequest
 	 */
-	public static JSONRequest newJSONRequest(Channel channel, CharSequence jsonContent) {
+	public static JSONRequest newJSONRequest(final Channel channel, final CharSequence jsonContent) {
 		if(jsonContent==null || jsonContent.toString().trim().isEmpty()) throw new IllegalArgumentException("The passed json content was null or empty");
 		try {
 			JsonNode jsonNode = jsonMapper.readTree(jsonContent.toString().trim());

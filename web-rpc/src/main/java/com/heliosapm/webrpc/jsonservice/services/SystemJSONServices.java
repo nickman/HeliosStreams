@@ -34,12 +34,12 @@ import org.apache.logging.log4j.Logger;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.heliosapm.webrpc.annotations.JSONRequestHandler;
+import com.heliosapm.webrpc.annotations.JSONRequestService;
 import com.heliosapm.webrpc.jsonservice.JSONRequest;
 import com.heliosapm.webrpc.jsonservice.JSONResponse;
 import com.heliosapm.webrpc.jsonservice.RequestType;
 import com.heliosapm.webrpc.jsonservice.ResponseType;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestHandler;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestService;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;

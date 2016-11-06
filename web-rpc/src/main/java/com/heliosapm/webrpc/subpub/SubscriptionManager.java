@@ -35,14 +35,14 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
 import com.heliosapm.webrpc.SingletonEnvironment;
+import com.heliosapm.webrpc.annotations.JSONRequestHandler;
+import com.heliosapm.webrpc.annotations.JSONRequestService;
 import com.heliosapm.webrpc.jsonservice.JSONRequest;
 import com.heliosapm.webrpc.jsonservice.JSONRequestHandlerInvokerFactory;
 import com.heliosapm.webrpc.jsonservice.JSONRequestRouter;
 import com.heliosapm.webrpc.jsonservice.JSONSubscriber;
 import com.heliosapm.webrpc.jsonservice.RequestType;
 import com.heliosapm.webrpc.serialization.Datapoint;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestHandler;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestService;
 
 import net.opentsdb.core.TSDB;
 import net.opentsdb.meta.TSMeta;
@@ -147,7 +147,7 @@ public class SubscriptionManager implements SubscriptionManagerMXBean, Subscribe
 				subSet.add(t);
 				t.addSubscriber(finalSub);
 				// FIXME:  Client side.
-				request.subConfirm("" + t.getSubscriptionId()).setContent(Collections.singletonMap("q", new QueryContext())).send();
+				request.subConfirm("" + t.getSubscriptionId()).setContent("ok").send();
 			}
 		}).onError(new Consumer<Throwable>(){
 			@Override
@@ -187,67 +187,66 @@ public class SubscriptionManager implements SubscriptionManagerMXBean, Subscribe
 	protected Promise<Subscription> subscribe(final CharSequence pattern) {		
 		log.info("Initiating Subscription for pattern [{}]", pattern);
 		if(pattern==null) throw new IllegalArgumentException("The passed pattern was null");
-		if(metricSvc==null) throw new IllegalStateException("The SubscriptionManager has not been initialized", new Throwable());
 		final String _pattern = pattern.toString().trim();
 		if(_pattern.isEmpty()) throw new IllegalArgumentException("The passed pattern was empty");
 		final reactor.core.composable.Deferred<Subscription, Promise<Subscription>> def = getDeferred();
 		final reactor.core.composable.Deferred<Long, Promise<Long>> defCount = getDeferred();
 		final Promise<Subscription> promise = def.compose();
-		reactor.getDispatcher().execute(new Runnable() {			
-			public void run() {
-				Subscription subx = allSubscriptions.get(_pattern);
-				if(subx==null) {
-					synchronized(allSubscriptions) {
-						subx = allSubscriptions.get(_pattern);						
-						if(subx==null) {							
-							try {
-								final QueryContext q = new QueryContext().setContinuous(true).setMaxSize(10240);
-								final long startTime = System.currentTimeMillis();								
-								final Set<byte[]> matchingTsuids = new HashSet<byte[]>(128);
-								log.info("Executing search for TSMetas with pattern [{}]", pattern);
-								metricSvc.evaluate(q, pattern.toString()).consume(new Consumer<List<TSMeta>>() {
-									final AtomicBoolean done = new AtomicBoolean(false);
-									@Override
-									public void accept(List<TSMeta> t) {
-										int cnt = 0;
-										for(TSMeta tsm: t) {
-											if(matchingTsuids.add(UniqueId.stringToUid(tsm.getTSUID()))) {
-												cnt++;
-											}											
-										}
-										log.info("Accepted [{}] TSMeta TSUIDs", cnt);
-										t.clear();
-										if(!q.shouldContinue() && done.compareAndSet(false, true)) {
-											final long elapsedTime = System.currentTimeMillis()-startTime;
-											log.info("Retrieved [{}] TSMetas in [{}] ms. to prime subscription [{}]", matchingTsuids.size(), elapsedTime, pattern);
-											final int bloomFactor = Math.round(DEFAULT_BLOOM_FILTER_SPACE_FACTOR * matchingTsuids.size());
-											final Subscription subx1 = new Subscription(reactor, metricSvc, _pattern, bloomFactor, TSDBEventType.DPOINT_DOUBLE, TSDBEventType.DPOINT_LONG);
-											int indexCnt = 0;
-											for(final Iterator<byte[]> biter = matchingTsuids.iterator(); biter.hasNext();) {
-												subx1._internalIndex(biter.next());
-												indexCnt++;
-												biter.remove();
-											}
-											log.info("Created and initialized [{}] items in Subscription BloomFilter for [{}]", indexCnt, pattern);
-											allSubscriptions.put(pattern.toString(), subx1);
-											def.accept(subx1);
-										}
-									}
-								});
-							} catch (Exception ex) {
-								def.accept(new Exception("Timed out on populating subscription for expression [" + pattern + "]"));
-							}
-						}  else {// subx not null
-							def.accept(subx);
-							return;							
-						}
-					} // synchr
-				} else {// subx not null
-					def.accept(subx);
-					return;					
-				}
-			} // end of run
-		}); // end of runnable
+//		reactor.getDispatcher().execute(new Runnable() {			
+//			public void run() {
+//				Subscription subx = allSubscriptions.get(_pattern);
+//				if(subx==null) {
+//					synchronized(allSubscriptions) {
+//						subx = allSubscriptions.get(_pattern);						
+//						if(subx==null) {							
+//							try {
+//								final QueryContext q = new QueryContext().setContinuous(true).setMaxSize(10240);
+//								final long startTime = System.currentTimeMillis();								
+//								final Set<byte[]> matchingTsuids = new HashSet<byte[]>(128);
+//								log.info("Executing search for TSMetas with pattern [{}]", pattern);
+//								metricSvc.evaluate(q, pattern.toString()).consume(new Consumer<List<TSMeta>>() {
+//									final AtomicBoolean done = new AtomicBoolean(false);
+//									@Override
+//									public void accept(List<TSMeta> t) {
+//										int cnt = 0;
+//										for(TSMeta tsm: t) {
+//											if(matchingTsuids.add(UniqueId.stringToUid(tsm.getTSUID()))) {
+//												cnt++;
+//											}											
+//										}
+//										log.info("Accepted [{}] TSMeta TSUIDs", cnt);
+//										t.clear();
+//										if(!q.shouldContinue() && done.compareAndSet(false, true)) {
+//											final long elapsedTime = System.currentTimeMillis()-startTime;
+//											log.info("Retrieved [{}] TSMetas in [{}] ms. to prime subscription [{}]", matchingTsuids.size(), elapsedTime, pattern);
+//											final int bloomFactor = Math.round(DEFAULT_BLOOM_FILTER_SPACE_FACTOR * matchingTsuids.size());
+//											final Subscription subx1 = new Subscription(reactor, metricSvc, _pattern, bloomFactor, TSDBEventType.DPOINT_DOUBLE, TSDBEventType.DPOINT_LONG);
+//											int indexCnt = 0;
+//											for(final Iterator<byte[]> biter = matchingTsuids.iterator(); biter.hasNext();) {
+//												subx1._internalIndex(biter.next());
+//												indexCnt++;
+//												biter.remove();
+//											}
+//											log.info("Created and initialized [{}] items in Subscription BloomFilter for [{}]", indexCnt, pattern);
+//											allSubscriptions.put(pattern.toString(), subx1);
+//											def.accept(subx1);
+//										}
+//									}
+//								});
+//							} catch (Exception ex) {
+//								def.accept(new Exception("Timed out on populating subscription for expression [" + pattern + "]"));
+//							}
+//						}  else {// subx not null
+//							def.accept(subx);
+//							return;							
+//						}
+//					} // synchr
+//				} else {// subx not null
+//					def.accept(subx);
+//					return;					
+//				}
+//			} // end of run
+//		}); // end of runnable
 		return promise;
 	}
 	

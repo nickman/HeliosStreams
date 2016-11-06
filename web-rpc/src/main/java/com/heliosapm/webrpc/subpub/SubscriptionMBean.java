@@ -83,18 +83,7 @@ public interface SubscriptionMBean {
 	 */
 	public String getDescription();
 	
-	/**
-	 * Returns the mean elapsed time for the filter match in ns.
-	 * @return the mean elapsed time for the filter match in ns.
-	 */
-	public double getMeanMatch();
-	
-	/**
-	 * Returns the rolling average elapsed time for the filter match in ns.
-	 * @return the rolling average elapsed time for the filter match in ns.
-	 */
-	public double getAverageMatch();
-	
+
 	/**
 	 * Returns the initial expected insertion count for the bloom filter
 	 * @return the bloom filter initial expected insertion count

@@ -31,8 +31,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.utils.lang.StringHelper;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestHandler;
-import com.heliosapm.webrpc.websocket.annotations.JSONRequestService;
+import com.heliosapm.webrpc.annotations.JSONRequestHandler;
+import com.heliosapm.webrpc.annotations.JSONRequestService;
 
 import javassist.ClassClassPath;
 import javassist.ClassPool;
