@@ -142,7 +142,6 @@ public class TSDBJSONService  {
 	 */
 	protected void invoke(boolean asMap, HttpRequest request, JSONResponse response) throws IOException {
 		try {
-			@SuppressWarnings("resource")
 			JsonGenerator generator = response.writeHeader(asMap);
 			InvocationChannel ichannel = new InvocationChannel();
 			HttpQuery query = new HttpQuery(tsdb, request, ichannel);
@@ -444,7 +443,7 @@ public class TSDBJSONService  {
 	 * 	ws.send(q);
 	 * </pre></p>
 	 */
-	@JSONRequestHandler(name="query", description="Collects TSDB wide stats and returns them in JSON format to the caller")
+	@JSONRequestHandler(name="query", description="Issues a data query to OpenTSDB")
 	public void query(JSONRequest request) {
 		try {
 			

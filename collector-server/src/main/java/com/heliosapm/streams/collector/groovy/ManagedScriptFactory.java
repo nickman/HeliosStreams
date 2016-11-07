@@ -390,7 +390,8 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		}
 		log.info("<<<<< ManagedScriptFactory started. Async script deployment starting now.");
 		sourceFinder = FileFinder.newFileFinder(scriptDirectory.getAbsolutePath())
-			.maxDepth(20)
+			.maxFiles(Integer.MAX_VALUE)
+			.maxDepth(Integer.MAX_VALUE)
 			.filterBuilder()
 			.caseInsensitive(false)
 //			.patternMatch(".*\\.groovy$|.*\\.lnk$")
@@ -453,6 +454,11 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	protected void startScriptDeployer() {
 		final long start = System.currentTimeMillis();
 		final File[] sourceFiles = sourceFinder.find();
+		final StringBuilder b = new StringBuilder(" Startup Located Scripts:");
+		for(File f: sourceFiles) {
+			b.append("\n\t").append(f.getAbsolutePath());
+		}
+		log.info(b.toString());
 		if(sourceFiles!=null && sourceFiles.length > 0) {
 			final ArrayList<Future<Boolean>> compilationTasks = new ArrayList<Future<Boolean>>(sourceFiles.length);
 			for(final File sourceFile : sourceFiles) {

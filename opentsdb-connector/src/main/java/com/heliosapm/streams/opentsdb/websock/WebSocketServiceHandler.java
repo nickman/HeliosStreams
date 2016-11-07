@@ -34,7 +34,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import net.opentsdb.core.TSDB;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
@@ -42,6 +41,7 @@ import org.jboss.netty.channel.ChannelDownstreamHandler;
 import org.jboss.netty.channel.ChannelEvent;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
+import org.jboss.netty.channel.ChannelHandler.Sharable;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelLocal;
 import org.jboss.netty.channel.ChannelUpstreamHandler;
@@ -67,7 +67,12 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.heliosapm.streams.opentsdb.serialization.TSDBTypeSerializer;
 import com.heliosapm.utils.lang.StringHelper;
+
+import net.opentsdb.core.TSDB;
+import net.opentsdb.tsd.BadRequestException;
+import net.opentsdb.tsd.HttpRpcPluginQuery;
 
 
 /**
@@ -77,7 +82,7 @@ import com.heliosapm.utils.lang.StringHelper;
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>org.helios.tsdb.plugins.rpc.netty.pipeline.websock.WebSocketServiceHandler</code></p>
  */
-
+@Sharable
 public class WebSocketServiceHandler  implements ChannelUpstreamHandler, ChannelDownstreamHandler {
 	/** The JSON Request Router */
 	protected final JSONRequestRouter router = JSONRequestRouter.getInstance();
@@ -284,16 +289,16 @@ public class WebSocketServiceHandler  implements ChannelUpstreamHandler, Channel
         }
     }
 
-	@Override
-	public void execute(TSDB tsdb, HttpQuery query) throws IOException {
-		if(query.getAPIMethod()!=GET) {
-			query.badRequest("HTTP Request Type [" + query.getAPIMethod() + "] Forbidden");
+	
+	public void execute(final TSDB tsdb, final HttpRpcPluginQuery query) throws IOException {
+		
+		if(query.method()!=GET) {
+			query.badRequest(new BadRequestException("HTTP Request Type [" + query.method() + "] Forbidden"));
 			return;
 		}
         
         final Channel channel = query.channel();
-        final  HttpRequest req = query.request();
-        String uri = req.getUri();
+        final  HttpRequest req = query.request();        
         final WebSocketServiceHandler wsHandler = this;
         // Handshake
         WebSocketServerHandshakerFactory wsFactory = new WebSocketServerHandshakerFactory(getWebSocketLocation(req), null, false);

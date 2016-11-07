@@ -25,7 +25,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
-import com.heliosapm.webrpc.jsonservice.services.SystemJSONServices;
+import com.heliosapm.streams.opentsdb.websock.services.SystemJSONServices;
 import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.core.TSDB;
@@ -57,6 +57,8 @@ public class WebSocketRPC extends HttpRpcPlugin {
 	protected final PluginMetricManager metricManager = new PluginMetricManager(getClass().getSimpleName());
 	/** The configured path for thw websocket rpc service */
 	protected String path = null;
+	
+	protected final WebSocketServiceHandler webSockHandler = new WebSocketServiceHandler();
 	
 	
 	
@@ -130,8 +132,7 @@ public class WebSocketRPC extends HttpRpcPlugin {
 	 */
 	@Override
 	public void execute(final TSDB tsdb, final HttpRpcPluginQuery query) throws IOException {
-
-
+		webSockHandler.execute(tsdb, query);
 	}
 
 }
