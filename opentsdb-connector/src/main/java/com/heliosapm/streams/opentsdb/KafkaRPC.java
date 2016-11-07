@@ -528,6 +528,14 @@ public class KafkaRPC extends RpcPlugin implements KafkaRPCMBean, Runnable, Mess
 		}
 	     closed.set(true);
 	     consumer.wakeup();		
+	     if(messageQueue!=null) {
+	    	 try { 
+	    		 messageQueue.close();
+	    		 log.info("KafkaRPC MessageQueue closed");
+	    	 } catch (Exception ex) {
+	    		 log.warn("Failed to close KafkaRPC MessageQueue", ex);
+	    	 }
+	     }
 		return d;
 	}
 

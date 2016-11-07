@@ -158,9 +158,5 @@
   </classpathentry>
   <classpathentry kind="var" path="M2_REPO/org/json/json/20090211/json-20090211.jar"/>
   <classpathentry kind="var" path="M2_REPO/net/opentsdb/opentsdb_gwt_theme/1.0.0/opentsdb_gwt_theme-1.0.0.jar"/>
-  <classpathentry kind="var" path="M2_REPO/org/javassist/javassist/3.18.1-GA/javassist-3.18.1-GA.jar" sourcepath="M2_REPO/org/javassist/javassist/3.18.1-GA/javassist-3.18.1-GA-sources.jar">
-    <attributes>
-      <attribute value="jar:file:/home/nwhitehead/.m2/repository/org/javassist/javassist/3.18.1-GA/javassist-3.18.1-GA-javadoc.jar!/" name="javadoc_location"/>
-    </attributes>
-  </classpathentry>
+  <classpathentry kind="var" path="M2_REPO/org/javassist/javassist/3.18.1-GA/javassist-3.18.1-GA.jar" sourcepath="M2_REPO/org/javassist/javassist/3.18.1-GA/javassist-3.18.1-GA-sources.jar"/>
 </classpath>
