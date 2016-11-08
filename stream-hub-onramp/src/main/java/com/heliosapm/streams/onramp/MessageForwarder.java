@@ -55,7 +55,7 @@ import com.heliosapm.utils.lang.StringHelper;
 
 /**
  * <p>Title: MessageForwarder</p>
- * <p>Description: Waps a Kafka message producer and factory</p> 
+ * <p>Description: Wraps a Kafka message producer and factory</p> 
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.onramp.MessageForwarder</code></p>

@@ -29,7 +29,6 @@ import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -37,10 +36,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 
-
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.buffer.ChannelBuffers;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.UpstreamMessageEvent;
 import org.jboss.netty.handler.codec.base64.Base64;
 import org.jboss.netty.handler.codec.http.DefaultHttpRequest;
 import org.jboss.netty.handler.codec.http.HttpMethod;
@@ -86,15 +86,17 @@ public class TSDBJSONService  {
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 	/** The tsdb instance */
 	protected final TSDB tsdb;
-	/** A map of http rpcs which we can piggy-back on */
-	protected final Map<String, HttpRpc> http_commands = new HashMap<String, HttpRpc>(11);
+	/** The rpc handler */
+	protected final RpcHandler rpcHandler;
 
 	/**
 	 * Creates a new TSDBJSONService
 	 * @param tsdb The parent tsdb instance
+	 * @param rpcHandler The rpc handler we delegate the websocket requests to 
 	 */
-	public TSDBJSONService(final TSDB tsdb) {
+	public TSDBJSONService(final TSDB tsdb, final Object rpcHandler) {
 		this.tsdb = tsdb;
+		this.rpcHandler = (RpcHandler)rpcHandler;
 	}
 	
 	/**
@@ -108,7 +110,7 @@ public class TSDBJSONService  {
 		InvocationChannel ichannel = new InvocationChannel();		
 		HttpQuery query = new HttpQuery(tsdb, request, ichannel);
 		String baseRoute = query.getQueryBaseRoute();
-		http_commands.get(baseRoute).execute(tsdb, query);
+//		http_commands.get(baseRoute).execute(tsdb, query);
 		HttpResponse resp = (HttpResponse)ichannel.getWrites().get(0);
 		byte[] regionBytes = (byte[])ichannel.getWrites().get(1);
 		
@@ -146,7 +148,7 @@ public class TSDBJSONService  {
 			InvocationChannel ichannel = new InvocationChannel();
 			HttpQuery query = new HttpQuery(tsdb, request, ichannel);
 			String baseRoute = query.getQueryBaseRoute();
-			http_commands.get(baseRoute).execute(tsdb, query);
+			rpcHandler.messageReceived(null, new UpstreamMessageEvent(ichannel, request, null));
 			HttpResponse resp = (HttpResponse)ichannel.getWrites().get(0);			
 			ChannelBuffer content = resp.getContent();
 			ChannelBufferInputStream cbis =  new ChannelBufferInputStream(content);
@@ -584,22 +586,22 @@ public class TSDBJSONService  {
 	
 	
 	
-	/**
-	 * Loads and indexes an instance of the named HttpRpc class
-	 * @param className HttpRpc class name
-	 * @param key The key that the instance should be indexed by
-	 */
-	protected void loadInstanceOf(String className, String key, RpcHandler rpcHandler) {
-		try {
-			Class<? extends HttpRpc> rpcClazz = (Class<? extends HttpRpc>) Class.forName(className, true, TSDB.class.getClassLoader());
-
-			Constructor<? extends HttpRpc> ctor = rpcHandler==null ? rpcClazz.getDeclaredConstructor() : rpcClazz.getDeclaredConstructor(rpcHandler.getClass());
-			ctor.setAccessible(true);
-			HttpRpc httpRpc = rpcHandler==null ? ctor.newInstance() : ctor.newInstance(rpcHandler);
-			http_commands.put(key, httpRpc);
-		} catch (Exception ex) {
-			log.warn("Failed to load HttpRpc instance for [{}]", className, ex);
-		}
-	}
+//	/**
+//	 * Loads and indexes an instance of the named HttpRpc class
+//	 * @param className HttpRpc class name
+//	 * @param key The key that the instance should be indexed by
+//	 */
+//	protected void loadInstanceOf(String className, String key, RpcHandler rpcHandler) {
+//		try {
+//			Class<? extends HttpRpc> rpcClazz = (Class<? extends HttpRpc>) Class.forName(className, true, TSDB.class.getClassLoader());
+//
+//			Constructor<? extends HttpRpc> ctor = rpcHandler==null ? rpcClazz.getDeclaredConstructor() : rpcClazz.getDeclaredConstructor(rpcHandler.getClass());
+//			ctor.setAccessible(true);
+//			HttpRpc httpRpc = rpcHandler==null ? ctor.newInstance() : ctor.newInstance(rpcHandler);
+//			http_commands.put(key, httpRpc);
+//		} catch (Exception ex) {
+//			log.warn("Failed to load HttpRpc instance for [{}]", className, ex);
+//		}
+//	}
 
 }

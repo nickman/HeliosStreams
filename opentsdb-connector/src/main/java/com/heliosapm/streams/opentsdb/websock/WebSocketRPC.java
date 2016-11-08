@@ -58,7 +58,7 @@ public class WebSocketRPC extends HttpRpcPlugin {
 	/** The configured path for thw websocket rpc service */
 	protected String path = null;
 	
-	protected final WebSocketServiceHandler webSockHandler = new WebSocketServiceHandler();
+	protected WebSocketServiceHandler webSockHandler = null;
 	
 	
 	
@@ -76,12 +76,13 @@ public class WebSocketRPC extends HttpRpcPlugin {
 	public void initialize(final TSDB tsdb) {
 		log.info(">>>>> Initializing WebSocketRPC service....");
 		this.tsdb = tsdb;
+		webSockHandler = new WebSocketServiceHandler(tsdb);
 		final Properties properties = new Properties();
 		final Config cfg = tsdb.getConfig();
 		properties.putAll(cfg.getMap());		
 		path = metricManager.getAndSetConfig(CONFIG_RPC_PATH, DEFAULT_RPC_PATH, properties, cfg);
 		JSONRequestRouter.getInstance().registerJSONService(new SystemJSONServices());
-		JSONRequestRouter.getInstance().registerJSONService(new TSDBJSONService(tsdb));
+		//JSONRequestRouter.getInstance().registerJSONService(new TSDBJSONService(tsdb));
 
 		log.info("<<<<< WebSocketRPC service Initialized.");
 	}

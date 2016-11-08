@@ -31,8 +31,13 @@ import static org.jboss.netty.handler.codec.http.HttpResponseStatus.FORBIDDEN;
 import static org.jboss.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -44,6 +49,7 @@ import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandler.Sharable;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelLocal;
+import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelUpstreamHandler;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.DownstreamMessageEvent;
@@ -73,6 +79,7 @@ import com.heliosapm.utils.lang.StringHelper;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.tsd.BadRequestException;
 import net.opentsdb.tsd.HttpRpcPluginQuery;
+import net.opentsdb.tsd.TSDBJSONService;
 
 
 /**
@@ -92,12 +99,43 @@ public class WebSocketServiceHandler  implements ChannelUpstreamHandler, Channel
 	/** Instance logger */
 	protected final Logger log = LoggerFactory.getLogger(getClass());
 
+	protected final AtomicBoolean rpcHandlerRegistered = new AtomicBoolean(false);
+	/** The parent TSDB instance */
+	protected final TSDB tsdb;
+	
+	
+	
 	/**
 	 * Creates a new WebSocketServiceHandler
+	 * @param tsdb The parent TSDB instance
 	 */
-	public WebSocketServiceHandler() {
+	public WebSocketServiceHandler(final TSDB tsdb) {
+		this.tsdb = tsdb;
 		marshaller.configure(JsonParser.Feature.ALLOW_SINGLE_QUOTES, true);
 	}
+	
+	/** The names of handlers to keep in the pipeline once the websock handshake is complete */
+	public static final Set<String> WS_HANDLERS = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(
+		"wsdecoder", "wsencoder", "timeout", "websock"
+	)));
+	
+	/** The key of the rpc handler we'll keep a reference to */
+	public static final String RPC_HANDLER = "handler";
+	
+	/**
+	 * Registers the JSONRequestRouter on the first connect so we can acquire the RPCHandler from the pipeline.
+	 * The RPCHandler is not a public class so we're referencing it as an Object.
+	 * @param handler The RPCHandler
+	 */
+	protected void registerRpcHandler(final Object handler) {
+		if(rpcHandlerRegistered.compareAndSet(false, true)) {
+			JSONRequestRouter.getInstance().registerJSONService(new TSDBJSONService(tsdb, handler));
+		}
+	}
+	
+	
+	
+	
 
 	/**
 	 * {@inheritDoc}
@@ -241,7 +279,7 @@ public class WebSocketServiceHandler  implements ChannelUpstreamHandler, Channel
 				@Override
 				public void operationComplete(ChannelFuture f) throws Exception {
 					if(f.isSuccess()) {
-						Channel wsChannel = f.getChannel();
+						final Channel wsChannel = f.getChannel();
 //						RPCSessionManager.getInstance().getSession(wsChannel).addSessionAttribute(RPCSessionAttribute.Protocol, "WebSocket");
 //						SharedChannelGroup.getInstance().add(
 //								f.getChannel(), 
@@ -314,8 +352,15 @@ public class WebSocketServiceHandler  implements ChannelUpstreamHandler, Channel
 				public void operationComplete(final ChannelFuture f) throws Exception {
 					if(f.isSuccess()) {
 						Channel wsChannel = f.getChannel();
-						wsChannel.getPipeline().addLast("websock", wsHandler);
-						
+						final ChannelPipeline p = wsChannel.getPipeline(); 
+						p.addLast("websock", wsHandler);
+						registerRpcHandler(p.get(RPC_HANDLER));
+						final Set<String> handlerNames = new HashSet<String>(p.getNames());
+						for(final String key: handlerNames) {
+							if(!WS_HANDLERS.contains(key)) {
+								p.remove(key);
+							}
+						}
 						StringBuilder b = new StringBuilder("\n\t=================================\n\tWS Channel Handlers\n\t=================================");
 						for(String key: wsChannel.getPipeline().getNames()) {
 							b.append("\n\t").append(key).append(" : ").append(wsChannel.getPipeline().get(key).getClass().getName());

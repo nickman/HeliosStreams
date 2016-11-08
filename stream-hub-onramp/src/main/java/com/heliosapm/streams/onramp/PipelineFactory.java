@@ -83,6 +83,8 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 	private final IdleSessionKillerHandler idleReaper;
 	/** The instance logger */
 	protected final Logger log = LogManager.getLogger(getClass());
+	/** The http-json rpc handler */
+	protected final HttpJsonRpcHandler jsonRpcHandler;
 
 
 	/** The server side socket timeout. **/
@@ -96,6 +98,9 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 		socketTimeout = ConfigurationHelper.getIntSystemThenEnvProperty("onramp.socket.timeout", 60, appConfig); 
 		rpchandler = new TextLineRpcHandler();
 		idleReaper = new IdleSessionKillerHandler();
+		final String metricTopic = ConfigurationHelper.getSystemThenEnvProperty("onramp.metric.topic", "tsdb.metrics.binary", appConfig);
+		final String metaTopic = ConfigurationHelper.getSystemThenEnvProperty("onramp.meta.topic", "tsdb.meta.binary", appConfig);
+		jsonRpcHandler = new HttpJsonRpcHandler(metricTopic, metaTopic);
 	}
 
 	/**
@@ -193,8 +198,8 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 			p.addLast("decompressor", new HttpContentDecompressor());
 			p.addLast("httpHandler", new HttpServerCodec());  // TODO: config ?
 			p.addLast("aggregator", new HttpObjectAggregator(maxRequestSize)); 
-			p.addLast("compressor", new HttpContentCompressor());
-			p.addLast("handler", rpchandler);
+			
+			p.addLast("handler", jsonRpcHandler);
 		}  
 	}  
 	
