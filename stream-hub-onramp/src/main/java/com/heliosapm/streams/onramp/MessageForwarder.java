@@ -209,8 +209,38 @@ public class MessageForwarder implements Producer<String, StreamedMetric> {
 		for(final StreamedMetric sm: metrics) {
 			futures.add(send(new ProducerRecord<String, StreamedMetric>(topic, sm.getMetricName(), sm)));
 		}
+		producer.flush();
 		return futures;
 	}
+	
+	/**
+	 * Sends a collection of metrics to the specified topic
+	 * @param topic The topic to send to
+	 * @param metrics The metrics to send
+	 * @return a collection of the futures, each of which will eventually contain the response information
+	 */
+	public Collection<Future<RecordMetadata>> send(final String topic, final Collection<StreamedMetric> metrics) {
+		final Set<Future<RecordMetadata>> futures = new LinkedHashSet<Future<RecordMetadata>>(metrics.size());
+		for(final StreamedMetric sm: metrics) {
+			futures.add(send(new ProducerRecord<String, StreamedMetric>(topic, sm.getMetricName(), sm)));
+		}
+		producer.flush();
+		return futures;
+	}
+	
+	/**
+	 * Sends a collection of metrics to the specified topic without returning futures
+	 * @param topic The topic to send to
+	 * @param metrics The metrics to send
+	 */
+	public void sendnr(final String topic, final Collection<StreamedMetric> metrics) {
+		for(final StreamedMetric sm: metrics) {
+			send(new ProducerRecord<String, StreamedMetric>(topic, sm.getMetricName(), sm));
+		}
+		producer.flush();
+	}
+	
+	
 	
 	/**
 	 * Sends an array of metrics to the default topic

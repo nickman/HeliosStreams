@@ -35,17 +35,14 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.LineBasedFrameDecoder;
-import io.netty.handler.codec.http.HttpContentCompressor;
 import io.netty.handler.codec.http.HttpContentDecompressor;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.string.StringDecoder;
+import io.netty.handler.codec.json.JsonObjectDecoder;
 import io.netty.handler.codec.string.StringEncoder;
-import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.netty.util.HashedWheelTimer;
-import io.netty.util.ReferenceCountUtil;
 import io.netty.util.Timer;
 
 
@@ -100,7 +97,8 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 		idleReaper = new IdleSessionKillerHandler();
 		final String metricTopic = ConfigurationHelper.getSystemThenEnvProperty("onramp.metric.topic", "tsdb.metrics.binary", appConfig);
 		final String metaTopic = ConfigurationHelper.getSystemThenEnvProperty("onramp.meta.topic", "tsdb.meta.binary", appConfig);
-		jsonRpcHandler = new HttpJsonRpcHandler(metricTopic, metaTopic);
+		final int batchSize = ConfigurationHelper.getIntSystemThenEnvProperty("onramp.metric.batchsize", 1024, appConfig);
+		jsonRpcHandler = new HttpJsonRpcHandler(metricTopic, metaTopic, batchSize);
 	}
 
 	/**
@@ -134,7 +132,7 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 	@Override
 	protected void initChannel(final SocketChannel ch) throws Exception {
 		final ChannelPipeline pipeline = ch.pipeline();		
-		pipeline.addLast("idlestate", new IdleStateHandler(0, 0, 5)); // this.socketTimeout
+		pipeline.addLast("idlestate", new IdleStateHandler(0, 0, 120)); // this.socketTimeout
 //		pipeline.addLast("idlereaper", idleReaper);
 		pipeline.addLast("connmgr", connmgr);
 		pipeline.addLast("gzipdetector", new GZipDetector());		
@@ -195,10 +193,12 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 		 */
 		private void switchToHttp(final ChannelHandlerContext ctx, final int maxRequestSize) {
 			ChannelPipeline p = ctx.pipeline();
-			p.addLast("decompressor", new HttpContentDecompressor());
-			p.addLast("httpHandler", new HttpServerCodec());  // TODO: config ?
-			p.addLast("aggregator", new HttpObjectAggregator(maxRequestSize)); 
 			
+			p.addLast("httpHandler", new HttpServerCodec());  // TODO: config ?
+			p.addLast("decompressor", new HttpContentDecompressor());
+			p.addLast("aggregator", new HttpObjectAggregator(maxRequestSize)); 
+			p.addLast("jsonDecoder", new JsonObjectDecoder(maxRequestSize, false));
+			//JsonObjectDecoder
 			p.addLast("handler", jsonRpcHandler);
 		}  
 	}  
