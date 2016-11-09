@@ -36,9 +36,6 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.ContextRefreshedEvent;
-import org.springframework.core.env.ConfigurableEnvironment;
-import org.springframework.core.env.MutablePropertySources;
-import org.springframework.core.env.StandardEnvironment;
 
 import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
@@ -61,6 +58,8 @@ import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
+
+import com.heliosapm.streams.common.zoo.AdminFinder;
 
 /**
  * <p>Title: OnRampBoot</p>
@@ -191,8 +190,9 @@ public class OnRampBoot {
 			bootConfig = URLHelper.readProperties(OnRampBoot.class.getClassLoader().getResource("defaultConfig.properties"));
 			//System.getProperties().putAll(bootConfig);
 		}
+		final String discoveredAdminUrl = AdminFinder.getInstance(args).getAdminURL(true);
 		springApp = new SpringApplication(OnRampBoot.class);
-		bootConfig.setProperty("spring.boot.admin.url", "http://localhost:7560/streamhubadmin");
+		bootConfig.setProperty("spring.boot.admin.url", discoveredAdminUrl);
 		springApp.setDefaultProperties(bootConfig);
 		springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
 			@Override

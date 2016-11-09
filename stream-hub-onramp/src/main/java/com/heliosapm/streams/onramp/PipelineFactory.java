@@ -200,6 +200,7 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 			p.addLast("jsonDecoder", new JsonObjectDecoder(maxRequestSize, false));
 			//JsonObjectDecoder
 			p.addLast("handler", jsonRpcHandler);
+			p.remove(this);
 		}  
 	}  
 	

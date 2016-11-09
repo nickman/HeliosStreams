@@ -156,8 +156,7 @@ public class HttpJsonRpcHandler extends MessageToMessageDecoder<FullHttpRequest>
 				log.error("Failed to unmarshal metric node [{}]", metricNode, ex);
 			}
 		}
-		mf.sendnr(metricTopicName, smetrics);
-		//mf.send(new ProducerRecord<String, StreamedMetric>(metricTopicName, smv));
+//		mf.sendnr(metricTopicName, smetrics);
 		log.info("Processed [{}] Metrics", smetrics.size());
 	}
 
