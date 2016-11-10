@@ -31,11 +31,8 @@ import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.ComponentScan;
-import org.springframework.context.event.ContextClosedEvent;
-import org.springframework.context.event.ContextRefreshedEvent;
 
 import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.utils.concurrency.ExtendedThreadManager;
@@ -44,22 +41,24 @@ import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.url.URLHelper;
 
+import io.netty.bootstrap.Bootstrap;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.AbstractChannel;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.ServerChannel;
+import io.netty.channel.epoll.EpollDatagramChannel;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.GenericFutureListener;
-
-import com.heliosapm.streams.common.zoo.AdminFinder;
 
 /**
  * <p>Title: OnRampBoot</p>
@@ -95,13 +94,18 @@ public class OnRampBoot {
 	/** Indicates if epoll has been disabled even if we're on linux and using asynchronous net io */
 	protected final boolean disableEpoll;
 	
-	/** The netty server bootstrap */
-	protected final ServerBootstrap serverBootstrap = new ServerBootstrap();
+	/** The netty TCP server bootstrap */
+	protected final ServerBootstrap tcpServerBootstrap = new ServerBootstrap();
+	/** The netty UDP bootstrap */
+	protected final Bootstrap udpBootstrap = new Bootstrap();
+	
 	/** The configured number of worker threads */
 	protected final int workerThreads;
 	
-	/** The channel type this server will create */
-	protected final Class<? extends ServerChannel> channelType;
+	/** The TCP channel type this server will create */
+	protected final Class<? extends ServerChannel> tcpChannelType;
+	/** The UDP channel type this server will create */
+	protected final Class<? extends AbstractChannel> udpChannelType;
 	
 	/** The netty boss event loop group */
 	protected final EventLoopGroup bossGroup;
@@ -114,14 +118,23 @@ public class OnRampBoot {
 	/** The netty worker event loop group's executor and thread factory */
 	protected final Executor workerExecutorThreadFactory;
 	
-	/** The netty pipeline factory */
-	protected final PipelineFactory pipelineFactory;
+	/** The netty TCP pipeline factory */
+	protected final PipelineFactory tcpPipelineFactory;
+	/** The netty UDP pipeline factory */
+	protected final UDPPipelineFactory udpPipelineFactory;
 	
-	/** The server channel created on socket bind */
-	protected Channel serverChannel = null;
 	
-	/** The server's close future */
-	protected ChannelFuture closeFuture = null;
+	/** The TCP server channel created on socket bind */
+	protected Channel tcpServerChannel = null;
+	/** The UDP channel created  */
+	protected Channel udpServerChannel = null;
+	
+	
+	/** The TCP server's close future */
+	protected ChannelFuture tcpCloseFuture = null;
+	/** The UDP server's close future */
+	protected ChannelFuture udpCloseFuture = null;
+	
 	
 	// =============================================
 	// Channel Configs
@@ -148,8 +161,10 @@ public class OnRampBoot {
 	/** The size of a channel's send buffer in bytes */
 	protected final int sendBuffer;
 	
-	/** The server URI */
-	public final URI serverURI;
+	/** The TCP server URI */
+	public final URI tcpServerURI;
+	/** The UDP server URI */
+	public final URI udpServerURI;
 	
 	
 	
@@ -176,52 +191,54 @@ public class OnRampBoot {
 		System.setProperty("spring.output.ansi.enabled", "DETECT");
 //		System.setProperty("buffers.pooled", "false");
 //		System.setProperty("buffers.direct", "false");
-		System.setProperty("spring.boot.admin.client.enabled", "true");
-		System.setProperty("info.version", "0.0.3a");
-		System.setProperty("spring.boot.admin.client.name", "OnRamp");
+//		System.setProperty("spring.boot.admin.client.enabled", "true");
+//		System.setProperty("info.version", "0.0.3a");
+//		System.setProperty("spring.boot.admin.client.name", "OnRamp");
 //		System.setProperty("spring.boot.admin.url", "http://pdk-pt-cltsdb-05/streamhubadmin");
 		ExtendedThreadManager.install();
-		
 //		=============================================================================
-		final Logger log = LogManager.getLogger(OnRampBoot.class);
-		final String adminUrl = findArg("--admin", null, args);
-		final String configUrl = findArg("--config", null, args);
-		if(adminUrl==null && configUrl==null) {
-			bootConfig = URLHelper.readProperties(OnRampBoot.class.getClassLoader().getResource("defaultConfig.properties"));
-			//System.getProperties().putAll(bootConfig);
+		Properties config = null;
+		if(args.length>0) {
+			if(URLHelper.isValidURL(args[0])) {
+				try { config = URLHelper.readProperties(URLHelper.toURL(args[0])); } catch(Exception ex) {}
+			}
 		}
-		final String discoveredAdminUrl = AdminFinder.getInstance(args).getAdminURL(true);
-		springApp = new SpringApplication(OnRampBoot.class);
-		bootConfig.setProperty("spring.boot.admin.url", discoveredAdminUrl);
-		springApp.setDefaultProperties(bootConfig);
-		springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
-			@Override
-			public void onApplicationEvent(final ContextRefreshedEvent event) {
-				log.info("\n\t==================================================\n\tOnRamp Started\n\t==================================================\n");
-			}
-		});
-		springApp.addListeners(new ApplicationListener<ContextClosedEvent>(){
-			@Override
-			public void onApplicationEvent(final ContextClosedEvent event) {
-				log.info("\n\t==================================================\n\tOnRamp Stopped\n\t==================================================\n");											
-			}
-		});
-//		springApp.setResourceLoader(resourceLoader);
-//		springApp.setDefaultProperties(p);
-		
-//		springApp.setDefaultProperties(p);
-//		StandardEnvironment environment = new StandardEnvironment();
-		
-		Thread springBootLaunchThread = new Thread("SpringBootLaunchThread") {
-			public void run() {
-				appCtx = springApp.run(args);
-			}
-		};
-		springBootLaunchThread.setContextClassLoader(OnRampBoot.class.getClassLoader());
-		springBootLaunchThread.setDaemon(true);
-		springBootLaunchThread.start();
-		
-		log.info("Starting StdIn Handler");
+		if(config==null) {
+			config = URLHelper.readProperties(OnRampBoot.class.getClassLoader().getResource("defaultConfig.properties"));
+		}		
+		final Logger log = LogManager.getLogger(OnRampBoot.class);
+		boot = new OnRampBoot(config);
+//		springApp = new SpringApplication(OnRampBoot.class);
+//		bootConfig.setProperty("spring.boot.admin.url", discoveredAdminUrl);
+//		springApp.setDefaultProperties(bootConfig);
+//		springApp.addListeners(new ApplicationListener<ContextRefreshedEvent>(){
+//			@Override
+//			public void onApplicationEvent(final ContextRefreshedEvent event) {
+//				log.info("\n\t==================================================\n\tOnRamp Started\n\t==================================================\n");
+//			}
+//		});
+//		springApp.addListeners(new ApplicationListener<ContextClosedEvent>(){
+//			@Override
+//			public void onApplicationEvent(final ContextClosedEvent event) {
+//				log.info("\n\t==================================================\n\tOnRamp Stopped\n\t==================================================\n");											
+//			}
+//		});
+////		springApp.setResourceLoader(resourceLoader);
+////		springApp.setDefaultProperties(p);
+//		
+////		springApp.setDefaultProperties(p);
+////		StandardEnvironment environment = new StandardEnvironment();
+//		
+//		Thread springBootLaunchThread = new Thread("SpringBootLaunchThread") {
+//			public void run() {
+//				appCtx = springApp.run(args);
+//			}
+//		};
+//		springBootLaunchThread.setContextClassLoader(OnRampBoot.class.getClassLoader());
+//		springBootLaunchThread.setDaemon(true);
+//		springBootLaunchThread.start();
+//		
+//		log.info("Starting StdIn Handler");
 		final Thread MAIN = Thread.currentThread();
 		StdInCommandHandler.getInstance().registerCommand("shutdown", new Runnable(){
 			public void run() {
@@ -252,11 +269,12 @@ public class OnRampBoot {
 	private final Thread shutdownHook = new Thread() {
 		public void run() {
 			
-			if(workerGroup!=null) {
-				serverChannel.close().syncUninterruptibly();
-				log.info(">>>>> Shutting down OnRamp TCP Listener....");
+			if(workerGroup!=null) {				
+				log.info(">>>>> Shutting down OnRamp Listeners....");
+				tcpServerChannel.close().syncUninterruptibly();
+				udpServerChannel.close().syncUninterruptibly();
 				workerGroup.shutdownGracefully().syncUninterruptibly();
-				log.info("<<<<< OnRamp TCP Listener Shutdown");
+				log.info("<<<<< OnRamp Listeners Shutdown");
 			}
 		}
 	};
@@ -291,60 +309,93 @@ public class OnRampBoot {
 		tcpNoDelay = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.tcp_no_delay", true, appConfig);
 		keepAlive = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.keep_alive", true, appConfig);
 		reuseAddress = ConfigurationHelper.getBooleanSystemThenEnvProperty("onramp.network.reuse_address", true, appConfig);		
-		pipelineFactory = new PipelineFactory(appConfig);
-		serverBootstrap.handler(new LoggingHandler(getClass(), LogLevel.INFO));
-		serverBootstrap.childHandler(pipelineFactory);
+		tcpPipelineFactory = new PipelineFactory(appConfig);
+		udpPipelineFactory = new UDPPipelineFactory();
+		tcpServerBootstrap.handler(new LoggingHandler(getClass(), LogLevel.INFO));
+		tcpServerBootstrap.childHandler(tcpPipelineFactory);
 		// Set the child options
-		serverBootstrap.childOption(ChannelOption.ALLOCATOR, BufferManager.getInstance().getAllocator());
-		serverBootstrap.childOption(ChannelOption.TCP_NODELAY, tcpNoDelay);
-		serverBootstrap.childOption(ChannelOption.SO_KEEPALIVE, keepAlive);
-		serverBootstrap.childOption(ChannelOption.SO_RCVBUF, recvBuffer);
-		serverBootstrap.childOption(ChannelOption.SO_SNDBUF, sendBuffer);
-		serverBootstrap.childOption(ChannelOption.WRITE_SPIN_COUNT, writeSpins);
+		tcpServerBootstrap.childOption(ChannelOption.ALLOCATOR, BufferManager.getInstance().getAllocator());
+		tcpServerBootstrap.childOption(ChannelOption.TCP_NODELAY, tcpNoDelay);
+		tcpServerBootstrap.childOption(ChannelOption.SO_KEEPALIVE, keepAlive);
+		tcpServerBootstrap.childOption(ChannelOption.SO_RCVBUF, recvBuffer);
+		tcpServerBootstrap.childOption(ChannelOption.SO_SNDBUF, sendBuffer);
+		tcpServerBootstrap.childOption(ChannelOption.WRITE_SPIN_COUNT, writeSpins);
 		// Set the server options
-		serverBootstrap.option(ChannelOption.SO_BACKLOG, backlog);
-		serverBootstrap.option(ChannelOption.SO_REUSEADDR, reuseAddress);
-		serverBootstrap.option(ChannelOption.SO_RCVBUF, recvBuffer);
-		serverBootstrap.option(ChannelOption.SO_TIMEOUT, connectTimeout);
-		final StringBuilder uri = new StringBuilder("tcp");
+		tcpServerBootstrap.option(ChannelOption.SO_BACKLOG, backlog);
+		tcpServerBootstrap.option(ChannelOption.SO_REUSEADDR, reuseAddress);
+		tcpServerBootstrap.option(ChannelOption.SO_RCVBUF, recvBuffer);
+		tcpServerBootstrap.option(ChannelOption.SO_TIMEOUT, connectTimeout);
+		
+		
+		
+		
+		final StringBuilder tcpUri = new StringBuilder("tcp");
+		final StringBuilder udpUri = new StringBuilder("udp");
 		if(IS_LINUX && !disableEpoll) {
 			bossExecutorThreadFactory = new ExecutorThreadFactory("EpollServerBoss", true);
 			bossGroup = new EpollEventLoopGroup(1, (ThreadFactory)bossExecutorThreadFactory);
 			workerExecutorThreadFactory = new ExecutorThreadFactory("EpollServerWorker", true);
 			workerGroup = new EpollEventLoopGroup(workerThreads, (ThreadFactory)workerExecutorThreadFactory);
-			channelType = EpollServerSocketChannel.class;
-			uri.append("epoll");
+			tcpChannelType = EpollServerSocketChannel.class;
+			udpChannelType = EpollDatagramChannel.class;
+			tcpUri.append("epoll");
+			udpUri.append("epoll");
 		} else {
 			bossExecutorThreadFactory = new ExecutorThreadFactory("NioServerBoss", true);
 			bossGroup = new NioEventLoopGroup(1, bossExecutorThreadFactory);
 			workerExecutorThreadFactory = new ExecutorThreadFactory("NioServerWorker", true);
 			workerGroup = new NioEventLoopGroup(workerThreads, workerExecutorThreadFactory);
-			channelType = NioServerSocketChannel.class;
-			uri.append("nio");
+			tcpChannelType = NioServerSocketChannel.class;
+			udpChannelType = NioDatagramChannel.class;
+			tcpUri.append("nio");
+			udpUri.append("nio");
 		}
 		
-		uri.append("://").append(bindInterface).append(":").append(port);
+		tcpUri.append("://").append(bindInterface).append(":").append(port);
+		udpUri.append("://").append(bindInterface).append(":").append(port);
 		URI u = null;
 		try {
-			u = new URI(uri.toString());
+			u = new URI(tcpUri.toString());
 		} catch (URISyntaxException e) {
-			log.warn("Failed server URI const: [{}]. Programmer Error", uri, e);
+			log.warn("Failed TCP server URI const: [{}]. Programmer Error", tcpUri, e);
 		}
-		serverURI = u;
+		tcpServerURI = u;
+		try {
+			u = new URI(udpUri.toString());
+		} catch (URISyntaxException e) {
+			log.warn("Failed UDP server URI const: [{}]. Programmer Error", udpUri, e);
+		}
+		udpServerURI = u;
 		
-		log.info(">>>>> Starting OnRamp TCP Listener on [{}]...", serverURI);
-		final ChannelFuture cf = serverBootstrap
-			.channel(channelType)
+		log.info(">>>>> Starting OnRamp TCP Listener on [{}]...", tcpServerURI);
+		log.info(">>>>> Starting OnRamp UDP Listener on [{}]...", udpServerURI);
+		final ChannelFuture cf = tcpServerBootstrap
+			.channel(tcpChannelType)
 			.group(bossGroup, workerGroup)
 			.bind(bindSocket)
 			.awaitUninterruptibly()
 			.addListener(new GenericFutureListener<Future<? super Void>>() {
 				public void operationComplete(final Future<? super Void> f) throws Exception {
-					log.info("<<<<< OnRamp TCP Listener on [{}] Started", serverURI);					
+					log.info("<<<<< OnRamp TCP Listener on [{}] Started", tcpServerURI);					
 				};
 			}).awaitUninterruptibly();
-		serverChannel = cf.channel();
-		closeFuture = serverChannel.closeFuture();
+		final ChannelFuture ucf = udpBootstrap
+				.channel(udpChannelType)
+				.group(workerGroup)
+				.option(ChannelOption.SO_BROADCAST, true)
+				.handler(new UDPPipelineFactory())
+				.bind(bindSocket)
+				.awaitUninterruptibly()
+				.addListener(new GenericFutureListener<Future<? super Void>>() {
+					public void operationComplete(final Future<? super Void> f) throws Exception {
+						log.info("<<<<< OnRamp UDP Listener on [{}] Started", udpServerURI);					
+					};
+				}).awaitUninterruptibly();
+		
+		tcpServerChannel = cf.channel();
+		udpServerChannel = ucf.channel();
+		tcpCloseFuture = tcpServerChannel.closeFuture();
+		udpCloseFuture = udpServerChannel.closeFuture();
 		Runtime.getRuntime().addShutdownHook(shutdownHook);
 		
 		

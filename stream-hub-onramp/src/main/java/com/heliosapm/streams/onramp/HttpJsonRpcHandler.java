@@ -35,6 +35,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
+import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandler.Sharable;
@@ -90,13 +92,16 @@ public class HttpJsonRpcHandler extends MessageToMessageDecoder<FullHttpRequest>
 	 */
 	@Override
 	protected void decode(final ChannelHandlerContext ctx, final FullHttpRequest msg, final List<Object> out) throws Exception {
+		int forwarded = 0;
+		int nodes = 0;
+		final ElapsedTime et = SystemClock.startClock();
 		final ByteBuf buff = msg.content();
 		if(buff.readableBytes()<2) {
 			log.info("Request from [{}] had no content: {}", ctx.channel().remoteAddress(), buff);
 			// send response
 			return;
 		}
-		int nodes = 0;
+		
 		final ArrayList<ObjectNode> metricNodes = new ArrayList<ObjectNode>(256); 
 		final JsonNode rootNode = JSONOps.parseToNode(buff);
 		if(rootNode.isArray()) {
@@ -107,7 +112,7 @@ public class HttpJsonRpcHandler extends MessageToMessageDecoder<FullHttpRequest>
 					if(nodes==batchSize) {
 						try {			
 							nodes = 0;
-							forwardMetrics(metricNodes);							
+							forwarded += forwardMetrics(metricNodes);							
 						} finally {
 							metricNodes.clear();
 						}
@@ -116,17 +121,17 @@ public class HttpJsonRpcHandler extends MessageToMessageDecoder<FullHttpRequest>
 			}
 			if(!metricNodes.isEmpty()) try {
 				nodes += metricNodes.size();
-				forwardMetrics(metricNodes);							
+				forwarded += forwardMetrics(metricNodes);							
 			} finally {
 				metricNodes.clear();
 			}			
 		} else {
 			if(rootNode.has("metric")) {				
-				forwardMetrics(Collections.singletonList((ObjectNode)rootNode));
+				forwarded += forwardMetrics(Collections.singletonList((ObjectNode)rootNode));
 			}
-		}
-		
+		}		
 		ctx.channel().pipeline().writeAndFlush(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NO_CONTENT));
+		log.info("Wrote [{}] metrics: {}", forwarded, et.printAvg("Metrics", forwarded));
 	}
 	
 	/**
@@ -138,9 +143,9 @@ public class HttpJsonRpcHandler extends MessageToMessageDecoder<FullHttpRequest>
 		log.error("Pipeline Error", cause);
 	}
 	
-	protected void forwardMetrics(final List<ObjectNode> metricNodes) {
+	protected int forwardMetrics(final List<ObjectNode> metricNodes) {
 		final HashSet<StreamedMetric> smetrics = new HashSet<StreamedMetric>(metricNodes.size()); 
-		
+		int count = 0;
 		for(ObjectNode metricNode: metricNodes) {
 			try {
 				final String metric = metricNode.get("metric").textValue();
@@ -151,13 +156,14 @@ public class HttpJsonRpcHandler extends MessageToMessageDecoder<FullHttpRequest>
 					strValue.indexOf('.')==-1 ? Long.parseLong(strValue.trim()) : Double.parseDouble(strValue.trim()),
 					metric,
 					tags
-				).updateTimestamp(timestamp));				
+				).updateTimestamp(timestamp));
+				count++;
 			} catch (Exception ex) {
 				log.error("Failed to unmarshal metric node [{}]", metricNode, ex);
 			}
 		}
-//		mf.sendnr(metricTopicName, smetrics);
-		log.info("Processed [{}] Metrics", smetrics.size());
+		mf.sendnr(metricTopicName, smetrics);
+		return count;
 	}
 
 }
