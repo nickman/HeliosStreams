@@ -180,8 +180,6 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 		private void switchToTelnet(final ChannelHandlerContext ctx) {
 			ChannelPipeline p = ctx.pipeline();
 			p.addLast("framer", new LineBasedFrameDecoder(1024, true, true));
-//			p.addLast("encoder", ENCODER);
-//			p.addLast("stringdecoder", new StringDecoder(UTF8));
 			p.addLast("linehandler", new TextLineRpcHandler());
 			p.remove(this);
 		}
@@ -192,13 +190,11 @@ public final class PipelineFactory extends ChannelInitializer<SocketChannel> imp
 		 * @param maxRequestSize The maximum request size in bytes
 		 */
 		private void switchToHttp(final ChannelHandlerContext ctx, final int maxRequestSize) {
-			ChannelPipeline p = ctx.pipeline();
-			
+			ChannelPipeline p = ctx.pipeline();			
 			p.addLast("httpHandler", new HttpServerCodec());  // TODO: config ?
 			p.addLast("decompressor", new HttpContentDecompressor());
 			p.addLast("aggregator", new HttpObjectAggregator(maxRequestSize)); 
 			p.addLast("jsonDecoder", new JsonObjectDecoder(maxRequestSize, false));
-			//JsonObjectDecoder
 			p.addLast("handler", jsonRpcHandler);
 			p.remove(this);
 		}  

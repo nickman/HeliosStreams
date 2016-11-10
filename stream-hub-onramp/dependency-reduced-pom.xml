@@ -58,6 +58,11 @@
         <version>${jar-plugin.version}</version>
         <configuration>
           <forceCreation>true</forceCreation>
+          <archive>
+            <manifestEntries>
+              <Main-Class>com.heliosapm.streams.onramp.OnRampBoot</Main-Class>
+            </manifestEntries>
+          </archive>
         </configuration>
       </plugin>
       <plugin>
@@ -113,6 +118,18 @@
             </configuration>
           </execution>
         </executions>
+        <configuration>
+          <filters>
+            <filter>
+              <artifact>*:*</artifact>
+              <excludes>
+                <exclude>META-INF/*.SF</exclude>
+                <exclude>META-INF/*.DSA</exclude>
+                <exclude>META-INF/*.RSA</exclude>
+              </excludes>
+            </filter>
+          </filters>
+        </configuration>
       </plugin>
     </plugins>
   </build>

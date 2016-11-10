@@ -152,11 +152,13 @@ public class HttpJsonRpcHandler extends MessageToMessageDecoder<FullHttpRequest>
 				final String strValue = metricNode.get("value").toString();
 				final long timestamp = metricNode.get("timestamp").longValue();
 				final Map<String, String> tags = JSONOps.parseToObject(metricNode.get("tags"), TR_HASH_MAP);
-				smetrics.add(new StreamedMetricValue(
-					strValue.indexOf('.')==-1 ? Long.parseLong(strValue.trim()) : Double.parseDouble(strValue.trim()),
-					metric,
-					tags
-				).updateTimestamp(timestamp));
+				StreamedMetricValue smv = new StreamedMetricValue(
+						strValue.indexOf('.')==-1 ? Long.parseLong(strValue.trim()) : Double.parseDouble(strValue.trim()),
+								metric,
+								tags
+							).updateTimestamp(timestamp); 
+				smetrics.add(smv);
+				if(log.isDebugEnabled()) log.debug("Ingested JSON Metric: [{}]", smv);
 				count++;
 			} catch (Exception ex) {
 				log.error("Failed to unmarshal metric node [{}]", metricNode, ex);

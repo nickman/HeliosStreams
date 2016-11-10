@@ -19,13 +19,17 @@ under the License.
 package com.heliosapm.streams.metrics;
 
 import java.io.DataInputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import com.heliosapm.streams.tracing.TagKeySorter.TagMap;
 import com.heliosapm.utils.buffer.BufferManager;
+import com.heliosapm.utils.lang.StringHelper;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
@@ -319,7 +323,7 @@ public class StreamedMetricValue extends StreamedMetric {
 		.append(metricName).append(" ")
 		.append(timestamp).append(" ")
 		.append(isDoubleValue ? 
-				Double.toString(doubleValue) : 
+				Double.toString(doubleValue) :  
 				Long.toString(longValue))
 		.append(" ");
 				
@@ -327,6 +331,41 @@ public class StreamedMetricValue extends StreamedMetric {
 			b.append(entry.getKey()).append("=").append(entry.getValue()).append(" ");
 		}		
 		return b.toString();
+	}
+	
+	/**
+	 * Creates a new StreamedMetricValue from an OpenTSDB telnet put line (<b><code>put &lt;metric&gt; &lt;timestamp&gt; &lt;value&gt; &lt;tagk1=tagv1[ tagk2=tagv2 ...tagkN=tagvN]&gt;</code></b>)
+	 * @param line The text line 
+	 * @return the created StreamedMetricValue
+	 */
+	public static StreamedMetricValue fromOpenTSDBString(final String line) {
+		
+		final String[] arr = StringHelper.splitString(line, ' ', true);
+		if(arr.length < 5) throw new IllegalArgumentException("Invalid text line. Requires at least 5 entries: [" + line + "]");
+		
+		final Map<String, String> tagMap = new TagMap();
+		for(int i = 4; i < arr.length; i++) {
+			final String[] tag = StringHelper.splitString(arr[i], '=', true);
+			tagMap.put(tag[0], tag[1]);
+		}
+		final String host = tagMap.remove("host");
+		if(host==null) throw new IllegalArgumentException("Invalid text line. Requires a host tag: [" + line + "]");
+		final String app = tagMap.remove("app");		
+		final ArrayList<String> b = new ArrayList<String>(arr.length);
+		
+		// switch from: put <metric> <timestamp> <value> <tagk1=tagv1[ tagk2=tagv2 ...tagkN=tagvN]>
+		// to <timestamp>, <value>, <metric-name>, <host>, <app> [,<tagkey1>=<tagvalue1>,<tagkeyn>=<tagvaluen>]
+		
+		b.add(arr[2]);							// timestamp
+		b.add(arr[3]);							// value
+		b.add(arr[1]);							// metric
+		b.add(host);							// host
+		b.add(app==null ? "unknown" : app);		// app
+		for(Map.Entry<String, String> entry: tagMap.entrySet()) {  // tags
+			b.add(entry.getKey() + "=" + entry.getValue());
+		}
+		
+		return StreamedMetricValue.fromArray(b.toArray(new String[5 + tagMap.size()])).forValue();
 	}
 	
 	/**

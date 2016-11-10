@@ -47,7 +47,7 @@ public class DatagramToBytesDecoder extends MessageToMessageDecoder<DatagramPack
 	 */
 	@Override
 	protected void decode(final ChannelHandlerContext ctx, final DatagramPacket msg, final List<Object> out) throws Exception {
-		out.add(msg.content());		
+		out.add(msg.content().retain());		
 	}
 	
 	
