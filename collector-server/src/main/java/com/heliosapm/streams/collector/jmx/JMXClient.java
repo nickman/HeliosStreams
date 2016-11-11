@@ -148,7 +148,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 	/** Client cache */
 	protected static final Cache<Object, JMXClient> clients = CacheBuilder.newBuilder()
 		.concurrencyLevel(Runtime.getRuntime().availableProcessors())
-		.initialCapacity(256)
+		.initialCapacity(1028)
 		.weakKeys()
 		.removalListener(new RemovalListener<Object, JMXClient>() {
 			@Override
@@ -156,7 +156,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 				if(notification!=null) {
 					final JMXClient client = notification.getValue();
 					if(client!=null) {
-						client.log.info("Closing JMXClient [{}]", client.jmxServiceUrl);
+						client.log.info("Closing JMXClient [{}], Key: [{}], Removal Cause: [{}], Cache Size: [{}]", client.jmxServiceUrl, notification.getKey(), notification.getCause().name(), clients.size());
 						try { client.jmxConnector.close(); } catch (Exception ex) {/* No Op */}
 					}
 				}
@@ -209,6 +209,7 @@ public class JMXClient implements MBeanServerConnection, Closeable {
 						public void handleNotification(final Notification n, final Object handback) {
 							if(n instanceof JMXConnectionNotification) {
 								if(JMXConnectionNotification.CLOSED.equals(n.getType()) || JMXConnectionNotification.FAILED.equals(n.getType())) {
+									try { client.removeConnectionNotificationListener(this); } catch (Exception x) {/* No Op */}
 									client.log.warn("In cache JMXClient received close notif: [{}]", n.getType());
 									try { client.jmxConnector.close(); } catch (Exception x) {/* No Op */}
 									clients.invalidate(key);

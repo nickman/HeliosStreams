@@ -27,6 +27,7 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 import org.codehaus.groovy.GroovyBugError;
 import org.codehaus.groovy.ast.ASTNode;
@@ -133,6 +134,15 @@ public class VolatileFieldASTTransformation extends ClassCodeExpressionTransform
                 	PrivateAccessor.invokeStatic(LazyASTTransformation.class, "visitField", annotation, fieldNode);
 //                    LazyASTTransformation.visitField(annotation, fieldNode);
                 }
+//                if(annotation.getClassNode().equals(MY_TYPE)) {
+//                	final Map<String, Expression> members = annotation.getMembers();
+//                	final Expression expr = members.remove("value");
+//                	if(expr!=null) {
+//                		final String exprValue = expr.getText();
+//                		System.err.println("EXPR:" + exprValue);
+//                	}
+//                }
+                
                 final ClassNode annotationClassNode = annotation.getClassNode();
                 if (notTransform(annotationClassNode) || acceptableTransform(annotation)) {
                     fieldNode.addAnnotation(annotation);

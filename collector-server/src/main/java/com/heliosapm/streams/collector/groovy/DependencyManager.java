@@ -72,7 +72,7 @@ public class DependencyManager<T extends ManagedScript> implements CacheEventLis
 			for(Field f: type.getDeclaredFields()) {
 				final Dependency d = f.getAnnotation(Dependency.class);
 				if(d!=null) {
-					final String cacheKey = d.value().trim();
+					final String cacheKey = script.getBinding().getVariables().get(d.value().trim()).toString();
 					depFields.put(cacheKey, f);
 					depDefs.put(cacheKey, d);
 					f.setAccessible(true);

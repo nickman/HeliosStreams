@@ -620,7 +620,10 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	//			}
 	//			
 				final Map<String, Object> _binds = new HashMap<String, Object>(getGlobalBindings());
-				if(bindings!=null) _binds.putAll(bindings);
+				if(bindings!=null) {
+					_binds.putAll(bindings);
+				}
+				_binds.putAll(bSource.getAllProps());
 				final Path sourcePath = source.toPath();
 				
 				if(sourcePath.startsWith(scriptDirectoryPath)) {

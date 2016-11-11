@@ -27,6 +27,7 @@ import java.io.Reader;
 import java.net.URI;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,7 +39,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codehaus.groovy.control.Janitor;
 import org.codehaus.groovy.control.io.ReaderSource;
-
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.utils.buffer.BufferManager;
@@ -277,6 +277,21 @@ public class ByteBufReaderSource implements ReaderSource {
 	/** Regex pattern to match a schedule directive built into the source file name */
 	public static final Pattern PERIOD_PATTERN = Pattern.compile("\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
 	
+	
+	/**
+	 * Returns all discovered script configuration properties
+	 * @return all discovered script configuration properties
+	 */
+	Map<String, Object> getAllProps() {
+		final Map<String, Object> allProps = new HashMap<String, Object>();
+		if(scriptProperties!=null) {
+			for(Map.Entry<Object, Object> entry: scriptProperties.entrySet()) {
+				allProps.put(entry.getKey().toString(), entry.getValue());
+			}
+		}
+		allProps.putAll(bindingMap);
+		return allProps;
+	}
 	
 	/**
 	 * Groovy source files may have an accompanying config properties file which by convention is

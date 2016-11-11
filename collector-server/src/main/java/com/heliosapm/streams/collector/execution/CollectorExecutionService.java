@@ -78,12 +78,12 @@ public class CollectorExecutionService implements UncaughtExceptionHandler, Reje
 	
 	private CollectorExecutionService() {
 		threadPool =  JMXManagedThreadPool.builder()
-			.corePoolSize(Runtime.getRuntime().availableProcessors())
-			.maxPoolSize(Runtime.getRuntime().availableProcessors() * 3)
+			.corePoolSize(Runtime.getRuntime().availableProcessors() * 3)
+			.maxPoolSize(Runtime.getRuntime().availableProcessors() * 6)
 			.keepAliveTimeMs(60000)
 			.objectName(OBJECT_NAME)
 			.poolName(getClass().getSimpleName())
-			.prestart(Runtime.getRuntime().availableProcessors())
+			.prestart(Runtime.getRuntime().availableProcessors() * 3)
 			.publishJMX(true)
 			.queueSize(128)
 			//.rejectionHandler(new ThreadPoolExecutor.CallerRunsPolicy())
