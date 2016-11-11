@@ -45,6 +45,9 @@ public enum ScriptState {
 	EXECUTING("The script is executing"),
 	/** Script is compiled but has no schedule */
 	PASSIVE("The script is compiled but has no schedule"),
+	/** Script is compiled but has not confirmed init-check */
+	NOINIT("The script is compiled but has not confirmed init-check"),
+	
 	/** Script is waiting for dependency injection */
 	WAITING("The script is waiting on dependencies"),
 	/** Script is steady state but throwing some errors */

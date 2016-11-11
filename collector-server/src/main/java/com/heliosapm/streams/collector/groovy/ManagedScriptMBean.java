@@ -271,14 +271,16 @@ public interface ManagedScriptMBean { //extends NamedBean {
 	 */
 	public long getLastFlushCount();
 	
-	/**
-	 * Returns the names of the implemented lifecycle closures
-	 * @return the names of the implemented lifecycle closures
-	 */
-	public String[] getLifecycleClosures();
 	
 	/**
 	 * Resets all deltas for this script
 	 */
 	public void resetDeltas();	
+	
+	/**
+	 * Returns the number of times that init-check has returned false.
+	 * Resets to zero once the init-check succeeds.
+	 * @return the number of times that init-check has returned false
+	 */
+	public long getInitCheckFails();
 }

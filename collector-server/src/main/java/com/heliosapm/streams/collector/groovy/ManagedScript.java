@@ -22,6 +22,8 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
 import java.lang.Thread.UncaughtExceptionHandler;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -177,6 +179,10 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	
 	protected final boolean springMode;
 	
+	/** The ThreadMXBean */
+	protected static final ThreadMXBean tmx = ManagementFactory.getThreadMXBean();
+	
+	
 	/** A timer to measure collection times */
 	protected Timer collectionTimer = null;
 	/** A cached gauge for the collection timer's snapshot */
@@ -206,6 +212,13 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected final AtomicLong lastCompleteCollection = new AtomicLong(-1L);
 	/** The elapsed time of the most recent collection */
 	protected final AtomicLong lastCollectionElapsed = new AtomicLong(-1L);
+	/** The number of times that the init-check has failed. */
+	protected final AtomicLong initCheckFails = new AtomicLong(0L);
+	/** The number of times that the pre-exec-check has failed. */
+	protected final AtomicLong preExecCheckFails = new AtomicLong(0L);
+	
+	
+	
 	/** The current script state */
 	protected final AtomicReference<ScriptState> state = new AtomicReference<ScriptState>(ScriptState.INIT);
 	/** flag indicating if rescheduling can occur */
@@ -216,8 +229,6 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** The deployment sequence id */
 	protected int deploymentId = 0;
 	
-	/** The lifecycle closures (if any) keyed by the closure name */
-	protected final Map<String, Closure<?>> lifecycleClosures = new HashMap<String, Closure<?>>();
 	
 	/** Regex pattern to determine if a schedule directive is build into the source file name */
 	public static final Pattern PERIOD_PATTERN = Pattern.compile(".*\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
@@ -233,22 +244,6 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** The jmx notification infos */
 	private static final MBeanNotificationInfo[] NOTIF_INFOS;
 	
-	/** The lifecycle closure name for the <b>close</b> event, called when the script is de-allocated */
-	public static final String LIFECYCLE_CLOSE = "close";
-	/** The lifecycle closure name for the <b>init</b> event, called once before the first execution after script scheduling */
-	public static final String LIFECYCLE_INIT = "init";
-	/** The lifecycle closure name for the <b>preexec</b> event, called before each execution */
-	public static final String LIFECYCLE_PREEXEC = "preexec";
-	/** The lifecycle closure name for the <b>postexec</b> event, called after each execution */
-	public static final String LIFECYCLE_POSTEXEC = "postexec";
-	
-	/** The names of supported lifecycle script closures */
-	public static final Set<String> LIFECYCLE_CLOSURES = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList(new String[]{
-			LIFECYCLE_CLOSE,
-			LIFECYCLE_INIT,
-			LIFECYCLE_PREEXEC,
-			LIFECYCLE_POSTEXEC
-	})));
 	
 	/** Serial number to create unique wrapped closeable binding names */
 	protected static final AtomicLong wrappedCloseableSerial = new AtomicLong(0L);
@@ -438,33 +433,66 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		} catch (Exception ex) {
 			log.warn("Failed to register MBean for ManagedScript [{}]", objectName, ex);
 		}		
-		for(Map.Entry<String,Object> entry: postCompileBindingMap.entrySet()) {
-			final String cname = entry.getKey();
-			final Object value = entry.getValue();
-			if(LIFECYCLE_CLOSURES.contains(cname)) {
-				if(value!=null && (value instanceof Closure)) {
-					lifecycleClosures.put(cname, (Closure<?>)value);
-				}
-			}
-		}		
-		// Script is ready, now schedule it if a schedule was specified
-		if(scheduledPeriod!=null) {
-			if(pendingDependencies.isEmpty()) {
-				canReschedule.set(true);
-				setState(ScriptState.SCHEDULED);
-				scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);			
-				log.info("Collection Script scheduled");
-				invokeLifecycleClosure(LIFECYCLE_INIT);
-			} else {
-				setState(ScriptState.WAITING);
-				log.info("\n ================================ \n Script [{}} not scheduled. \nWaiting on {}", this.sourceFile, pendingDependencies);
-			}
-		} else {
-			setState(ScriptState.PASSIVE);
-		}
+		this.executionService.execute(scheduledReInitCheck());
+	}
+
+	
+	/**
+	 * Executed as soon as the init-check confirms readiness
+	 */
+	protected void onInitCheckComplete() {
+		canReschedule.set(true);
+		setState(ScriptState.SCHEDULED);
+		scheduleHandle = SharedScheduler.getInstance().schedule((Callable<Void>)this, scheduledPeriod, scheduledPeriodUnit);			
+		log.info("Collection Script scheduled");
 	}
 	
+	/**
+	 * Creates a runnable that is executed once a re-init-check succeeds.
+	 * @return a runnable
+	 */
+	protected Runnable scheduledReInitCheck() {
+		return new Runnable(){
+			public void run() {
+				boolean initCheck = false;
+				try { initCheck = initCheck(); } catch (Exception ex) { initCheck = false; }
+				if(initCheck) {
+					initCheckFails.set(0L);
+					if(!pendingDependencies.isEmpty()) {
+						setState(ScriptState.WAITING);
+						log.info("\n ================================ \n Script [{}} not scheduled. \nWaiting on {}", sourceFile, pendingDependencies);
+					} else {
+						//  SCRIPT IS READY !
+						onInitCheckComplete();
+					}					
+				} else {
+					initCheckFails.incrementAndGet();
+					if(scheduledPeriod!=null) {
+						setState(ScriptState.NOINIT);
+						onInitCheckIncomplete();
+					} else {
+						setState(ScriptState.PASSIVE);
+					}
+				}
+			}
+		};
+	}
 	
+	/**
+	 * Called when init checks fail.
+	 * This starts a loop where the init-check is re-executed
+	 * on the same period as the script execution. As soon as
+	 * the init-check confirms readiness, the script execution
+	 * will be scheduled. If the script is not a scheduled script,
+	 * then this will not happen and the script goes passive.
+	 */
+	protected void onInitCheckIncomplete() {
+		SharedScheduler.getInstance().schedule(new Runnable(){
+			public void run() {
+				scheduledReInitCheck();
+			}
+		}, scheduledPeriod, scheduledPeriodUnit);
+	}
 	
 	/**
 	 * Sets the state of this script.
@@ -516,6 +544,24 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			log.info("Collection Script paused");			
 		}
 	}
+	
+	/**
+	 * Executed when the script first completes initialization
+	 * @return true if the script is ready to go, false otherwise
+	 */
+	protected boolean initCheck() {
+		log.info("\n\t  ############# No initCheck re-implemented for [{}]", getClass().getName());
+		return true;
+	}
+	
+	/**
+	 * Executed before script execution, suppressing execution if it returns false or throws an exception
+	 * @return true if the script should be executed, false otherwise
+	 */
+	protected boolean preExecCheck() {		
+		return true;
+	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -582,7 +628,18 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		@Override
 		public Void call() throws Exception {
 			if(state.get()==ScriptState.EXECUTING) {
-				log.info("Script version [{}] is alreayd executing. Skipping execution", deploymentId);
+				log.info("Script version [{}] is already executing. Skipping execution", deploymentId);
+				return null;
+			}
+			boolean execute = false;
+			try { 
+				execute = preExecCheck();
+				preExecCheckFails.set(0L);
+			} catch (Exception ex) {
+				execute = false;
+			}
+			if(!execute) {
+				preExecCheckFails.incrementAndGet();
 				return null;
 			}
 			if(!setState(ScriptState.EXECUTING, ScriptState.SCHEDULED)) {
@@ -601,14 +658,25 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 				final Thread me = Thread.currentThread();
 				final Timeout txout = timeoutService.timeout(timeout, TimeUnit.SECONDS, new Runnable(){					
 					@Override
-					public void run() {
-						log.warn("Exec Timeout !!!\n{}", StringHelper.formatStackTrace(me));
-						me.interrupt();
-						log.warn("Task interrupted after timeout");
+					public void run() {					
+						final String stackTrace = StringHelper.formatStackTrace(me, true);
+						me.interrupt();						
+						log.warn("Script execution interrupted after timeout [{}]. Stack of interrupted task:\n{}", timeout, stackTrace);
 					}
 				});
-				final long elapsed = scriptExec();
-				txout.cancel();
+				long elapsed = -1L;
+				try {
+					elapsed = scriptExec();
+				} finally {
+					final boolean cancelled = txout.cancel();
+//					if(cancelled && txout.isCancelled()) {
+//						// TODO: ??
+//					}
+					if(Thread.interrupted()) {
+						// TODO ??
+						Thread.interrupted();
+					}
+				}
 				if(elapsed!=-1L) {
 					lastCollectionElapsed.set(elapsed);
 					collectionTimer.update(elapsed, TimeUnit.MILLISECONDS);
@@ -647,18 +715,18 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		protected long scriptExec() {
 			try {
 				log.debug("Starting collect");
-				try {
-					final Object preExec = invokeLifecycleClosure(LIFECYCLE_PREEXEC);
-					if(preExec!=null && (preExec instanceof Boolean)) {
-						if(!((Boolean)preExec).booleanValue()) {
-							log.warn("Pre-Exec return false. Skipping execution");
-							return -1L;
-						}
-					}
-				} catch (Exception ex) {
-					log.warn("Pre-Exec Failed: {}", ex);					
-					return -1L;
-				}
+//				try {
+//					final Object preExec = invokeLifecycleClosure(LIFECYCLE_PREEXEC);
+//					if(preExec!=null && (preExec instanceof Boolean)) {
+//						if(!((Boolean)preExec).booleanValue()) {
+//							log.warn("Pre-Exec return false. Skipping execution");
+//							return -1L;
+//						}
+//					}
+//				} catch (Exception ex) {
+//					log.warn("Pre-Exec Failed: {}", ex);					
+//					return -1L;
+//				}
 				final long start = System.currentTimeMillis();
 //				if(hystrixEnabled.get()) {
 //					runInCircuitBreaker();
@@ -666,11 +734,6 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 					run();
 //				}
 				final long elapsed = System.currentTimeMillis() - start;
-				try {
-					invokeLifecycleClosure(LIFECYCLE_POSTEXEC);
-				} catch (Exception ex) {
-					log.warn("Post-Exec Failed: {}", ex);
-				}
 				return elapsed;
 			} finally {
 				final ITracer itracer = (ITracer)bindingMap.get("tracer");
@@ -769,18 +832,6 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		}
 	}
 	
-	/**
-	 * Invokes the named lifecycle closure (if defined)
-	 * @param name The name of the lifecycle closure
-	 * @return the return value of the closure call, or null if the closure was not defined
-	 */
-	protected Object invokeLifecycleClosure(final String name) {
-		final Closure<?> closure = lifecycleClosures.get(name);
-		if(closure!=null) {
-			closure.call();
-		}
-		return null;
-	}
 
 	/**
 	 * Creates a new on-enqueue runnable for a wrapped closeable
@@ -887,8 +938,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		if(scheduleHandle!=null) {
 			scheduleHandle.cancel(true);
 			scheduleHandle = null;
-		}
-		invokeLifecycleClosure(LIFECYCLE_CLOSE);
+		}		
 		for(Object o: bindingMap.values()) {
 			if(o!=null && (o instanceof Closeable)) {
 				try {
@@ -1577,15 +1627,6 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getLifecycleClosures()
-	 */
-	@Override
-	public String[] getLifecycleClosures() {
-		return lifecycleClosures.keySet().toArray(new String[0]);
-	}
-	
-	/**
-	 * {@inheritDoc}
 	 * @see javax.management.NotificationBroadcaster#addNotificationListener(javax.management.NotificationListener, javax.management.NotificationFilter, java.lang.Object)
 	 */
 	@Override
@@ -1677,6 +1718,23 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	public long getLastFlushCount() {
 		return lastFlushCount.get();
 	}
+
+	/**
+	 * Returns the number of times that init-check has returned false.
+	 * Resets to zero once the init-check succeeds.
+	 * @return the number of times that init-check has returned false
+	 */
+	public long getInitCheckFails() {
+		return initCheckFails.get();
+	}
 	
+	/**
+	 * Returns the number of times that pre-exec check has returned false or thrown an exception.
+	 * Resets to zero once the pre-exec check succeeds.
+	 * @return the number of times that pre-exec-check has returned false or thrown an exception.
+	 */
+	public long getPreExecCheckFails() {
+		return preExecCheckFails.get();
+	}
 	
 }
