@@ -25,6 +25,9 @@ import java.util.stream.StreamSupport;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.cliffc.high_scale_lib.NonBlockingHashSet;
 
 import com.heliosapm.streams.json.JSONOps;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
@@ -57,6 +60,10 @@ public class HttpJsonOutboundHandler extends MessageToMessageEncoder<ConsumerRec
 	final String host;
 	/** The endpoint uri of the http post */
 	final String postUri;
+	
+	/** Instance logger */
+	protected final Logger log = LogManager.getLogger(getClass());
+
 	
 	/** The byte buff manager */
 	final BufferManager buffManager = BufferManager.getInstance();
@@ -100,14 +107,30 @@ public class HttpJsonOutboundHandler extends MessageToMessageEncoder<ConsumerRec
 		}).toArray(s -> new StreamedMetricValue[s]);
 		final int size = smvs.length;
 		final ByteBuf buff = buffManager.buffer(size * 200);
-		JSONOps.serialize(smvs, buff);
+		
+		JSONOps.serializeAndGzip(smvs, buff);
+		final int sz = buff.readableBytes();
 		final HttpRequest request = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.POST, postUri, buff);
 		request.headers().set(HttpHeaderNames.HOST, host);
 		request.headers().set(HttpHeaderNames.CONNECTION, HttpHeaderValues.KEEP_ALIVE);
 		request.headers().set(HttpHeaderNames.CONTENT_TYPE, HttpHeaderValues.APPLICATION_JSON);
-		//request.headers().set(HttpHeaderNames.CONTENT_ENCODING, HttpHeaderValues.GZIP);
+		request.headers().set(HttpHeaderNames.CONTENT_ENCODING, HttpHeaderValues.GZIP);
 		request.headers().set(HttpHeaderNames.CONTENT_LENGTH,buff.readableBytes());
 		out.add(request);
+		
+		ctx.executor().execute(new Runnable(){
+			public void run() {
+				final NonBlockingHashSet<String> hosts = new NonBlockingHashSet<String>();
+				StreamSupport.stream(msg.spliterator(), true)
+				.map(new Function<ConsumerRecord<String, StreamedMetricValue>, String>() {
+					@Override
+					public String apply(ConsumerRecord<String, StreamedMetricValue> t) {
+						return t.value().getTags().get("host");
+					}				
+				}).forEach(h -> hosts.add(h));
+				log.info("Hosts:{}, Size: {}", hosts, sz);
+			}
+		});
 	}
 	
 	

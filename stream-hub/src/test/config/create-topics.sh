@@ -1,6 +1,6 @@
 #!/bin/bash
 export KAFKA_HOME=/home/nwhitehe/services/kafka/kafka_2.11-0.10.0.0
-export ZOOKEEP_URI=localhost:2181
+export ZOOKEEP_URI=hadoop1:2181
 export REPL=1
 export RETENTION=120000
 export PARTS=30

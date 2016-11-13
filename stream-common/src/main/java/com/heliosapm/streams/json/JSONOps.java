@@ -33,6 +33,7 @@ import java.net.URL;
 import java.util.Collections;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.zip.GZIPOutputStream;
 
 import javax.management.ObjectName;
 import javax.management.openmbean.TabularData;
@@ -632,6 +633,35 @@ public class JSONOps {
 		}
 		return _buff;
 	}
+	
+	/**
+	 * Serializes and gzips the passed object to the passed byte buffer or a new one if the passed one is null
+	 * @param object The object to serialize
+	 * @param buff The buffer to write to, or null to create a new one
+	 * @return the written buffer
+	 */
+	public static ByteBuf serializeAndGzip(final Object object, final ByteBuf buff) {
+		if (object == null) throw new IllegalArgumentException("Object was null");
+		final ByteBuf _buff = buff==null ? byteBufAllocator.buffer() : buff;
+		 
+		final OutputStream os = new ByteBufOutputStream(_buff);
+		
+		try {
+			final GZIPOutputStream gos = new GZIPOutputStream(os);
+			serialize(object, gos);
+			gos.finish();
+			gos.flush();
+			gos.close();
+			os.flush();
+			os.close();
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to write object to buffer", ex);
+		} finally {
+			try { os.close(); } catch (Exception x) {/* No Op */}
+		}
+		return _buff;
+	}
+	
 	
 	/**
 	 * Serializes the passed object to a new byte buffer

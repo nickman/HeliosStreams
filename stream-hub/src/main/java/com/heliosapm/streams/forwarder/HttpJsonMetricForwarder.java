@@ -25,6 +25,7 @@ import java.util.Properties;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 
 import javax.management.ObjectName;
 
@@ -34,7 +35,6 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import org.springframework.beans.factory.BeanNameAware;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -62,8 +62,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpClientCodec;
-import io.netty.handler.codec.http.HttpContentCompressor;
-import io.netty.handler.codec.http.HttpContentDecompressor;
+import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.internal.logging.InternalLoggerFactory;
@@ -167,6 +166,7 @@ public class HttpJsonMetricForwarder extends ChannelInitializer<SocketChannel> i
 	
 	public static void main(String[] args) {
 		HttpJsonMetricForwarder h = new HttpJsonMetricForwarder();
+		
 		h.setBeanName("Basic");
 		try {
 			h.start();
@@ -244,8 +244,14 @@ public class HttpJsonMetricForwarder extends ChannelInitializer<SocketChannel> i
 			final ConsumerRecords<String, StreamedMetricValue> records = consumer.poll(kafkaMaxPollTime);
 			final int cnt = records.count();
 			if(cnt>0) {
-				senderChannel.writeAndFlush(records);
-				log.info("Dispatched [{}] Metrics", cnt);
+				senderChannel.writeAndFlush(records).addListener(f -> {
+					if(f.isSuccess()) {
+						log.info("Dispatched [{}] Metrics", cnt);
+					} else {
+						log.error("Post Failed", f.cause());
+					}
+				});
+				
 			}
 		}
 		
@@ -276,15 +282,22 @@ public class HttpJsonMetricForwarder extends ChannelInitializer<SocketChannel> i
 	
 	final LoggingHandler lh = new LoggingHandler(getClass(), LogLevel.INFO);
 	
-	class InHandler extends SimpleChannelInboundHandler<FullHttpResponse> {
+	
+	class InHandler extends SimpleChannelInboundHandler<HttpResponse> {
 		@Override
-		protected void channelRead0(final ChannelHandlerContext ctx, final FullHttpResponse msg) throws Exception {
+		protected void channelRead0(final ChannelHandlerContext ctx, final HttpResponse msg) throws Exception {
 			final StringBuilder b = new StringBuilder("RESPONSE:");
 			b.append("\n\tStatus:").append(msg.status());
-			final ByteBuf content = msg.content();
-			if(content!=null && content.readableBytes()>0) {
-				b.append("\n\tMessage:").append(content.toString(Charset.defaultCharset()));
+			if(msg instanceof FullHttpResponse) {
+				final ByteBuf content = ((FullHttpResponse)msg).content();
+				if(content!=null && content.readableBytes()>0) {
+					b.append("\n\tMessage:").append(content.toString(Charset.defaultCharset()));
+				}
 			}
+			StreamSupport.stream(msg.headers().spliterator(), false).forEach(h -> {
+				b.append("\n\tHeader:").append(h.getKey()).append("/").append(h.getValue());
+			});
+			
 			log.info(b.toString());
 		}
 	}
@@ -304,10 +317,10 @@ public class HttpJsonMetricForwarder extends ChannelInitializer<SocketChannel> i
 		//p.addLast("compressor", new HttpContentCompressor());
 		
 		p.addLast("httpCodec", new HttpClientCodec());
-		p.addLast("logger", lh);
-		p.addLast("inhandler", inboundHandler);
-		p.addLast("outhandler", outboundHandler);
+		//p.addLast("logger", lh);
 		
+		p.addLast("outhandler", outboundHandler);
+		p.addLast("inhandler", inboundHandler);
 		
 		
 		

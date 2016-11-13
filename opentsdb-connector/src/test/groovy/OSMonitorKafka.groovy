@@ -8,8 +8,8 @@ import com.heliosapm.streams.metrics.*;
 import java.lang.management.*;
 
 Properties props = new Properties();
-//props.put("bootstrap.servers", "localhost:9093,localhost:9094");
-props.put("bootstrap.servers", "localhost:9092");
+props.put("bootstrap.servers", "localhost:9093,localhost:9094");
+//props.put("bootstrap.servers", "localhost:9092");
 props.put("acks", "all");
 props.put("retries", 0);
 props.put("batch.size", 16384);
@@ -111,24 +111,26 @@ try {
         }
         sigar.getFileSystemList().each() { fs ->
             //println "FS: dir:${fs.getDirName()},  dev:${fs.getDevName()}, type:${fs.getSysTypeName()}, opts:${fs.getOptions()}";
-            fsu = sigar.getFileSystemUsage(fs.getDirName());
-            ctrace("sys.fs.avail", fsu.getAvail(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            ctrace("sys.fs.queue", fsu.getDiskQueue(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            ctrace("sys.fs.files", fsu.getFiles(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            ctrace("sys.fs.free", fsu.getFree(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            ctrace("sys.fs.freefiles", fsu.getFreeFiles(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            ctrace("sys.fs.total", fsu.getTotal(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            ctrace("sys.fs.used", fsu.getUsed(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            ctrace("sys.fs.usedperc", fsu.getUsePercent(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
-            
-            ctrace("sys.fs.bytes", fsu.getDiskReadBytes(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'reads']);
-            ctrace("sys.fs.bytes", fsu.getDiskWriteBytes(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'writes']);
+            try {
+                fsu = sigar.getFileSystemUsage(fs.getDirName());
+                ctrace("sys.fs.avail", fsu.getAvail(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                ctrace("sys.fs.queue", fsu.getDiskQueue(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                ctrace("sys.fs.files", fsu.getFiles(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                ctrace("sys.fs.free", fsu.getFree(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                ctrace("sys.fs.freefiles", fsu.getFreeFiles(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                ctrace("sys.fs.total", fsu.getTotal(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                ctrace("sys.fs.used", fsu.getUsed(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                ctrace("sys.fs.usedperc", fsu.getUsePercent(), ['name':fs.getDirName(), 'type':fs.getSysTypeName()]);
+                
+                ctrace("sys.fs.bytes", fsu.getDiskReadBytes(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'reads']);
+                ctrace("sys.fs.bytes", fsu.getDiskWriteBytes(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'writes']);
 
-            ctrace("sys.fs.ios", fsu.getDiskReads(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'reads']);
-            ctrace("sys.fs.ios", fsu.getDiskWrites(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'writes']);
+                ctrace("sys.fs.ios", fsu.getDiskReads(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'reads']);
+                ctrace("sys.fs.ios", fsu.getDiskWrites(), ['name':fs.getDirName(), 'type':fs.getSysTypeName(), 'dir':'writes']);
 
-            
-            flush();
+                
+                flush();
+                } catch (x) {}
             //println "[$fs]: $fsu";
         }
         sigar.getNetInterfaceList().each() { iface ->

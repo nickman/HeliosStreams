@@ -9,4 +9,5 @@
 <stringAttribute key="org.eclipse.jdt.launching.MAIN_TYPE" value="com.heliosapm.streams.collector.CollectorServer"/>
 <stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="--root=${system_property:user.home}/.collectionServer --console --jmxmp=2345"/>
 <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="collector-server"/>
+<stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="-Dstreamhub.discovery.zookeeper.connect=hadoop1:2181"/>
 </launchConfiguration>
