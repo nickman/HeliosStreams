@@ -286,32 +286,38 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	}
 	
 	public static void main(String[] args) {
-		System.setProperty(CONFIG_ROOT_DIR, "./src/test/resources/test-root");
-		JMXHelper.fireUpJMXMPServer("0.0.0.0:3456");
-		final Instrumentation instr = LocalAgentInstaller.getInstrumentation();
-		getInstance();
-		StdInCommandHandler.getInstance()
-			.registerCommand("gc", new Runnable(){
-				@Override
-				public void run() {
-					System.gc();
-				}
-			}).registerCommand("cls", new Runnable(){
-				@Override
-				public void run() {
-//					final Map<String, int[]> map = new HashMap<String, int[]>();
-					final StringBuilder b = new StringBuilder("======== GCL Loaded Classes:");
-					for(Class<?> clazz: instr.getAllLoadedClasses()) {
-						final ClassLoader cl = clazz.getClassLoader();
-						if(cl!=null && (cl instanceof GroovyClassLoader)) {
-							b.append("\n\t").append(clazz.getName()).append(" : ").append(cl.toString());
-						}
-					}
-					b.append("\n==========");
-					System.err.println(b);
-				}
-			})
-		.run();
+//		System.setProperty(CONFIG_ROOT_DIR, "./src/test/resources/test-root");
+//		JMXHelper.fireUpJMXMPServer("0.0.0.0:3456");
+//		final Instrumentation instr = LocalAgentInstaller.getInstrumentation();
+//		getInstance();
+//		StdInCommandHandler.getInstance()
+//			.registerCommand("gc", new Runnable(){
+//				@Override
+//				public void run() {
+//					System.gc();
+//				}
+//			}).registerCommand("cls", new Runnable(){
+//				@Override
+//				public void run() {
+////					final Map<String, int[]> map = new HashMap<String, int[]>();
+//					final StringBuilder b = new StringBuilder("======== GCL Loaded Classes:");
+//					for(Class<?> clazz: instr.getAllLoadedClasses()) {
+//						final ClassLoader cl = clazz.getClassLoader();
+//						if(cl!=null && (cl instanceof GroovyClassLoader)) {
+//							b.append("\n\t").append(clazz.getName()).append(" : ").append(cl.toString());
+//						}
+//					}
+//					b.append("\n==========");
+//					System.err.println(b);
+//				}
+//			})
+//		.run();
+		final File rootDir = new File("/home/nwhitehead/.collectionServer");
+		for(File dir: rootDir.listFiles()) {
+			if(dir.isDirectory() && !DIR_NAMES.contains(dir.getName())) {
+				System.out.println("rm -rf " + dir.getAbsolutePath());
+			}
+		}
 	}
 	
 	protected final Set<Class<?>> metaClasses = new CopyOnWriteArraySet<Class<?>>();

@@ -1,77 +1,106 @@
-//!STOP
-/*
-	Kafka Broker JMX Collection Script
-	Whitehead, 2016
-*/
-
-/* =========================================================================
-	Populate one timers
-   ========================================================================= */	
 @Field
 hostTag = navmap_1;
 @Field
 appTag = navmap_0;
 @Field
-controllerPattern = jmxHelper.objectName("kafka.controller:type=KafkaController,name=*");
-@Field
-leaderElectionOn = jmxHelper.objectName("kafka.controller:type=ControllerStats,name=LeaderElectionRateAndTimeMs");
-@Field
-leaderElectionAttrs = ["MeanRate","OneMinuteRate","FiveMinuteRate","FifteenMinuteRate","50thPercentile",
-	"Min","Mean","StdDev","75thPercentile","95thPercentile","98thPercentile","99thPercentile","999thPercentile","Count","Max"] as String[];
-@Field
-uncleanLeaderElectionOn = jmxHelper.objectName("kafka.controller:type=ControllerStats,name=UncleanLeaderElectionsPerSec");
-@Field
-uncleanLeaderElectionAttrs = ["Count","MeanRate","OneMinuteRate","FiveMinuteRate","FifteenMinuteRate"] as String[];
-@Field
-groupMetaManagerPattern = jmxHelper.objectName("kafka.coordinator:type=GroupMetadataManager,name=*");
-@Field
-logCleanerPattern = jmxHelper.objectName("kafka.log:type=LogCleaner,name=*");
+jmxClient = null;
+@Field mapAttrs = [
+	"Count"	: 				"count",
+	"MeanRate" : 			"ratemean",
+	"OneMinuteRate" : 		"rate1m",
+	"FiveMinuteRate" : 		"rate5m",
+	"FifteenMinuteRate" : 	"rate15m",
+	"50thPercentile" : 		"pct50",
+	"75thPercentile" : 		"pct75",
+	"95thPercentile" : 		"pct95",
+	"98thPercentile" : 		"pct98",
+	"99thPercentile" : 		"pct99",
+	"999thPercentile" : 	"pct999"
+]
 
-log.info("Collecting for ${appTag}@${hostTag}");
-log.info("JMX: service:jmx:rmi:///jndi/rmi://$navmap_1:$port/jmxrmi");
-
-jmxClient = JMXClient.newInstance(this, "service:jmx:rmi:///jndi/rmi://$navmap_1:$port/jmxrmi");
-
-tracer.reset().tags([host : hostTag, app : appTag]);
-
-traceStats = { on, attrs, seg ->
-	tracer {
-		try {
-			tracer.pushSeg(on.getDomain()).pushSeg(seg);
-			attributeValues = jmxHelper.getAttributes(on, jmxClient, attrs);
-	        ts = System.currentTimeMillis();
-	        attributeValues.each() { k,v -> 
-	        	tracer.pushSeg(k).trace(v, ts).popSeg();
-	        }        
-		} catch (x) {
-			log.error("Failed to collect on [{}]", on, x);					
-		}				
-	}	
+remapAttr = {attr -> 
+	String name = mapAttrs.get(attr);
+	return name==null ? attr : name;
 }
 
-traceValues = { pattern ->
-	jmxClient.queryNames(pattern, null).each() { on ->
+clean = {s ->
+	return s.replace("-", "_");
+}
+
+//if(jmxClient==null) jmxClient = JMXClient.newInstance(this, "service:jmx:rmi:///jndi/rmi://$navmap_1:$port/jmxrmi");
+jmxClient = JMXClient.newInstance(this, "service:jmx:jmxmp://$navmap_1:$port");
+
+/*
+if(jmxClient==null) {
+	_jmxUrl_ = "service:jmx:jmxmp://$navmap_1:$port";
+	jmxClient = JMXClient.newInstance(this, _jmxUrl_);
+	log.info("\n\t================\n\tConnected to Kafka Broker at $_jmxUrl_\n\t================\n");
+
+}
+*/
+tracer.reset().tags([host : hostTag, app : appTag]);
+
+try {
+	//kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec,topic=tsdb.metrics.binary
+	jmxClient.queryNames(jmxHelper.objectName("kafka.server:type=BrokerTopicMetrics,name=*,topic=*"), null).each() { on ->
 		tracer {
-			tracer.pushSeg(on.getDomain());
-			try {
-				tracer.pushSeg(on.getDomain());
-		        name = on.getKeyProperty("name");
-		        int value = jmxClient.getAttribute(on, "Value");
-		        ts = System.currentTimeMillis();
-		        tracer.pushSeg(name).trace(value, ts).popSeg();
-			} catch (x) {
-				log.error("Failed to collect on [{}]", on, x);					
-			} finally {
-				tracer.popSeg();
+			StringBuilder b = new StringBuilder("\nBrokerTopicMetrics:").append(on);
+			
+			tracer.pushSeg(on.getDomain()).pushSeg("topic").pushSeg(on.getKeyProperty('name'));
+			tracer {
+				attrMap = jmxHelper.getAttributes(on, jmxClient, "MeanRate", "OneMinuteRate", "FiveMinuteRate", "FifteenMinuteRate", "Count");
+				//log.info("Seg: [{}]. Attrs for [{}] : [{}]", "${on.getDomain()}.topic.${on.getKeyProperty('name')}", on, attrMap);
+				ts = System.currentTimeMillis();
+				attrMap.each() { k, v ->
+					tracer.pushSeg(remapAttr(k))
+				   		.pushTag("topic", clean(on.getKeyProperty("topic")))
+				   		.trace(v, ts)
+						.popTag().popSeg();
+					//log.info("Traced [{}]", "${remapAttr(k)}/${clean(on.getKeyProperty('topic'))}:$v");
+				}
 			}
+			//log.info(b.toString());
+			
 		}
 	}
-}	
 
-traceValues(controllerPattern);
-traceValues(groupMetaManagerPattern);
-traceValues(logCleanerPattern);
-traceStats(leaderElectionOn, leaderElectionAttrs, "leaderelection");
-traceStats(uncleanLeaderElectionOn, uncleanLeaderElectionAttrs, "ucleaderelection");
+} catch (e) {
+	log.error("BrokerTopicMetrics Collection Failure", e);
+} finally {
+	tracer.reset().tags([host : hostTag, app : appTag]);
+
+}
+
+
+try {
+	tracer.pushSeg("kafka.log.topic.size");
+	def accumulator = [:];
+	//kafka.log:type=Log,name=Size,topic=__consumer_offsets,partition=0
+	jmxClient.queryNames(jmxHelper.objectName("kafka.log:type=Log,name=Size,topic=*,partition=*"), null).each() { on ->
+		def topic = on.getKeyProperty('topic');
+		def partition = on.getKeyProperty('partition'); 
+		def size = jmxHelper.getAttribute(jmxClient, on, 'Value');
+		if(accumulator.containsKey(topic)) {
+			accumulator.put(topic, accumulator.get(topic) + size);
+		} else {
+			accumulator.put(topic, size);
+		}
+	}
+	ts = System.currentTimeMillis();
+	accumulator.each() { k, v ->
+		tracer {
+			tracer.pushTag("topic", clean(k))
+				.trace(v, ts)
+				.popTag();
+		}
+	}
+	accumulator.clear();
+
+} catch (e) {
+	log.error("BrokerTopicLogSize Collection Failure", e);
+} finally {
+	tracer.reset().tags([host : hostTag, app : appTag]);
+}
+
 
 

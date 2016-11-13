@@ -71,14 +71,6 @@ public class JMXRPC extends RpcPlugin implements JMXRPCMBean {
 	protected final NonBlockingHashSet<ObjectName> objectNames = new NonBlockingHashSet<ObjectName>(); 
 	/** The default timeout for async calls in ms */
 	protected long defaultTimeout = DEFAULT_ASYNC_TIMEOUT;
-	/**
-	 * Creates a new JMXRPC
-	 */
-	public JMXRPC() {
-		
-	}
-
-	// javax.management.remote.jmxmp:service=JMXMPConnectorServer
 	 
 	/**
 	 * {@inheritDoc}
