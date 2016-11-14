@@ -556,6 +556,14 @@ public class HubManager implements MetricsMetaAPI, ChannelPoolHandler, Closeable
 	public String[] getUpServers() {
 		return tsdbEndpoint.getUpServers();
 	}
+
+	/**
+	 * Returns the metrics metadata lookup service
+	 * @return the metrics metadata lookup service
+	 */
+	public MetricsMetaAPIImpl getMetricMetaService() {
+		return metricMetaService;
+	}
 	
 	
 	

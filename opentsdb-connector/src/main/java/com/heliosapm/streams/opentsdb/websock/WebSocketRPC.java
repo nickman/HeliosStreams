@@ -57,7 +57,7 @@ public class WebSocketRPC extends HttpRpcPlugin {
 	protected final PluginMetricManager metricManager = new PluginMetricManager(getClass().getSimpleName());
 	/** The configured path for thw websocket rpc service */
 	protected String path = null;
-	
+	/** WebSocket handler for fronting JSON based data-services */
 	protected WebSocketServiceHandler webSockHandler = null;
 	
 	
