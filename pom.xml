@@ -74,6 +74,7 @@
 		<quartz.version>2.2.2</quartz.version>
 		<za-hashing.version>0.6</za-hashing.version>
 		<reactor.version>1.1.5.RELEASE</reactor.version>
+		<pools.version>2.4.2</pools.version>
 		<!-- <kafka.version>0.9.0.1</kafka.version> -->
 		
 		<zookeeper.version>3.4.8</zookeeper.version>
@@ -607,6 +608,13 @@
 		            <artifactId>jctools-core</artifactId>
 		            <version>${jctools.version}</version>
 		        </dependency>
+
+				<dependency>
+				  <groupId>org.apache.commons</groupId>
+				  <artifactId>commons-pool2</artifactId>
+				  <version>${pools.version}</version>
+				</dependency>
+
 		<!--
 				<dependency>
 				  <groupId>com.github.stephenc.high-scale-lib</groupId>
@@ -1035,11 +1043,6 @@
 
 
 
-<dependency>
-  <groupId>org.apache.commons</groupId>
-  <artifactId>commons-pool2</artifactId>
-  <version>2.4.2</version>
-</dependency>
 
 <dependency>
   <groupId>org.infinispan</groupId>
