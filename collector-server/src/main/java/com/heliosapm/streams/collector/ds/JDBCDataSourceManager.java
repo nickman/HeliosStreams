@@ -20,11 +20,16 @@ package com.heliosapm.streams.collector.ds;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 
+import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cliffc.high_scale_lib.NonBlockingHashMap;
@@ -34,6 +39,7 @@ import org.cliffc.high_scale_lib.NonBlockingHashMap;
 //import org.springframework.context.ApplicationContextAware;
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
+import com.heliosapm.streams.collector.ds.pool.PoolConfig;
 import com.heliosapm.streams.collector.execution.CollectorExecutionService;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.utils.file.FileChangeEvent;
@@ -62,6 +68,9 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 	protected final File dsDirectory;
 	/** A cache of datasources keyed by the definition file name */
 	protected final NonBlockingHashMap<String, ManagedHikariDataSource> dataSources = new NonBlockingHashMap<String, ManagedHikariDataSource>();
+	/** A cache of object pools keyed by the definition file name */
+	protected final NonBlockingHashMap<String, GenericObjectPool<?>> objectPools = new NonBlockingHashMap<String, GenericObjectPool<?>>();
+	
 	/** The global cache */
 	protected final GlobalCacheService gcache = GlobalCacheService.getInstance(); 
 	/** The file finder */
@@ -74,6 +83,11 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 	protected final LongAdder successfulDeploys = new LongAdder();
 	/** A counter of failed deployments */
 	protected final LongAdder failedDeploys = new LongAdder();
+	
+	/** The recognized data source and object pool configuration file extensions */
+	public static final Set<String> POOL_EXT = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("ds", "pool")));
+	
+	
 //	/** The spring app context */
 //	protected ApplicationContext appCtx = null;
 
@@ -91,7 +105,8 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 		.maxDepth(5)
 		.filterBuilder()
 		.caseInsensitive(false)
-		.endsWithMatch(".ds")
+		.patternMatch(".*\\.ds$|.*\\.pool$")
+		
 		.fileAttributes(FileMod.READABLE)
 		.shouldBeFile()
 		.fileFinder();
@@ -134,9 +149,36 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 	 */
 	protected void deploy(final File dsDef) {
 		if(dsDef==null) throw new IllegalArgumentException("The passed file was null");
-		if(!dsDef.getName().toLowerCase().endsWith(".ds")) return;
-		if(!dsDef.canRead()) throw new IllegalArgumentException("The passed file [" + dsDef + "] cannot be read");		
+		final String ext = URLHelper.getFileExtension(dsDef);
+		if(ext==null || ext.trim().isEmpty() || !POOL_EXT.contains(ext.toLowerCase())) {
+			throw new IllegalArgumentException("The passed file [" + dsDef + "] does not have a recognized extension [" + ext + "]. Recognized extensions are: " + POOL_EXT);
+		}
+		if(!dsDef.canRead()) throw new IllegalArgumentException("The passed file [" + dsDef + "] cannot be read");
+		if(dsDef.getName().toLowerCase().endsWith(".ds")) {
+			deployJDBCDataSource(dsDef);
+		} else {
+			deployObjectPool(dsDef);
+		}
+	}
+	
+	/**
+	 * Deploys the passed file as a generic object pool
+	 * @param poolDef The generic object pool configuration file
+	 */
+	protected void deployObjectPool(final File poolDef) {
+		log.info(">>> Deploying ObjectPool from [{}]", poolDef);
+		final GenericObjectPool<?> pool = PoolConfig.deployPool(poolDef);
+		objectPools.put(poolDef.getAbsolutePath(), pool);
+		final String name = pool.getJmxName().getKeyProperty("name");
+		log.info("<<< ObjectPool [{}] deployed from [{}]", name, poolDef);
 		
+	}
+	
+	/**
+	 * Deploys the passed file as a JDBC data source
+	 * @param dsDef The JDBC data source configuration file
+	 */
+	protected void deployJDBCDataSource(final File dsDef) {
 		try {
 			final Properties p = URLHelper.readProperties(URLHelper.toURL(dsDef));
 			for(String key: p.stringPropertyNames()) {
@@ -190,22 +232,25 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 	 * @param dsDef The data source definition file
 	 */
 	protected void undeploy(final File dsDef) {
-		if(dsDef!=null) {
-			final String key = dsDef.getAbsolutePath();
+		if(dsDef==null) throw new IllegalArgumentException("The passed file was null");
+		final String ext = URLHelper.getFileExtension(dsDef);
+		if(ext==null || ext.trim().isEmpty() || !POOL_EXT.contains(ext.toLowerCase())) {
+			throw new IllegalArgumentException("The passed file [" + dsDef + "] does not have a recognized extension [" + ext + "]. Recognized extensions are: " + POOL_EXT);
+		}
+		if(!dsDef.canRead()) throw new IllegalArgumentException("The passed file [" + dsDef + "] cannot be read");
+		final String key = dsDef.getAbsolutePath();
+		if(dsDef.getName().toLowerCase().endsWith(".ds")) {
 			final ManagedHikariDataSource ds = dataSources.remove(key);
 			if(ds!=null) {
 				log.info(">>> Stopping DataSource from [{}]", dsDef);
 				try { ds.close(); } catch (Exception x) {/* No Op */}
 				try { GlobalCacheService.getInstance().remove(ds.dsCacheKey); } catch (Exception x) {/* No Op */}
 				try { GlobalCacheService.getInstance().remove(ds.groovydsCacheKey); } catch (Exception x) {/* No Op */}
-//				if(appCtx!=null) {
-//					try {
-//						((DefaultListableBeanFactory)appCtx.getAutowireCapableBeanFactory()).destroySingleton("ds/" + ds.getPoolName());
-//					} catch (Exception x) {/* No Op */}
-//					
-//				}
 				log.info("<<< DataSource [{}] stopped", dsDef);
 			}
+		} else {
+			PoolConfig.undeployPool(dsDef);
+			objectPools.remove(key);
 		}
 	}
 

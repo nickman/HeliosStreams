@@ -65,6 +65,7 @@ public class TestMQPool {
 	public static void main(String[] args) {
 		try {
 			log("Pool Test");
+			log(TEST_PROPS);
 			JMXHelper.fireUpJMXMPServer(1077);
 			final Properties p = Props.strToProps(TEST_PROPS);
 			log("Props:" + p);
