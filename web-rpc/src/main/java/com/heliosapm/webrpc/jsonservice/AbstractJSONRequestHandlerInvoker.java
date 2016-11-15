@@ -20,6 +20,7 @@ package com.heliosapm.webrpc.jsonservice;
 
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
+import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONRequest;
 
 /**
  * <p>Title: AbstractJSONRequestHandlerInvoker</p>
@@ -42,6 +43,11 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	private final String opDescription;
 	/** The operation type */
 	private final RequestType type;
+	/** Indicates if Netty 4 callers are supported */
+	private final boolean netty4;
+	/** Indicates if Netty 3 callers are supported */
+	private final boolean netty3;
+	
 	
 	/**
 	 * Creates a new AbstractJSONRequestHandlerInvoker
@@ -51,14 +57,18 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	 * @param opName The target op name
 	 * @param opDescription The target op description
 	 * @param type The op type
+	 * @param netty4 true if Netty 4 callers are supported, false otherwise
+	 * @param netty3 true if Netty 3 callers are supported, false otherwise
 	 */
-	public AbstractJSONRequestHandlerInvoker(Object targetService, String serviceName, String serviceDescription, String opName, String opDescription, RequestType type) {
+	public AbstractJSONRequestHandlerInvoker(Object targetService, String serviceName, String serviceDescription, String opName, String opDescription, RequestType type, final boolean netty4, final boolean netty3) {
 		this.targetService = targetService;		
 		this.serviceName = serviceName;
 		this.serviceDescription = serviceDescription;
 		this.opDescription = opDescription;
 		this.opName = opName;
 		this.type = type;
+		this.netty3 = netty3;
+		this.netty4 = netty4;
 	}
 	
 
@@ -70,6 +80,10 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	 * @param jsonRequest The json request to invoke
 	 */
 	public void invokeJSONRequest(JSONRequest jsonRequest) {
+		if(!netty4) {
+			jsonRequest.error("Netty4 Clients Not Supported By This Endpoint");
+			return;
+		}
 		ElapsedTime et = SystemClock.startClock();
 		try {
 			doInvoke(jsonRequest);
@@ -81,10 +95,39 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	}
 	
 	/**
+	 * Invokes the passed json request
+	 * @param jsonRequest The json request to invoke
+	 */
+	public void invokeJSONRequest(final Netty3JSONRequest jsonRequest) {
+		if(!netty3) {
+			jsonRequest.error("Netty3 Clients Not Supported By This Endpoint");
+			return;
+		}
+		ElapsedTime et = SystemClock.startClock();
+		try {
+			doInvoke(jsonRequest);
+			long elpsd = et.elapsed();
+		} catch (Exception ex) {
+			
+			throw new RuntimeException("Failed to invoke JSON Service [" + serviceName + "/" + opName + "]", ex);
+		}
+	}
+	
+	
+	
+	
+	/**
 	 * The byte-code generated json request invoker
 	 * @param jsonRequest the request to invoke
 	 */
-	public abstract void doInvoke(JSONRequest jsonRequest);
+	public abstract void doInvoke(final JSONRequest jsonRequest);
+	
+	/**
+	 * The byte-code generated json request invoker
+	 * @param jsonRequest the request to invoke
+	 */
+	public abstract void doInvoke(final Netty3JSONRequest jsonRequest);
+	
 
 	/**
 	 * Returns the target service name
@@ -135,6 +178,23 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	 */
 	public RequestType getRequestType() {
 		return type;
+	}
+
+	/**
+	 * Indicates if Netty 4 callers are supported
+	 * @return true if Netty 4 callers are supported, false otherwise
+	 */
+	public boolean isNetty4() {
+		return netty4;
+	}
+
+
+	/**
+	 * Indicates if Netty 3 callers are supported
+	 * @return true if Netty 3 callers are supported, false otherwise
+	 */
+	public boolean isNetty3() {
+		return netty3;
 	}
 
 	

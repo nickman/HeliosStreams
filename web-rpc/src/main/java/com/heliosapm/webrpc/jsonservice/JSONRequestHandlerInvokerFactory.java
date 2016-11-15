@@ -33,6 +33,7 @@ import org.apache.logging.log4j.Logger;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.webrpc.annotations.JSONRequestHandler;
 import com.heliosapm.webrpc.annotations.JSONRequestService;
+import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONRequest;
 
 import javassist.ClassClassPath;
 import javassist.ClassPool;
@@ -91,6 +92,7 @@ public class JSONRequestHandlerInvokerFactory {
 		Set<String> packagesImported = new HashSet<String>(); 
 		try {
 			final CtClass jsonRequestCtClass = cp.get(JSONRequest.class.getName());
+			final CtClass netty3JsonRequestCtClass = cp.get(Netty3JSONRequest.class.getName());
 			final CtClass parent = cp.get(AbstractJSONRequestHandlerInvoker.class.getName());
 			CtClass targetClass = cp.get(handlerInstance.getClass().getName());
 			Collection<Method> methods = getTargetMethods(handlerInstance.getClass());
@@ -115,8 +117,14 @@ public class JSONRequestHandlerInvokerFactory {
 					invokerCtor.setBody("{ super($$); typedTarget = (" + handlerInstance.getClass().getName() + ")$1; }");
 					invokerClass.addConstructor(invokerCtor);					
 				}
-				CtMethod invokerMethod = CtNewMethod.copy(parent.getDeclaredMethod("doInvoke", new CtClass[] {jsonRequestCtClass}), invokerClass, null); 
-				StringBuilder b = new StringBuilder("{this.typedTarget.")
+				final StringBuilder b = new StringBuilder();
+				final CtMethod invokerMethod;
+				if(m.getParameterTypes()[0].getName().equals(JSONRequest.class.getName())) {
+					invokerMethod = CtNewMethod.copy(parent.getDeclaredMethod("doInvoke", new CtClass[] {jsonRequestCtClass}), invokerClass, null);
+				} else {
+					invokerMethod = CtNewMethod.copy(parent.getDeclaredMethod("doInvoke", new CtClass[] {netty3JsonRequestCtClass}), invokerClass, null);
+				}
+				b.append("{this.typedTarget.")
 					.append(m.getName())
 					.append("($1");
 				final Class<?>[] ptypes = m.getParameterTypes();
@@ -231,7 +239,7 @@ public class JSONRequestHandlerInvokerFactory {
 			JSONRequestHandler jsonHandler = m.getAnnotation(JSONRequestHandler.class);
 			if(jsonHandler!=null) {
 				Class<?>[] paramTypes = m.getParameterTypes();
-				if(paramTypes.length<1 || !JSONRequest.class.equals(paramTypes[0]) || containsPrimitives(paramTypes)) {
+				if(paramTypes.length<1 || (!JSONRequest.class.equals(paramTypes[0]) && !Netty3JSONRequest.class.equals(paramTypes[0])) || containsPrimitives(paramTypes)) {
 					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
 					continue;
 				}
@@ -248,7 +256,7 @@ public class JSONRequestHandlerInvokerFactory {
 			JSONRequestHandler jsonHandler = m.getAnnotation(JSONRequestHandler.class);
 			if(jsonHandler!=null) {
 				Class<?>[] paramTypes = m.getParameterTypes();
-				if(paramTypes.length<1 || !JSONRequest.class.equals(paramTypes[0])) {
+				if(paramTypes.length<1 || (!JSONRequest.class.equals(paramTypes[0]) && !Netty3JSONRequest.class.equals(paramTypes[0]))) {
 					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
 					continue;
 				}
@@ -264,6 +272,65 @@ public class JSONRequestHandlerInvokerFactory {
 		return mappedMethods.values();
 		
 	}
+	
+	/**
+	 * Finds and returns the valid target {@link JSONRequestHandler} annotated methods in the passed class.
+	 * @param clazz the class to inspect
+	 * @return a collection of valid json request methods
+	 */
+	public static Collection<Method[]> getTargetMethodPairs(Class<?> clazz) {
+		Map<String, Method> mappedMethods = new HashMap<String, Method>();
+		for(Method m: clazz.getMethods()) {
+			if(m.getAnnotation(JSONRequestHandler.class)!=null) {
+				mappedMethods.put(m.getName() + "(" + StringHelper.getMethodDescriptor(m) + ")", m);
+			}
+		}
+		for(Method m: clazz.getDeclaredMethods()) {
+			if(m.getAnnotation(JSONRequestHandler.class)!=null) {
+				mappedMethods.put(m.getName() + "(" + StringHelper.getMethodDescriptor(m) + ")", m);
+			}
+		}
+		
+		for(Method m: mappedMethods.values()) {
+			final Method[] pair = new Method[2];
+			JSONRequestHandler jsonHandler = m.getAnnotation(JSONRequestHandler.class);
+			if(jsonHandler!=null) {
+				Class<?>[] paramTypes = m.getParameterTypes();
+				if(paramTypes.length<1 || (!JSONRequest.class.equals(paramTypes[0]) && !Netty3JSONRequest.class.equals(paramTypes[0])) || containsPrimitives(paramTypes)) {
+					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
+					continue;
+				}
+				pair[JSONRequest.class.equals(paramTypes[0]) ? 0 : 1]  = m;
+				mappedMethods.put(m.getName() + "(" + StringHelper.getMethodDescriptor(m) + ")", m);
+//				Class<?>[] paramTypes = m.getParameterTypes();
+//				if(paramTypes.length!=1 || !JSONRequest.class.equals(paramTypes[0])) {
+//					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
+//					continue;
+//				}
+//				mappedMethods.put(m.getName(), m);
+			}
+		}
+		for(Method m: clazz.getDeclaredMethods()) {
+			JSONRequestHandler jsonHandler = m.getAnnotation(JSONRequestHandler.class);
+			if(jsonHandler!=null) {
+				Class<?>[] paramTypes = m.getParameterTypes();
+				if(paramTypes.length<1 || (!JSONRequest.class.equals(paramTypes[0]) && !Netty3JSONRequest.class.equals(paramTypes[0]))) {
+					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
+					continue;
+				}
+				mappedMethods.put(m.getName() + "(" + StringHelper.getMethodDescriptor(m) + ")", m);
+//				Class<?>[] paramTypes = m.getParameterTypes();
+//				if(paramTypes.length!=1 || !JSONRequest.class.equals(paramTypes[0])) {
+//					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
+//					continue;
+//				}
+//				mappedMethods.put(m.getName(), m);
+			}			
+		}
+		return null; //mappedMethods.values();
+		
+	}
+	
 	
 	private JSONRequestHandlerInvokerFactory() {
 	}

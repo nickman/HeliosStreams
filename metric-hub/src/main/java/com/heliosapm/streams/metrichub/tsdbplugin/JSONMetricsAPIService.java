@@ -33,10 +33,11 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.heliosapm.streams.metrichub.MetricsMetaAPI;
 import com.heliosapm.streams.metrichub.QueryContext;
+import com.heliosapm.streams.metrichub.tsdbplugin.json.Netty3JSONRequest;
+import com.heliosapm.streams.metrichub.tsdbplugin.json.Netty3JSONResponse;
 import com.heliosapm.webrpc.annotations.JSONRequestHandler;
 import com.heliosapm.webrpc.annotations.JSONRequestService;
-import com.heliosapm.webrpc.jsonservice.JSONRequest;
-import com.heliosapm.webrpc.jsonservice.JSONResponse;
+
 import com.heliosapm.webrpc.jsonservice.ResponseType;
 
 import net.opentsdb.meta.TSMeta;
@@ -93,7 +94,7 @@ public class JSONMetricsAPIService {
 	 * </pre></p>
 	 */
 	@JSONRequestHandler(name="metricswtags", description="Returns the MetricNames that match the passed tag pairs")
-	public void getMetricNamesWithTagsJSON(final JSONRequest request, final QueryContext q, final Map<String, String> tags) {
+	public void getMetricNamesWithTagsJSON(final Netty3JSONRequest request, final QueryContext q, final Map<String, String> tags) {
 		if(q==null) {
 			getMetricNamesWithTagsJSON(
 				request,
@@ -117,7 +118,7 @@ public class JSONMetricsAPIService {
 	 * FIXME: merge metric name functions
 	 */
 	@JSONRequestHandler(name="metricnames", description="Returns the MetricNames that match the passed tag keys")
-	public void getMetricNamesJSON(final JSONRequest request, final QueryContext q, final String...tagKeys) {
+	public void getMetricNamesJSON(final Netty3JSONRequest request, final QueryContext q, final String...tagKeys) {
 		if(q==null) {
 			getMetricNamesJSON(
 				request,
@@ -163,7 +164,7 @@ public class JSONMetricsAPIService {
 	 * </pre></p>
 	 */
 	@JSONRequestHandler(name="tagkeys", description="Returns the Tag Key UIDs that match the passed metric name and tag keys")
-	public void getTagKeysJSON(final JSONRequest request, final QueryContext q, final String metricName, final String...tagKeys) {
+	public void getTagKeysJSON(final Netty3JSONRequest request, final QueryContext q, final String metricName, final String...tagKeys) {
 		if(q==null) {
 			getTagKeysJSON(
 				request,
@@ -212,7 +213,7 @@ public class JSONMetricsAPIService {
 	 * </pre></p>
 	 */
 	@JSONRequestHandler(name="tagvalues", description="Returns the Tag Value UIDs that match the passed metric name and tag keys")
-	public void getTagValuesJSON(final JSONRequest request, final QueryContext q, final String metricName, final Map<String, String> tags, final String tagKey) {
+	public void getTagValuesJSON(final Netty3JSONRequest request, final QueryContext q, final String metricName, final Map<String, String> tags, final String tagKey) {
 		if(q==null) {
 			getTagValuesJSON(
 				request, 
@@ -258,7 +259,7 @@ public class JSONMetricsAPIService {
 	 * </pre></p>
 	 */
 	@JSONRequestHandler(name="tsMetaEval", description="Returns the TSMetas that match the passed expression")
-	public void evaluateJSON(final JSONRequest request, final QueryContext q, final String expression) {		
+	public void evaluateJSON(final Netty3JSONRequest request, final QueryContext q, final String expression) {		
 		if(q==null) {
 			evaluateJSON(
 				request,
@@ -272,7 +273,7 @@ public class JSONMetricsAPIService {
 	}
 	
 	@JSONRequestHandler(name="overlap", description="Determines how may items are common between the two passed expressions")
-	public void overlap(final JSONRequest request, final QueryContext q, final String expressionOne, final String expressionTwo) {
+	public void overlap(final Netty3JSONRequest request, final QueryContext q, final String expressionOne, final String expressionTwo) {
 		if(q==null) {
 			overlap(
 				request,
@@ -292,15 +293,15 @@ public class JSONMetricsAPIService {
 	 * Attaches the consume and error handlers to the passed stream
 	 * @param stream The stream to attach handlers to
 	 * @param q The query context
-	 * @param request The JSONRequest
+	 * @param request The Netty3JSONRequest
 	 */
-	protected final <T> void attachBatchHandlers(Stream<T> stream, final QueryContext q, final JSONRequest request) {
+	protected final <T> void attachBatchHandlers(Stream<T> stream, final QueryContext q, final Netty3JSONRequest request) {
 		stream.consume(new Consumer<T>(){
 			@Override
 			public void accept(T t) {
 				try {
 					
-					final JSONResponse response;
+					final Netty3JSONResponse response;
 					if(q.shouldContinue()) {
 						response = request.response(ResponseType.MRESP);
 					} else {
@@ -324,7 +325,7 @@ public class JSONMetricsAPIService {
 			@Override
 			public void accept(Throwable t) {
 				q.setExhausted(true);
-				final JSONResponse response = request.response(ResponseType.ERR);					
+				final Netty3JSONResponse response = request.response(ResponseType.ERR);					
 				try {
 					response.resetChannelOutputStream();
 					response.setOpCode("error");					
@@ -349,9 +350,9 @@ public class JSONMetricsAPIService {
 	 * Attaches the D3 serialization consumee and error handlers to the passed stream
 	 * @param stream The stream to attach handlers to
 	 * @param q The query context
-	 * @param request The JSONRequest
+	 * @param request The Netty3JSONRequest
 	 */
-	protected final <T> void attachD3Handlers(Stream<T> stream, final QueryContext q, final JSONRequest request) {
+	protected final <T> void attachD3Handlers(Stream<T> stream, final QueryContext q, final Netty3JSONRequest request) {
 		stream.consume(new Consumer<T>(){
 			final LinkedHashSet<TSMeta> set = new LinkedHashSet<TSMeta>(q.getNextMaxLimit());
 			@SuppressWarnings("unchecked")
@@ -359,7 +360,7 @@ public class JSONMetricsAPIService {
 			public void accept(T t) {
 				try {
 					set.addAll((Collection<TSMeta>) t);
-					final JSONResponse response;
+					final Netty3JSONResponse response;
 					if(q.shouldContinue()) {
 						response = request.response(ResponseType.MRESP);
 					} else {
@@ -382,7 +383,7 @@ public class JSONMetricsAPIService {
 			@Override
 			public void accept(Throwable t) {
 				q.setExhausted(true);
-				final JSONResponse response = request.response(ResponseType.ERR);					
+				final Netty3JSONResponse response = request.response(ResponseType.ERR);					
 				try {
 					response.resetChannelOutputStream();
 					response.setOpCode("error");					
@@ -437,7 +438,7 @@ public class JSONMetricsAPIService {
 	 * </pre></p>
 	 */
 	@JSONRequestHandler(name="d3tsmeta", description="Returns the d3 json graph for the TSMetas that match the passed expression")
-	public void evaluateD3JSON(final JSONRequest request, final QueryContext q, final String expression) {
+	public void evaluateD3JSON(final Netty3JSONRequest request, final QueryContext q, final String expression) {
 		if(q==null) {
 			evaluateD3JSON(
 				request,
@@ -479,7 +480,7 @@ public class JSONMetricsAPIService {
 	 * </pre></p>
 	 */
 	@JSONRequestHandler(name="tsmetas", description="Returns the MetricNames that match the passed tag pairs")
-	public void getTSMetasJSON(final JSONRequest request, final QueryContext q, final String metricName, final Map<String, String> tags) {
+	public void getTSMetasJSON(final Netty3JSONRequest request, final QueryContext q, final String metricName, final Map<String, String> tags) {
 		if(q==null) {
 			getTSMetasJSON(
 				request, 
@@ -525,7 +526,7 @@ public class JSONMetricsAPIService {
 	 * </pre></p>
 	 */
 	@JSONRequestHandler(name="finduid", description="Returns all UIDMetas of the specified type that match the passed name")
-	public void findJSON(final JSONRequest request, final QueryContext q, final UniqueIdType type, final String name) {
+	public void findJSON(final Netty3JSONRequest request, final QueryContext q, final UniqueIdType type, final String name) {
 		if(q==null) {
 			findJSON(
 				request,
@@ -545,7 +546,7 @@ public class JSONMetricsAPIService {
 //	 * @param range
 //	 */
 //	@JSONRequestHandler(name="annotations", description="Returns all Annotations associated to TSMetas defined in the expression")
-//	public void jsonGetAnnotations(final JSONRequest request, final QueryContext q, final String expression, final long... range) {
+//	public void jsonGetAnnotations(final Netty3JSONRequest request, final QueryContext q, final String expression, final long... range) {
 //		if(q==null) {
 //			jsonGetAnnotations(
 //					request,
@@ -576,12 +577,12 @@ public class JSONMetricsAPIService {
 
 	
 	/**
-	 * Extracts the named string array from the JSONRequest
-	 * @param request the JSONRequest to get the array from
+	 * Extracts the named string array from the Netty3JSONRequest
+	 * @param request the Netty3JSONRequest to get the array from
 	 * @param key the json name of the array
 	 * @return the read string array
 	 */
-	public static String[] getStringArray(final JSONRequest request, final String key) {
+	public static String[] getStringArray(final Netty3JSONRequest request, final String key) {
 		final ArrayNode arrayNode = (ArrayNode)request.getRequest().get(key);
 		final String[] arr = new String[arrayNode.size()];
 		for(int i = 0; i < arrayNode.size(); i++) {
@@ -591,12 +592,12 @@ public class JSONMetricsAPIService {
 	}
 	
 	/**
-	 * Extracts the named long array from the JSONRequest
-	 * @param request the JSONRequest to get the array from
+	 * Extracts the named long array from the Netty3JSONRequest
+	 * @param request the Netty3JSONRequest to get the array from
 	 * @param key the json name of the array
 	 * @return the read long array
 	 */
-	public static long[] getLongArray(final JSONRequest request, final String key) {
+	public static long[] getLongArray(final Netty3JSONRequest request, final String key) {
 		final ArrayNode arrayNode = (ArrayNode)request.getRequest().get(key);
 		final long[] arr = new long[arrayNode.size()];
 		for(int i = 0; i < arrayNode.size(); i++) {
@@ -607,12 +608,12 @@ public class JSONMetricsAPIService {
 	
 	
 	/**
-	 * Extracts the named map from the JSONRequest
-	 * @param request the JSONRequest to get the map from
+	 * Extracts the named map from the Netty3JSONRequest
+	 * @param request the Netty3JSONRequest to get the map from
 	 * @param key the json name of the map
 	 * @return the read map
 	 */
-	public static Map<String, String> getMap(final JSONRequest request, final String key) {
+	public static Map<String, String> getMap(final Netty3JSONRequest request, final String key) {
 		ObjectNode tagNode = (ObjectNode)request.getRequest().get(key);
 		final Map<String, String> map = new LinkedHashMap<String, String>();
 		Iterator<String> titer = tagNode.fieldNames();
@@ -630,10 +631,10 @@ public class JSONMetricsAPIService {
 
 
 /*
-protected final <T> void attachHandlers(Stream<T> stream, final QueryContext q, final JSONRequest request) {
+protected final <T> void attachHandlers(Stream<T> stream, final QueryContext q, final Netty3JSONRequest request) {
 	stream.consume(new Consumer<T>(){
 		boolean firstRow = true;
-		JSONResponse response = request.response();			
+		Netty3JSONResponse response = request.response();			
 		JsonGenerator jgen = null;
 		final AtomicLong msgId = new AtomicLong();
 		@Override
@@ -671,7 +672,7 @@ protected final <T> void attachHandlers(Stream<T> stream, final QueryContext q, 
 		@Override
 		public void accept(Throwable t) {
 			q.setExhausted(true);
-			final JSONResponse response = request.response();					
+			final Netty3JSONResponse response = request.response();					
 			try {
 				response.resetChannelOutputStream();
 				response.setOpCode("error");
