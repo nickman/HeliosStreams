@@ -18,13 +18,24 @@ under the License.
  */
 package com.heliosapm.streams.metrichub.tsdbplugin;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URL;
 import java.nio.charset.Charset;
+import java.nio.file.FileVisitResult;
+import java.nio.file.FileVisitor;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Enumeration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,8 +51,10 @@ import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import com.heliosapm.streams.metrichub.HubManager;
 import com.heliosapm.streams.metrichub.MetricsMetaAPI;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.stumbleupon.async.Deferred;
 
+import io.netty.buffer.ByteBuf;
 import net.opentsdb.core.TSDB;
 import net.opentsdb.stats.StatsCollector;
 import net.opentsdb.tsd.HttpRpcPlugin;
@@ -65,6 +78,9 @@ public class MetricsAPIHttpPlugin extends HttpRpcPlugin {
 	protected JSONMetricsAPIService jsonMetricsService = null;
 	/** The parent TSDB instance */
 	protected TSDB tsdb = null;
+	/* The location of the metric api UI content */
+	protected File metricUiContentDir = null;
+	
 	/** The cache of content */
 	protected final Cache<String, ChannelBuffer> contentCache = CacheBuilder.newBuilder()
 		.concurrencyLevel(Runtime.getRuntime().availableProcessors())
@@ -96,7 +112,18 @@ public class MetricsAPIHttpPlugin extends HttpRpcPlugin {
 	public void initialize(final TSDB tsdb) {
 		log.info(">>>>> Initializing MetricsAPIHttpPlugin....");
 		this.tsdb = tsdb;
-		
+		final String _staticContentDirName = this.tsdb.getConfig().getDirectoryName("tsd.http.staticroot");
+		final File _staticContentDir = new File(_staticContentDirName);
+		if(!_staticContentDir.isDirectory()) {
+			throw new IllegalArgumentException("No static content directory found (defined by tsd.http.staticroot or --staticroot=)");
+		}
+		metricUiContentDir = new File(_staticContentDir, "metricapi-ui");
+		if(!metricUiContentDir.isDirectory()) {
+			if(!metricUiContentDir.exists()) {
+				if(!metricUiContentDir.mkdir()) throw new IllegalArgumentException("Failed to create metricapi-ui directory [" + metricUiContentDir + "]");
+			}
+			throw new IllegalArgumentException("Cannot create metricapi-ui directory [" + metricUiContentDir + "]");
+		}
 		metricsMetaAPI = HubManager.getInstance().getMetricMetaService();
 		jsonMetricsService = new JSONMetricsAPIService(metricsMetaAPI);
 		log.info("<<<<< MetricsAPIHttpPlugin Initialized.");
@@ -295,6 +322,220 @@ public class MetricsAPIHttpPlugin extends HttpRpcPlugin {
 //	    if (!HttpHeaders.isKeepAlive(request)) {
 //	      future.addListener(ChannelFutureListener.CLOSE);
 //	    }
+	  }
+	  
+	  
+	  protected void loadContent() {
+		    final String codeSourcePath = getClass().getProtectionDomain().getCodeSource().getLocation().getPath();
+		    final File file = new File(codeSourcePath);
+		    final boolean inJar = file.getName().toLowerCase().endsWith(".jar");
+		    if(inJar) {
+		    	unloadFromJar(file);
+		    }
+		    // metricUiContentDir
+	  }
+	  
+	  /**
+	   * Unloads the UI content from classpath/dir
+	   * TODO: merge this with {@link #unloadFromJar(File)}
+	   */
+	  protected void unloadFromDir() {
+		  final long startTime = System.currentTimeMillis();
+		  int filesLoaded = 0;
+		  int fileFailures = 0;
+		  int fileNewer = 0;
+		  long bytesLoaded = 0;
+		  final URL url = getClass().getClassLoader().getResource(CONTENT_BASE);
+		  final File file = new File(url.getFile());
+		  if(!file.isDirectory()) throw new IllegalArgumentException("Cold not find content in path [" + file + "]");
+		  
+		  log.info("Loading MetricsAPI UI Content from Classpath Directory: [{}]", file);  
+		  final ByteBuf contentBuffer = BufferManager.getInstance().directBuffer(30000);
+		  try {
+			  
+//			  Dir: /home/nwhitehead/hprojects/HeliosStreams/metric-hub/src/main/resources/metricapi-ui
+//			  Dir: /home/nwhitehead/hprojects/HeliosStreams/metric-hub/src/main/resources/metricapi-ui/jqueryui
+//			  Dir: /home/nwhitehead/hprojects/HeliosStreams/metric-hub/src/main/resources/metricapi-ui/jqueryui/css
+//			  Dir: /home/nwhitehead/hprojects/HeliosStreams/metric-hub/src/main/resources/metricapi-ui/jqueryui/css/pepper-grinder
+//			  Dir: /home/nwhitehead/hprojects/HeliosStreams/metric-hub/src/main/resources/metricapi-ui/jqueryui/css/pepper-grinder/images
+//			  Dir: /home/nwhitehead/hprojects/HeliosStreams/metric-hub/src/main/resources/metricapi-ui/jqueryui/js			  
+
+			  Files.walkFileTree(file.toPath(), new FileVisitor<Path>(){
+				@Override
+				public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) throws IOException {
+					
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) throws IOException {
+					return null;
+				}
+
+				@Override
+				public FileVisitResult visitFileFailed(final Path file, final IOException exc) throws IOException {
+					return null;
+				}
+
+				@Override
+				public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) throws IOException {
+					// TODO Auto-generated method stub
+					return null;
+				}
+				  
+			  });
+			  final Path path = file.toPath();
+			  
+			  final Enumeration<JarEntry> entries = jar.entries(); 
+			  while(entries.hasMoreElements()) {
+				  JarEntry entry = entries.nextElement();
+				  final String name = entry.getName();
+				  if (name.startsWith(CONTENT_BASE + "/")) { 
+					  final int contentSize = (int)entry.getSize();
+					  final long contentTime = entry.getTime();
+					  if(entry.isDirectory()) {
+						  new File(metricUiContentDir, name).mkdirs();
+						  continue;
+					  }
+					  File contentFile = new File(metricUiContentDir, name.replace(CONTENT_BASE + "/", ""));
+					  if( !contentFile.getParentFile().exists() ) {
+						  contentFile.getParentFile().mkdirs();
+					  }
+					  if( contentFile.exists() ) {
+						  if( contentFile.lastModified() >= contentTime ) {
+							  log.debug("File in directory was newer [{}]", name);
+							  fileNewer++;
+							  continue;
+						  }
+						  contentFile.delete();
+					  }
+					  log.debug("Writing content file [{}]", contentFile );
+					  contentFile.createNewFile();
+					  if( !contentFile.canWrite() ) {
+						  log.warn("Content file [{}] not writable", contentFile);
+						  fileFailures++;
+						  continue;
+					  }
+					  FileOutputStream fos = null;
+					  InputStream jis = null;
+					  try {
+						  fos = new FileOutputStream(contentFile);
+						  jis = jar.getInputStream(entry);
+						  contentBuffer.writeBytes(jis, contentSize);
+						  contentBuffer.readBytes(fos, contentSize);
+						  fos.flush();
+						  jis.close(); jis = null;
+						  fos.close(); fos = null;
+						  filesLoaded++;
+						  bytesLoaded += contentSize;
+						  log.debug("Wrote content file [{}] + with size [{}]", contentFile, contentSize );
+					  } finally {
+						  if( jis!=null ) try { jis.close(); } catch (Exception ex) {}
+						  if( fos!=null ) try { fos.close(); } catch (Exception ex) {}
+						  contentBuffer.clear();
+					  }
+				  }  // not content
+			  } // end of while loop
+			  final long elapsed = System.currentTimeMillis()-startTime;
+			  StringBuilder b = new StringBuilder("\n\n\t===================================================\n\tMetricsAPI Content Directory:[").append(metricUiContentDir).append("]");
+			  b.append("\n\tTotal Files Written:").append(filesLoaded);
+			  b.append("\n\tTotal Bytes Written:").append(bytesLoaded);
+			  b.append("\n\tFile Write Failures:").append(fileFailures);
+			  b.append("\n\tExisting File Newer Than Content:").append(fileNewer);
+			  b.append("\n\tElapsed (ms):").append(elapsed);
+			  b.append("\n\t===================================================\n");
+			  log.info(b.toString());
+		  } catch (Exception ex) {
+			  log.error("Failed to export MetricsAPI content", ex);       
+		  } finally {
+			  if( jar!=null ) try { jar.close(); } catch (Exception x) { /* No Op */}
+			  try { contentBuffer.release(); } catch (Exception x) {/* No Op */}
+		  }
+	  }
+
+
+	  /**
+	   * Unloads the UI content from a jar
+	   * @param file The jar file
+	   * TODO: merge this with {@link #unloadFromDir(File)}
+	   */
+	  protected void unloadFromJar(final File file) {
+		  log.info("Loading MetricsAPI UI Content from JAR: [{}]", file);
+		  final long startTime = System.currentTimeMillis();
+		  int filesLoaded = 0;
+		  int fileFailures = 0;
+		  int fileNewer = 0;
+		  long bytesLoaded = 0;
+
+		  JarFile jar = null;
+		  final ByteBuf contentBuffer = BufferManager.getInstance().directBuffer(30000);
+		  try {
+			  jar = new JarFile(file);
+			  final Enumeration<JarEntry> entries = jar.entries(); 
+			  while(entries.hasMoreElements()) {
+				  JarEntry entry = entries.nextElement();
+				  final String name = entry.getName();
+				  if (name.startsWith(CONTENT_BASE + "/")) { 
+					  final int contentSize = (int)entry.getSize();
+					  final long contentTime = entry.getTime();
+					  if(entry.isDirectory()) {
+						  new File(metricUiContentDir, name).mkdirs();
+						  continue;
+					  }
+					  File contentFile = new File(metricUiContentDir, name.replace(CONTENT_BASE + "/", ""));
+					  if( !contentFile.getParentFile().exists() ) {
+						  contentFile.getParentFile().mkdirs();
+					  }
+					  if( contentFile.exists() ) {
+						  if( contentFile.lastModified() >= contentTime ) {
+							  log.debug("File in directory was newer [{}]", name);
+							  fileNewer++;
+							  continue;
+						  }
+						  contentFile.delete();
+					  }
+					  log.debug("Writing content file [{}]", contentFile );
+					  contentFile.createNewFile();
+					  if( !contentFile.canWrite() ) {
+						  log.warn("Content file [{}] not writable", contentFile);
+						  fileFailures++;
+						  continue;
+					  }
+					  FileOutputStream fos = null;
+					  InputStream jis = null;
+					  try {
+						  fos = new FileOutputStream(contentFile);
+						  jis = jar.getInputStream(entry);
+						  contentBuffer.writeBytes(jis, contentSize);
+						  contentBuffer.readBytes(fos, contentSize);
+						  fos.flush();
+						  jis.close(); jis = null;
+						  fos.close(); fos = null;
+						  filesLoaded++;
+						  bytesLoaded += contentSize;
+						  log.debug("Wrote content file [{}] + with size [{}]", contentFile, contentSize );
+					  } finally {
+						  if( jis!=null ) try { jis.close(); } catch (Exception ex) {}
+						  if( fos!=null ) try { fos.close(); } catch (Exception ex) {}
+						  contentBuffer.clear();
+					  }
+				  }  // not content
+			  } // end of while loop
+			  final long elapsed = System.currentTimeMillis()-startTime;
+			  StringBuilder b = new StringBuilder("\n\n\t===================================================\n\tMetricsAPI Content Directory:[").append(metricUiContentDir).append("]");
+			  b.append("\n\tTotal Files Written:").append(filesLoaded);
+			  b.append("\n\tTotal Bytes Written:").append(bytesLoaded);
+			  b.append("\n\tFile Write Failures:").append(fileFailures);
+			  b.append("\n\tExisting File Newer Than Content:").append(fileNewer);
+			  b.append("\n\tElapsed (ms):").append(elapsed);
+			  b.append("\n\t===================================================\n");
+			  log.info(b.toString());
+		  } catch (Exception ex) {
+			  log.error("Failed to export MetricsAPI content", ex);       
+		  } finally {
+			  if( jar!=null ) try { jar.close(); } catch (Exception x) { /* No Op */}
+			  try { contentBuffer.release(); } catch (Exception x) {/* No Op */}
+		  }
 	  }
 	
 }
