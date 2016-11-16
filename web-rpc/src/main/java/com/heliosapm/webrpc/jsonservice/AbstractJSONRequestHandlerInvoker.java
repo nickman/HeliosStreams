@@ -18,6 +18,8 @@ under the License.
  */
 package com.heliosapm.webrpc.jsonservice;
 
+import java.util.Map;
+
 import com.heliosapm.utils.time.SystemClock;
 import com.heliosapm.utils.time.SystemClock.ElapsedTime;
 import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONRequest;
@@ -57,18 +59,17 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	 * @param opName The target op name
 	 * @param opDescription The target op description
 	 * @param type The op type
-	 * @param netty4 true if Netty 4 callers are supported, false otherwise
-	 * @param netty3 true if Netty 3 callers are supported, false otherwise
+	 * @param typesImplemented A map of booleans indicating implemented support for each netty type
 	 */
-	public AbstractJSONRequestHandlerInvoker(Object targetService, String serviceName, String serviceDescription, String opName, String opDescription, RequestType type, final boolean netty4, final boolean netty3) {
+	public AbstractJSONRequestHandlerInvoker(final Object targetService, final String serviceName, final String serviceDescription, final String opName, final String opDescription, final RequestType type, final Map<Class<?>, Boolean> typesImplemented) {
 		this.targetService = targetService;		
 		this.serviceName = serviceName;
 		this.serviceDescription = serviceDescription;
 		this.opDescription = opDescription;
 		this.opName = opName;
 		this.type = type;
-		this.netty3 = netty3;
-		this.netty4 = netty4;
+		this.netty3 = typesImplemented.get(Netty3JSONRequest.class);
+		this.netty4 = typesImplemented.get(JSONRequest.class);
 	}
 	
 

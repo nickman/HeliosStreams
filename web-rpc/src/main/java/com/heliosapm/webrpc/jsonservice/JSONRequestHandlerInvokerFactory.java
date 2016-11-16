@@ -22,16 +22,19 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Predicate;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.webrpc.annotations.JSONRequestHandler;
 import com.heliosapm.webrpc.annotations.JSONRequestService;
@@ -45,7 +48,6 @@ import javassist.CtField;
 import javassist.CtMethod;
 import javassist.CtNewConstructor;
 import javassist.CtNewMethod;
-import javassist.LoaderClassPath;
 import javassist.Modifier;
 
 
@@ -61,7 +63,12 @@ public class JSONRequestHandlerInvokerFactory {
 	/** Static class logger */
 	protected static final Logger LOG = LogManager.getLogger(JSONRequestHandlerInvokerFactory.class);
 	/** Cache of created invoker maps keyed by target class */
-	protected static final Map<Class<?>, Map<String, Map<String, AbstractJSONRequestHandlerInvoker>>> invokerCache = new ConcurrentHashMap<Class<?>, Map<String, Map<String, AbstractJSONRequestHandlerInvoker>>>();
+	protected static final Cache<Class<?>, Map<String, Map<String, AbstractJSONRequestHandlerInvoker>>> invokerCache = 
+			CacheBuilder.newBuilder().concurrencyLevel(Runtime.getRuntime().availableProcessors())
+			.initialCapacity(1024)
+			.weakKeys()
+			.build();
+	//protected static final Map<Class<?>, Map<String, Map<String, AbstractJSONRequestHandlerInvoker>>> invokerCache = new ConcurrentHashMap<Class<?>, Map<String, Map<String, AbstractJSONRequestHandlerInvoker>>>();
 
 	/** The netty 4 JSONRequest CtClass */
 	private static final CtClass jsonRequestCtClass;
@@ -69,6 +76,21 @@ public class JSONRequestHandlerInvokerFactory {
 	private static final CtClass netty3JsonRequestCtClass;
 	/** The abstract json service invoker CtClass */
 	private static final CtClass parent;
+	/** The JSONRequest ct classes as an array */
+	private static final CtClass[] jsonRequestCtClasses;
+	/** The JSONRequest java classes as an array */
+	private static final Class<?>[] jsonRequestClasses = new Class[]{JSONRequest.class, Netty3JSONRequest.class};
+	/** The JSONRequest type names */
+	private static final String[] jsonRequestTypeNames = {"Netty4", "Netty3"};
+	/** The JSONRequest java classes */
+	public static final Set<Class<?>> JSONREQUEST_CLASSES = Collections.unmodifiableSet(new HashSet<Class<?>>(Arrays.asList(jsonRequestClasses)));
+	/** The jsonrequest class indexes */
+	public static final Map<Class<?>, Integer> jsonRequestIndexes;
+	/** The name of the json request type keyed by the index */
+	public static final Map<Integer, String> jsonRequestTypeNamesByIndex;
+	
+	/** The number of jsonrequest classes supported */
+	public static final int NETTY_VERSIONS; 
 	
 	
 	static {
@@ -79,22 +101,107 @@ public class JSONRequestHandlerInvokerFactory {
 			jsonRequestCtClass = cp.get(JSONRequest.class.getName());
 			netty3JsonRequestCtClass = cp.get(Netty3JSONRequest.class.getName());
 			parent = cp.get(AbstractJSONRequestHandlerInvoker.class.getName());
-			
+			jsonRequestCtClasses = new CtClass[]{jsonRequestCtClass, netty3JsonRequestCtClass};
+			NETTY_VERSIONS = jsonRequestClasses.length;
+			Map<Class<?>, Integer> tmp = new HashMap<Class<?>, Integer>(NETTY_VERSIONS);
+			Map<Integer, String> tmpNames = new HashMap<Integer, String>(NETTY_VERSIONS);
+			for(int i = 0; i < NETTY_VERSIONS; i++) {
+				tmp.put(jsonRequestClasses[i], i);
+				tmpNames.put(i, jsonRequestTypeNames[i]);
+			}
+			jsonRequestIndexes = Collections.unmodifiableMap(tmp);
+			jsonRequestTypeNamesByIndex = Collections.unmodifiableMap(tmpNames);
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to initialize JSONRequestHandlerInvokerFactory", ex);
 		}
 	}
 
+	private static final Map<String, Map<String, AbstractJSONRequestHandlerInvoker>> EMPTY_INVOKER_MAP = 
+		Collections.unmodifiableMap(Collections.emptyMap());
+
 	
+	
+	private static Map<String, Method[]> mapByOp(final Map<Class<?>, Map<String, Method>> targetMethods) {
+		final Map<String, Method[]> remappedMethods = new HashMap<String, Method[]>();
+		for(final Map<String, Method> methods: targetMethods.values()) {
+			for(final Method method : methods.values()) {
+				final Class<?> jsonRequestClass = method.getParameterTypes()[0];
+				final JSONRequestHandler jsonHandler = method.getAnnotation(JSONRequestHandler.class);
+				final String op = jsonHandler.name();
+				Method[] methodPair = remappedMethods.get(op);
+				if(methodPair==null) {
+					methodPair = new Method[NETTY_VERSIONS];
+					remappedMethods.put(op, methodPair);
+				}
+				final int index = jsonRequestIndexes.get(jsonRequestClass);
+				methodPair[index] = method;
+			}
+		}
+		
+		// -->   <OpName, <MethodName, Method>>
+		return remappedMethods;
+	}
+	
+	private static AbstractJSONRequestHandlerInvoker generate(final Class<?> handlerType, final String opName, final Method[] methods) {
+		try {
+			final ClassPool cp = new ClassPool();
+			cp.appendClassPath(new ClassClassPath(handlerType));
+			cp.appendClassPath(new ClassClassPath(AbstractJSONRequestHandlerInvoker.class));
+			cp.importPackage(handlerType.getPackage().getName());
+//			public abstract void doInvoke(final JSONRequest jsonRequest);
+//			public abstract void doInvoke(final Netty3JSONRequest jsonRequest);
+			
+			final String ctClassName = String.format("%s-%s%s-%s-%s", 
+					handlerType.getName(), invokerServiceKey, opName, "ServiceInvoker", targetMethodHashCode);
+			invokerClass = cp.makeClass(className, parent);
+			CtField ctf = new CtField(targetClass, "typedTarget", invokerClass);
+			ctf.setModifiers(ctf.getModifiers() | Modifier.FINAL);
+			invokerClass.addField(ctf);
+			
+			for(final Map.Entry<Class<?>, Integer> entry: jsonRequestIndexes.entrySet()) {
+				final int index = entry.getValue();
+				final Class<?> jsonRequestType = entry.getKey();
+				final Method gm = methods[index];
+				final CtMethod ctMethod = gm==null ? generateNoOpCtMethod(jsonRequestType) : generateCtMethod(gm);
+			}
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to generate invoker for type [" + handlerType.getSimpleName() + "], op: [" + opName + "]", ex);
+		}			
+	}
+	
+	private static CtMethod generateNoOpCtMethod(final Class<?> jsonRequestType) {
+		return null;
+	}
+	
+	private static CtMethod generateCtMethod(final Method m) {
+		return null;
+	}
 	
 	/**
 	 * Creates a map of concrete json request handler invokers keyed by <b><code>&lt;service-name&gt;/&lt;op-name&gt;</code></b>.
 	 * @param handlerInstance The request handler instance to generate invokers for
 	 * @return the map of generated invokers
 	 */
-	public static Map<String, Map<String, AbstractJSONRequestHandlerInvoker>> createInvokers(Object handlerInstance) {
+	public static Map<String, Map<String, AbstractJSONRequestHandlerInvoker>> createInvokers(final Object handlerInstance) {
 		if(handlerInstance==null) throw new IllegalArgumentException("The passed handlerInstance was null");
-		Map<String, AbstractJSONRequestHandlerInvoker> subInvokerMap = new HashMap<String, AbstractJSONRequestHandlerInvoker>();
+		final Class<?> clazz = handlerInstance.getClass();
+		final JSONRequestService requestService = clazz.getAnnotation(JSONRequestService.class);
+		
+		return invokerCache.get(clazz, new Callable<Map<String, Map<String, AbstractJSONRequestHandlerInvoker>>>(){
+			@Override
+			public Map<String, Map<String, AbstractJSONRequestHandlerInvoker>> call() throws Exception {
+				final Map<String, Map<String, AbstractJSONRequestHandlerInvoker>> invokerMap = new ConcurrentHashMap<String, Map<String, AbstractJSONRequestHandlerInvoker>>();
+				final Map<Class<?>, Map<String, Method>> targetMethods = getTargetMethods(clazz);
+				if(targetMethods.isEmpty()) return EMPTY_INVOKER_MAP;
+				final Map<String, Method[]> methodPairsByOp = mapByOp(targetMethods);
+				
+				return invokerMap;
+			}
+		});
+		
+		
+		final Map<String, AbstractJSONRequestHandlerInvoker> subInvokerMap = new HashMap<String, AbstractJSONRequestHandlerInvoker>();
+		
 		Map<String, Map<String, AbstractJSONRequestHandlerInvoker>> invokerMap = invokerCache.get(handlerInstance.getClass());
 		if(invokerMap!=null) {
 			LOG.info("Found Cached Invokers for [{}]", handlerInstance.getClass().getName());
@@ -302,49 +409,37 @@ public class JSONRequestHandlerInvokerFactory {
 		return false;
 	}
 	
+	private static void scanMethods(final Method[] methods, final Map<Class<?>, Map<String, Method>> mappedMethods) {
+		for(final Method m: methods) {
+			JSONRequestHandler jsonHandler = m.getAnnotation(JSONRequestHandler.class);
+			if(jsonHandler!=null) {
+				Class<?>[] paramTypes = m.getParameterTypes();
+				if(paramTypes.length != 1 || !JSONREQUEST_CLASSES.contains(paramTypes[0])) {
+					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
+					continue;
+				}
+				final Class<?> requestClass = paramTypes[0];
+				final String key = m.getName() + "(" + StringHelper.getMethodDescriptor(m) + ")";
+				Map<String, Method> map = mappedMethods.get(requestClass);
+				if(map==null) {
+					map = new HashMap<String, Method>();
+					mappedMethods.put(requestClass, map);
+				}
+				map.put(key, m);
+			}
+		}		
+	}
+	
 	/**
 	 * Finds and returns the valid target {@link JSONRequestHandler} annotated methods in the passed class.
 	 * @param clazz the class to inspect
-	 * @return a collection of valid json request methods
+	 * @return a map of target methods keyed by method signature within a map keyed by jsonrequest class
 	 */
-	public static Collection<Method> getTargetMethods(Class<?> clazz) {
-		Map<String, Method> mappedMethods = new HashMap<String, Method>();
-		for(Method m: clazz.getMethods()) {
-			JSONRequestHandler jsonHandler = m.getAnnotation(JSONRequestHandler.class);
-			if(jsonHandler!=null) {
-				Class<?>[] paramTypes = m.getParameterTypes();
-				if(paramTypes.length<1 || (!JSONRequest.class.equals(paramTypes[0]) && !Netty3JSONRequest.class.equals(paramTypes[0])) || containsPrimitives(paramTypes)) {
-					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
-					continue;
-				}
-				mappedMethods.put(m.getName() + "(" + StringHelper.getMethodDescriptor(m) + ")", m);
-//				Class<?>[] paramTypes = m.getParameterTypes();
-//				if(paramTypes.length!=1 || !JSONRequest.class.equals(paramTypes[0])) {
-//					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
-//					continue;
-//				}
-//				mappedMethods.put(m.getName(), m);
-			}
-		}
-		for(Method m: clazz.getDeclaredMethods()) {
-			JSONRequestHandler jsonHandler = m.getAnnotation(JSONRequestHandler.class);
-			if(jsonHandler!=null) {
-				Class<?>[] paramTypes = m.getParameterTypes();
-				if(paramTypes.length<1 || (!JSONRequest.class.equals(paramTypes[0]) && !Netty3JSONRequest.class.equals(paramTypes[0]))) {
-					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
-					continue;
-				}
-				mappedMethods.put(m.getName() + "(" + StringHelper.getMethodDescriptor(m) + ")", m);
-//				Class<?>[] paramTypes = m.getParameterTypes();
-//				if(paramTypes.length!=1 || !JSONRequest.class.equals(paramTypes[0])) {
-//					LOG.warn("Invalid @JSONRequestHandler annotated method [{}]", m.toGenericString());
-//					continue;
-//				}
-//				mappedMethods.put(m.getName(), m);
-			}			
-		}
-		return mappedMethods.values();
-		
+	public static Map<Class<?>, Map<String, Method>> getTargetMethods(final Class<?> clazz) {
+		final Map<Class<?>, Map<String, Method>> mappedMethods = new HashMap<Class<?>, Map<String, Method>>();
+		scanMethods(clazz.getMethods(), mappedMethods);
+		scanMethods(clazz.getDeclaredMethods(), mappedMethods);
+		return mappedMethods;
 	}
 	
 	private static void mapMethod(final HashMap<String, Method[]> map, final Method m, final Class<?> ptype) {
