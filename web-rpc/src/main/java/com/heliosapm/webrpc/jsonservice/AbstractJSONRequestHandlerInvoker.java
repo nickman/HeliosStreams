@@ -37,19 +37,38 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	private final Object targetService;
 	/** The target service name */
 	private final String serviceName;
-	/** The target op name */
-	private final String opName;
 	/** The target service description */
 	private final String serviceDescription;
-	/** The target op description */
-	private final String opDescription;
+	/** The target op name */
+	private final String opName;
+	
 	/** The operation type */
 	private final RequestType type;
 	/** Indicates if Netty 4 callers are supported */
 	private final boolean netty4;
 	/** Indicates if Netty 3 callers are supported */
 	private final boolean netty3;
+
+	/** The netty 4 target op description */
+	private final String netty4OpDescription;
+	/** The netty 3 target op description */
+	private final String netty3OpDescription;
+
 	
+	public static class NettyTypeDescriptor {
+		final boolean implemented;
+		final String opDescription;
+		
+		private NettyTypeDescriptor(final boolean implemented, final String opDescription) {
+			this.implemented = implemented;
+			this.opDescription = opDescription;
+		}
+		
+		public static NettyTypeDescriptor descriptor(final boolean implemented, final String opDescription) {
+			return new NettyTypeDescriptor(implemented, opDescription.trim());
+		}
+		
+	}
 	
 	/**
 	 * Creates a new AbstractJSONRequestHandlerInvoker
@@ -59,17 +78,18 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	 * @param opName The target op name
 	 * @param opDescription The target op description
 	 * @param type The op type
-	 * @param typesImplemented A map of booleans indicating implemented support for each netty type
+	 * @param nettyDescriptors A map of netty type descriptors containing specifics for each netty version supported
 	 */
-	public AbstractJSONRequestHandlerInvoker(final Object targetService, final String serviceName, final String serviceDescription, final String opName, final String opDescription, final RequestType type, final Map<Class<?>, Boolean> typesImplemented) {
+	public AbstractJSONRequestHandlerInvoker(final Object targetService, final String serviceName, final String serviceDescription, final String opName, final RequestType type, final Map<Class<?>, NettyTypeDescriptor> nettyDescriptors) {
 		this.targetService = targetService;		
 		this.serviceName = serviceName;
 		this.serviceDescription = serviceDescription;
-		this.opDescription = opDescription;
+		this.netty4OpDescription = nettyDescriptors.get(JSONRequest.class).opDescription;
+		this.netty3OpDescription = nettyDescriptors.get(Netty3JSONRequest.class).opDescription;
 		this.opName = opName;
 		this.type = type;
-		this.netty3 = typesImplemented.get(Netty3JSONRequest.class);
-		this.netty4 = typesImplemented.get(JSONRequest.class);
+		this.netty3 = nettyDescriptors.get(Netty3JSONRequest.class).implemented;
+		this.netty4 = nettyDescriptors.get(JSONRequest.class).implemented;
 	}
 	
 
@@ -85,13 +105,13 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 			jsonRequest.error("Netty4 Clients Not Supported By This Endpoint");
 			return;
 		}
-		ElapsedTime et = SystemClock.startClock();
+//		ElapsedTime et = SystemClock.startClock();
 		try {
 			doInvoke(jsonRequest);
-			long elpsd = et.elapsed();
+//			long elpsd = et.elapsed();
 		} catch (Exception ex) {
 			
-			throw new RuntimeException("Failed to invoke JSON Service [" + serviceName + "/" + opName + "]", ex);
+			throw new RuntimeException("Failed to invoke Netty 4 JSON Service [" + serviceName + "/" + opName + "]", ex);
 		}
 	}
 	
@@ -104,13 +124,13 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 			jsonRequest.error("Netty3 Clients Not Supported By This Endpoint");
 			return;
 		}
-		ElapsedTime et = SystemClock.startClock();
+//		ElapsedTime et = SystemClock.startClock();
 		try {
 			doInvoke(jsonRequest);
-			long elpsd = et.elapsed();
+//			long elpsd = et.elapsed();
 		} catch (Exception ex) {
 			
-			throw new RuntimeException("Failed to invoke JSON Service [" + serviceName + "/" + opName + "]", ex);
+			throw new RuntimeException("Failed to invoke Netty 3 JSON Service [" + serviceName + "/" + opName + "]", ex);
 		}
 	}
 	
@@ -155,12 +175,21 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	}
 
 	/**
-	 * Returns the target operation description
-	 * @return the opDescription
+	 * Returns the Netty 4 target operation description
+	 * @return the Netty 4 opDescription
 	 */
-	public String getOpDescription() {
-		return opDescription;
+	public String getNetty4OpDescription() {
+		return netty4OpDescription;
 	}
+	
+	/**
+	 * Returns the Netty 3 target operation description
+	 * @return the Netty 3 opDescription
+	 */
+	public String getNetty3OpDescription() {
+		return netty3OpDescription;
+	}
+	
 
 	/**
 	 * {@inheritDoc}
@@ -170,7 +199,7 @@ public abstract class AbstractJSONRequestHandlerInvoker  {
 	public String toString() {
 		return String
 				.format("JSONRequestHandlerInvoker [impl=%s, serviceName=%s, serviceDescription=%s, opName=%s, opDescription=%s]",
-						targetService.getClass().getSimpleName(), serviceName, serviceDescription, opName, opDescription);
+						targetService.getClass().getSimpleName(), serviceName, serviceDescription, opName, netty4OpDescription + "|" + netty3OpDescription);
 	}
 	
 	/**

@@ -38,8 +38,10 @@ import com.google.common.cache.CacheBuilder;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.webrpc.annotations.JSONRequestHandler;
 import com.heliosapm.webrpc.annotations.JSONRequestService;
+import com.heliosapm.webrpc.jsonservice.AbstractJSONRequestHandlerInvoker.NettyTypeDescriptor;
 import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONRequest;
 
+import javassist.CannotCompileException;
 import javassist.ClassClassPath;
 import javassist.ClassPool;
 import javassist.CtClass;
@@ -49,6 +51,8 @@ import javassist.CtMethod;
 import javassist.CtNewConstructor;
 import javassist.CtNewMethod;
 import javassist.Modifier;
+import javassist.NotFoundException;
+import net.openhft.hashing.LongHashFunction;
 
 
 /**
@@ -89,6 +93,12 @@ public class JSONRequestHandlerInvokerFactory {
 	/** The name of the json request type keyed by the index */
 	public static final Map<Integer, String> jsonRequestTypeNamesByIndex;
 	
+	/** Maps the java jsonRequest class to the ct class */
+	public static final Map<Class<?>, CtClass> javaToCtMap;
+	
+	/** Zeor alloc hasher */
+	private static final LongHashFunction hasher = LongHashFunction.murmur_3();
+	
 	/** The number of jsonrequest classes supported */
 	public static final int NETTY_VERSIONS; 
 	
@@ -105,12 +115,16 @@ public class JSONRequestHandlerInvokerFactory {
 			NETTY_VERSIONS = jsonRequestClasses.length;
 			Map<Class<?>, Integer> tmp = new HashMap<Class<?>, Integer>(NETTY_VERSIONS);
 			Map<Integer, String> tmpNames = new HashMap<Integer, String>(NETTY_VERSIONS);
+			Map<Class<?>, CtClass> tmpMapping = new HashMap<Class<?>, CtClass>(NETTY_VERSIONS);
+			tmpMapping.put(JSONRequest.class, jsonRequestCtClass);
+			tmpMapping.put(Netty3JSONRequest.class, netty3JsonRequestCtClass);
 			for(int i = 0; i < NETTY_VERSIONS; i++) {
 				tmp.put(jsonRequestClasses[i], i);
 				tmpNames.put(i, jsonRequestTypeNames[i]);
 			}
 			jsonRequestIndexes = Collections.unmodifiableMap(tmp);
 			jsonRequestTypeNamesByIndex = Collections.unmodifiableMap(tmpNames);
+			javaToCtMap = Collections.unmodifiableMap(tmpMapping);
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to initialize JSONRequestHandlerInvokerFactory", ex);
 		}
@@ -142,7 +156,8 @@ public class JSONRequestHandlerInvokerFactory {
 		return remappedMethods;
 	}
 	
-	private static AbstractJSONRequestHandlerInvoker generate(final Class<?> handlerType, final String opName, final Method[] methods) {
+	private static AbstractJSONRequestHandlerInvoker generate(final Object handlerInstance, final String opName, final Method[] methods) {
+		final Class<?> handlerType = handlerInstance.getClass();
 		try {
 			final ClassPool cp = new ClassPool();
 			cp.appendClassPath(new ClassClassPath(handlerType));
@@ -150,31 +165,63 @@ public class JSONRequestHandlerInvokerFactory {
 			cp.importPackage(handlerType.getPackage().getName());
 //			public abstract void doInvoke(final JSONRequest jsonRequest);
 //			public abstract void doInvoke(final Netty3JSONRequest jsonRequest);
-			
+			final JSONRequestService jrs = handlerType.getAnnotation(JSONRequestService.class); 
+			final String invokerServiceKey = jrs.name();
 			final String ctClassName = String.format("%s-%s%s-%s-%s", 
-					handlerType.getName(), invokerServiceKey, opName, "ServiceInvoker", targetMethodHashCode);
-			invokerClass = cp.makeClass(className, parent);
-			CtField ctf = new CtField(targetClass, "typedTarget", invokerClass);
+					handlerType.getName(), invokerServiceKey, opName, "ServiceInvoker", hasher.hashChars(new StringBuilder(handlerType.getName())
+						.append(opName).append(invokerServiceKey))
+			);
+			final CtClass handlerTypeCtClass = cp.get(handlerType.getName());
+			final CtClass invokerClass = cp.makeClass(ctClassName, parent);
+			// ==== the field that holds the handler instance
+			CtField ctf = new CtField(handlerTypeCtClass, "typedTarget", invokerClass);
 			ctf.setModifiers(ctf.getModifiers() | Modifier.FINAL);
 			invokerClass.addField(ctf);
-			
+			// ==== the subclass ctor
+			for(CtConstructor parentCtor: parent.getConstructors()) {
+				CtConstructor invokerCtor = CtNewConstructor.copy(parentCtor, invokerClass, null);
+				invokerCtor.setBody("{ super($$); typedTarget = (" + handlerType.getName() + ")$1; }");
+				invokerClass.addConstructor(invokerCtor);					
+			}
+			// ==== implement the doInvoke methods
 			for(final Map.Entry<Class<?>, Integer> entry: jsonRequestIndexes.entrySet()) {
 				final int index = entry.getValue();
 				final Class<?> jsonRequestType = entry.getKey();
 				final Method gm = methods[index];
-				final CtMethod ctMethod = gm==null ? generateNoOpCtMethod(jsonRequestType) : generateCtMethod(gm);
+				if(gm==null) {
+					generateNoOpCtMethod(jsonRequestType, invokerClass);
+				} else {
+					generateCtMethod(jsonRequestType, gm, invokerClass);
+				}
 			}
+			// ==== build the class and instantiate
+			final Class<?> clazz = invokerClass.toClass(handlerType.getClassLoader(), handlerType.getProtectionDomain());
+//			public AbstractJSONRequestHandlerInvoker(
+//					final Object targetService, final String serviceName, 
+//					final String serviceDescription, final String opName, 
+//					final RequestType type, final Map<Class<?>, NettyTypeDescriptor> nettyDescriptors) 
+			final Constructor<?> ctor = clazz.getDeclaredConstructor(Object.class, String.class, String.class, String.class, RequestType.class, Map.class);
+			AbstractJSONRequestHandlerInvoker invokerInstance = (AbstractJSONRequestHandlerInvoker)ctor.newInstance(handlerInstance, invokerServiceKey, opName, opType);
+			
 		} catch (Exception ex) {
 			throw new RuntimeException("Failed to generate invoker for type [" + handlerType.getSimpleName() + "], op: [" + opName + "]", ex);
 		}			
 	}
 	
-	private static CtMethod generateNoOpCtMethod(final Class<?> jsonRequestType) {
-		return null;
+	private static void generateNoOpCtMethod(final Class<?> jsonRequestType, final CtClass invokerClass) throws CannotCompileException, NotFoundException {
+		final CtMethod noOpMethod = CtNewMethod.copy(parent.getDeclaredMethod("doInvoke", new CtClass[]{javaToCtMap.get(jsonRequestType)}), parent, null); 
+				//new CtMethod(CtClass.voidType, "doInvoke", new CtClass[]{javaToCtMap.get(jsonRequestType)}, invokerClass);
+		noOpMethod.setBody("{throw new " + UnsupportedOperationException.class.getName() + "();}");
+		noOpMethod.setModifiers(noOpMethod.getModifiers() & ~Modifier.ABSTRACT);
+		invokerClass.addMethod(noOpMethod);
 	}
 	
-	private static CtMethod generateCtMethod(final Method m) {
-		return null;
+	private static void generateCtMethod(final Class<?> jsonRequestType, final Method m, final CtClass invokerClass) throws CannotCompileException, NotFoundException {
+		final CtMethod opMethod = CtNewMethod.copy(parent.getDeclaredMethod("doInvoke", new CtClass[]{javaToCtMap.get(jsonRequestType)}), parent, null);
+		//final CtMethod opMethod = new CtMethod(CtClass.voidType, "doInvoke", new CtClass[]{javaToCtMap.get(jsonRequestType)}, invokerClass);
+		opMethod.setBody("{this.typedTarget." + m.getName() + "($1);}");
+		opMethod.setModifiers(opMethod.getModifiers() & ~Modifier.ABSTRACT);
+		invokerClass.addMethod(opMethod);
 	}
 	
 	/**
@@ -275,6 +322,7 @@ public class JSONRequestHandlerInvokerFactory {
 							invokerCtor.setBody("{ super($$); typedTarget = (" + handlerInstance.getClass().getName() + ")$1; }");
 							invokerClass.addConstructor(invokerCtor);					
 						}
+						invokerMethod.setModifiers(invokerMethod.getModifiers() & ~Modifier.ABSTRACT);
 						invokerMethod = CtNewMethod.copy(parent.getDeclaredMethod("doInvoke", new CtClass[] {(i==0 ? jsonRequestCtClass : netty3JsonRequestCtClass)}), invokerClass, null);
 						b.append("{this.typedTarget.")
 							.append(m.getName())

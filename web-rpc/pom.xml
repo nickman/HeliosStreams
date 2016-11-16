@@ -44,6 +44,10 @@
 			  <artifactId>netty-all</artifactId>
 			</dependency>
 
+			<dependency>
+				<groupId>net.openhft</groupId>
+				<artifactId>zero-allocation-hashing</artifactId>
+			</dependency>
 
 
 		<!-- ==========================================================
