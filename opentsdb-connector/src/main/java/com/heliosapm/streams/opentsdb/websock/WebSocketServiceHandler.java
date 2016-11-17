@@ -75,6 +75,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.heliosapm.streams.opentsdb.serialization.TSDBTypeSerializer;
 import com.heliosapm.utils.lang.StringHelper;
+import com.heliosapm.webrpc.jsonservice.JSONRequestRouter;
+import com.heliosapm.webrpc.jsonservice.JSONResponse;
+import com.heliosapm.webrpc.jsonservice.ResponseType;
+import com.heliosapm.webrpc.jsonservice.netty3.Netty3ChannelBufferizable;
+import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONRequest;
+import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONResponse;
+import com.heliosapm.webrpc.serialization.ChannelBufferizable;
 
 import net.opentsdb.core.TSDB;
 import net.opentsdb.tsd.BadRequestException;
@@ -160,7 +167,7 @@ public class WebSocketServiceHandler  implements ChannelUpstreamHandler, Channel
 			String json = marshaller.writeValueAsString(message);
 			ctx.sendDownstream(new DownstreamMessageEvent(channel, Channels.future(channel), new TextWebSocketFrame(json), channel.getRemoteAddress()));			
 		} else if((message instanceof ChannelBufferizable)) {
-			ctx.sendDownstream(new DownstreamMessageEvent(channel, Channels.future(channel), new TextWebSocketFrame(((ChannelBufferizable)message).toChannelBuffer()), channel.getRemoteAddress()));
+			ctx.sendDownstream(new DownstreamMessageEvent(channel, Channels.future(channel), new TextWebSocketFrame(((Netty3ChannelBufferizable)message).toChannelBuffer()), channel.getRemoteAddress()));
 		} else if((message instanceof CharSequence)) {
 			ctx.sendDownstream(new DownstreamMessageEvent(channel, Channels.future(channel), new TextWebSocketFrame(marshaller.writeValueAsString(message)), channel.getRemoteAddress()));
 		} else if((message instanceof JSONResponse)) {				
@@ -217,9 +224,9 @@ public class WebSocketServiceHandler  implements ChannelUpstreamHandler, Channel
                     .getName()));
         }
         String request = ((TextWebSocketFrame) frame).getText();
-        JSONRequest wsRequest = null;
+        Netty3JSONRequest wsRequest = null;
         try {
-        	wsRequest = JSONRequest.newJSONRequest(ctx.getChannel(), request);
+        	wsRequest = Netty3JSONRequest.newJSONRequest(ctx.getChannel(), request);
         	
 //        	if("who".equals(wsRequest.getArgument("t").toString())) {
 //        		SocketAddress sa = ctx.getChannel().getRemoteAddress();
@@ -232,13 +239,13 @@ public class WebSocketServiceHandler  implements ChannelUpstreamHandler, Channel
 //        			agent = wsRequest.getArgument("agent").toString();
 //        		}
 //        		SharedChannelGroup.getInstance().add(ctx.getChannel(), ChannelType.WEBSOCKET_REMOTE, "ClientWebSocket", host, agent);
-//        	} else {
+//        	} else {        		
         		router.route(wsRequest);
 //        	}
         	
         		
         } catch (Exception ex) {
-    		JSONResponse response = new JSONResponse(-1, ResponseType.ERR, ctx.getChannel(), wsRequest);
+        	Netty3JSONResponse response = new Netty3JSONResponse(-1, ResponseType.ERR, ctx.getChannel(), wsRequest);
     		Map<String, String> map = new HashMap<String, String>(2);
     		map.put("err", "Failed to parse request [" + request + "]");
     		map.put("ex", StringHelper.formatStackTrace(ex));

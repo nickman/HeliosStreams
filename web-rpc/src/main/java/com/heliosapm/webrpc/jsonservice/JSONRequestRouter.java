@@ -28,6 +28,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.heliosapm.webrpc.annotations.JSONRequestHandler;
 import com.heliosapm.webrpc.annotations.JSONRequestService;
+import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONRequest;
 import com.heliosapm.webrpc.jsonservice.services.SystemJSONServices;
 
 
@@ -103,7 +104,7 @@ public class JSONRequestRouter {
 	 * Routes a json request to the intended request handler
 	 * @param jsonRequest The request to route
 	 */
-	public void route(JSONRequest jsonRequest) {
+	public void route(final JSONRequest jsonRequest) {
 		Map<String, AbstractJSONRequestHandlerInvoker> imap = invokerMap.get(jsonRequest.serviceName);
 		if(imap==null) {
 			jsonRequest.error("Failed to route to service name [" + jsonRequest.serviceName + "]").send();
@@ -118,6 +119,25 @@ public class JSONRequestRouter {
 	}
 	
 	/**
+	 * Routes a json request to the intended request handler
+	 * @param jsonRequest The request to route
+	 */
+	public void route(final Netty3JSONRequest jsonRequest) {
+		Map<String, AbstractJSONRequestHandlerInvoker> imap = invokerMap.get(jsonRequest.serviceName);
+		if(imap==null) {
+			jsonRequest.error("Failed to route to service name [" + jsonRequest.serviceName + "]").send();
+			return;
+		}
+		AbstractJSONRequestHandlerInvoker invoker = imap.get(jsonRequest.opName);
+		if(invoker==null) {
+			jsonRequest.error("Failed to route to op [" + jsonRequest.serviceName + "/" + jsonRequest.opName + "]").send();
+			return;
+		}
+		invoker.invokeJSONRequest(jsonRequest);		
+	}
+	
+	
+	/**
 	 * Writes a JSON catalog of the available services
 	 * @param jsonRequest The json request
 	 * <p>Note: payload for test:<b><code>{"t":"req", "rid":1, "svc":"router", "op":"services"}</code></b></p>
@@ -126,22 +146,16 @@ public class JSONRequestRouter {
 	public void services(JSONRequest jsonRequest) {
 		ObjectNode servicesMap = nodeFactory.objectNode();
 		ObjectNode serviceMap = nodeFactory.objectNode();
-		servicesMap.put("services", serviceMap);
-		for(Map.Entry<String, Map<String, AbstractJSONRequestHandlerInvoker>> entry: invokerMap.entrySet()) {
-			Map<String, AbstractJSONRequestHandlerInvoker> opInvokerMap = entry.getValue();
+		servicesMap.set("services", serviceMap);
+		for(final Map.Entry<String, Map<String, AbstractJSONRequestHandlerInvoker>> entry: invokerMap.entrySet()) {
+			final Map<String, AbstractJSONRequestHandlerInvoker> opInvokerMap = entry.getValue();
 			if(opInvokerMap.isEmpty()) continue;
-			ObjectNode svcMap = nodeFactory.objectNode();
-			serviceMap.put(entry.getKey(), svcMap);
-			svcMap.put("desc", opInvokerMap.values().iterator().next().getServiceDescription());			
-			ObjectNode opMap = nodeFactory.objectNode();
-			svcMap.put("ops", opMap);
-			
-			for(AbstractJSONRequestHandlerInvoker invoker: opInvokerMap.values()) {
-				ObjectNode opDetails = nodeFactory.objectNode();
-				opDetails.put("desc", invoker.getOpDescription());
-				opDetails.put("type", invoker.getRequestType().code);				
-				opMap.put(invoker.getOpName(), opDetails);
-			}			
+			final String serviceName = entry.getKey();			
+			final ObjectNode serviceInstanceMap = nodeFactory.objectNode();
+			serviceMap.set(serviceName, serviceInstanceMap);
+			for(final Map.Entry<String, AbstractJSONRequestHandlerInvoker> inv : opInvokerMap.entrySet()) {
+				serviceInstanceMap.set(inv.getKey(), inv.getValue().getDescriptor());
+			}
 		}
 		try {			
 			jsonRequest.response(ResponseType.RESP).setContent(servicesMap).send();

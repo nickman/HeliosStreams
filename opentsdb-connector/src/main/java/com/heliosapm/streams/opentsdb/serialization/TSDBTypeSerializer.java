@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import net.opentsdb.utils.JSON;
 
-import com.heliosapm.streams.opentsdb.websock.JSONChannelBufferSerializer;
+import com.heliosapm.webrpc.jsonservice.netty3.Netty3JSONChannelBufferSerializer;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 import com.fasterxml.jackson.databind.JsonSerializer;
@@ -71,7 +71,7 @@ public enum TSDBTypeSerializer {
 		ObjectMapper om = new ObjectMapper();
 		Set<JsonSerializer<?>> set = byTypeSerializers.get(this);
 		SimpleModule sm = new SimpleModule("All Serializers for [" + name() + "]");
-		sm.addSerializer(ChannelBuffer.class, new JSONChannelBufferSerializer());
+		sm.addSerializer(ChannelBuffer.class, new Netty3JSONChannelBufferSerializer());
 		if(set!=null && !set.isEmpty()) {			
 			for(JsonSerializer<?> js: set) {
 				sm.addSerializer(js);

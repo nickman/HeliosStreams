@@ -18,7 +18,7 @@ import com.fasterxml.jackson.databind.SerializerProvider;
  * <p>Description: JSON serializer for ChannelBuffers  </p>
  * <p>Company: Helios Development Group LLC</p>
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><b><code>org.helios.tsdb.plugins.remoting.json.JSONChannelBufferSerializer</code></b>
+ * <p><b><code>com.heliosapm.webrpc.jsonservice.netty3.JSONChannelBufferSerializer</code></b>
  */
 
 public class Netty3JSONChannelBufferSerializer extends JsonSerializer<Object> {

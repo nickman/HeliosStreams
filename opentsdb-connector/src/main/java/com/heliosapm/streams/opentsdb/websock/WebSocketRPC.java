@@ -26,6 +26,7 @@ import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.opentsdb.plugin.PluginMetricManager;
 import com.heliosapm.streams.opentsdb.websock.services.SystemJSONServices;
+import com.heliosapm.webrpc.jsonservice.JSONRequestRouter;
 import com.stumbleupon.async.Deferred;
 
 import net.opentsdb.core.TSDB;

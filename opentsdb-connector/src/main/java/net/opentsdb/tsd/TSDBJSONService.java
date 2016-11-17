@@ -25,7 +25,6 @@
 package net.opentsdb.tsd;
 
 import java.io.IOException;
-import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
@@ -39,7 +38,6 @@ import java.util.TreeMap;
 import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.UpstreamMessageEvent;
 import org.jboss.netty.handler.codec.base64.Base64;
 import org.jboss.netty.handler.codec.http.DefaultHttpRequest;
@@ -57,13 +55,13 @@ import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.heliosapm.streams.opentsdb.websock.JSONRequest;
-import com.heliosapm.streams.opentsdb.websock.JSONResponse;
-import com.heliosapm.streams.opentsdb.websock.ResponseType;
-import com.heliosapm.streams.opentsdb.websock.annotations.JSONRequestHandler;
-import com.heliosapm.streams.opentsdb.websock.annotations.JSONRequestService;
 import com.heliosapm.streams.opentsdb.websock.services.InvocationChannel;
 import com.heliosapm.utils.time.SystemClock;
+import com.heliosapm.webrpc.annotations.JSONRequestHandler;
+import com.heliosapm.webrpc.annotations.JSONRequestService;
+import com.heliosapm.webrpc.jsonservice.JSONRequest;
+import com.heliosapm.webrpc.jsonservice.JSONResponse;
+import com.heliosapm.webrpc.jsonservice.ResponseType;
 import com.stumbleupon.async.Callback;
 
 import net.opentsdb.core.TSDB;

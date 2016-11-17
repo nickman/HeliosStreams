@@ -20,10 +20,10 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.heliosapm.streams.opentsdb.websock.JSONRequest;
-import com.heliosapm.streams.opentsdb.websock.ResponseType;
-import com.heliosapm.streams.opentsdb.websock.annotations.JSONRequestHandler;
-import com.heliosapm.streams.opentsdb.websock.annotations.JSONRequestService;
+import com.heliosapm.webrpc.annotations.JSONRequestHandler;
+import com.heliosapm.webrpc.annotations.JSONRequestService;
+import com.heliosapm.webrpc.jsonservice.JSONRequest;
+import com.heliosapm.webrpc.jsonservice.ResponseType;
 
 /**
  * <p>Title: SystemJSONServices</p>
