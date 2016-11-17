@@ -30,7 +30,7 @@ import com.heliosapm.streams.collector.ds.pool.PooledObjectFactoryBuilder;
 
 /**
  * <p>Title: MQPCFPoolBuilder</p>
- * <p>Description: A pool supplier for IBM MQ PCF Message Agents</p> 
+ * <p>Description: A reflective pool supplier for IBM MQ PCF Message Agents</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.ds.pool.impls.MQPCFPoolBuilder</code></p>
  */
@@ -107,7 +107,6 @@ public class MQPCFPoolBuilder implements PooledObjectFactoryBuilder<Object> {
 	
 	public static void log(final Object msg) {
 		System.out.println(msg);
-		
 	}
 	
 	

@@ -278,7 +278,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 					GroovySystem.stopThreadedReferenceManager();
 					GroovySystem.setKeepJavaMetaClasses(false);
 					instance = new ManagedScriptFactory();
-					instance.discoveryService.start();
+					//instance.discoveryService.start();
 				}
 			}
 		}
@@ -419,7 +419,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 				.fileFinder();
 		if(!springMode) {
 			startScriptDeployer();
-			discoveryService = new EndpointDiscoveryService();			
+			//discoveryService = new EndpointDiscoveryService();			
 		}				
 	}
 	
@@ -905,6 +905,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 				try {
 					final JarFile jar = new JarFile(f, false);
 					instr.appendToSystemClassLoaderSearch(jar);
+					log.info("Adding JDBC Driver [{}] to classpath", f.getName());
 				} catch (Exception ex) {
 					log.error("Failed to load JDBC jar file [{}]",  f, ex);
 				}
@@ -915,7 +916,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	private URL[] listLibJarUrls(final File dir, final Set<URL> accum) {
 		final Set<URL> _accum = accum==null ? new HashSet<URL>() : accum;
 		for(File f: dir.listFiles()) {
-			if(f.isDirectory()) {
+			if(f.isDirectory() && !f.getName().equals(jdbcLibDirectory.getName())) {
 				listLibJarUrls(f, _accum);
 			} else {
 				if(f.getName().toLowerCase().endsWith(".jar")) {

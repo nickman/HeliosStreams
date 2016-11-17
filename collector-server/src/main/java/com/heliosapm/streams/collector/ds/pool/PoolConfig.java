@@ -21,8 +21,12 @@ package com.heliosapm.streams.collector.ds.pool;
 import java.io.File;
 import java.lang.reflect.Constructor;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
 
+import org.apache.commons.pool2.BasePooledObjectFactory;
+import org.apache.commons.pool2.PooledObject;
+import org.apache.commons.pool2.PooledObjectFactory;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
@@ -56,10 +60,18 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 	NAME{public Void apply(final GenericObjectPoolConfig p, final Object o) {p.setJmxNamePrefix(",name=" + o.toString().trim()); return null;}};
 	
 	
+	/** The default pooled object factory implementation package */
+	public static final String DEFAULT_FACTORY_PACKAGE = "com.heliosapm.streams.collector.ds.pool.impls.";
+
+	
 	private static final GenericObjectPoolConfig DEFAULT_CONFIG;
+	private static final GenericObjectPool<?> PLACEHOLDER;
 	
 	/** The configuration key for the pooled object factory */
 	public static final String POOLED_OBJECT_FACTORY_KEY = "factory"; 
+	
+	/** All active pools keyed by name */
+	private static final ConcurrentHashMap<String, GenericObjectPool<?>> pools = new ConcurrentHashMap<String, GenericObjectPool<?>>(512, 0.75f, Runtime.getRuntime().availableProcessors()); 
 	
 	
 	static {
@@ -77,7 +89,19 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 		DEFAULT_CONFIG.setLifo(false);
 		DEFAULT_CONFIG.setTestOnBorrow(true);
 		DEFAULT_CONFIG.setTestOnCreate(true);
-		DEFAULT_CONFIG.setTestOnReturn(false);		
+		DEFAULT_CONFIG.setTestOnReturn(false);	
+		
+		PLACEHOLDER = new GenericObjectPool<Object>(new BasePooledObjectFactory<Object>() {
+			@Override
+			public Object create() throws Exception {
+				return null;
+			}
+
+			@Override
+			public PooledObject<Object> wrap(Object obj) {
+				return null;
+			}
+		});
 		
 		// ObjectName:    objName = new ObjectName(base + jmxNamePrefix);
 	}
@@ -143,21 +167,42 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 		if(poolName==null || poolName.trim().isEmpty()) throw new RuntimeException("Pool was not assigned a name");
 		if(factoryName==null || factoryName.trim().isEmpty()) throw new RuntimeException("No pooled object factory defined");
 		final GenericObjectPoolConfig cfg = DEFAULT_CONFIG.clone();
-		try {			
-			final Class<PooledObjectFactoryBuilder<?>> clazz = (Class<PooledObjectFactoryBuilder<?>>)Class.forName(factoryName);
-			final Constructor<PooledObjectFactoryBuilder<?>> ctor = clazz.getDeclaredConstructor(Properties.class);
-			final PooledObjectFactoryBuilder<?> factory = ctor.newInstance(p);
-			for(final String key: p.stringPropertyNames()) {
-				if(isPoolConfig(key)) {
-					final PoolConfig pc = decode(key);
-					pc.apply(cfg, p.get(key));
+		GenericObjectPool<?> pool = pools.putIfAbsent(poolName, PLACEHOLDER);
+		if(pool==null || pool==PLACEHOLDER) {
+			try {			
+				final Class<PooledObjectFactoryBuilder<?>> clazz = loadFactoryClass(factoryName);
+				final Constructor<PooledObjectFactoryBuilder<?>> ctor = clazz.getDeclaredConstructor(Properties.class);
+				final PooledObjectFactoryBuilder<?> factory = ctor.newInstance(p);
+				for(final String key: p.stringPropertyNames()) {
+					if(isPoolConfig(key)) {
+						final PoolConfig pc = decode(key);
+						pc.apply(cfg, p.get(key));
+					}
 				}
-			}
-			final GenericObjectPool<?> pool = new GenericObjectPool(factory.factory(), cfg);
-			GlobalCacheService.getInstance().put("pool/" + poolName, pool);
-			return pool;
-		} catch (Exception ex) {
-			throw new RuntimeException("Failed to create GenericObjectPool from properties [" + p + "]", ex);
+				final PooledObjectFactory<?> pooledObjectFactory = factory.factory();
+				pool = new GenericObjectPool(factory.factory(), cfg);
+				if(pooledObjectFactory instanceof PoolAwareFactory) {
+					((PoolAwareFactory)pooledObjectFactory).setPool(pool);
+				}
+				pools.replace(poolName, pool);
+				GlobalCacheService.getInstance().put("pool/" + poolName, pool);
+				pool.preparePool();
+				return pool;
+			} catch (Exception ex) {
+				throw new RuntimeException("Failed to create GenericObjectPool from properties [" + p + "]", ex);
+			}			
+		} else {
+			throw new RuntimeException("Duplicate GenericObjectPool name [" + poolName + "]");
+		}
+	}
+	
+	
+	@SuppressWarnings("unchecked")
+	private static Class<PooledObjectFactoryBuilder<?>> loadFactoryClass(final String className) throws ClassNotFoundException {
+		try {
+			return (Class<PooledObjectFactoryBuilder<?>>)Class.forName(className);
+		} catch (ClassNotFoundException cne) {
+			return (Class<PooledObjectFactoryBuilder<?>>)Class.forName(DEFAULT_FACTORY_PACKAGE + className);
 		}
 	}
 	
