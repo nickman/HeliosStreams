@@ -200,9 +200,7 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener { //
 			if(m.matches()) {
 				final String sch = m.group(1);
 				schedule = TimeUnitSymbol.period(sch);
-				scheduledPeriod = schedule.getKey();
-				scheduledPeriodUnit = schedule.getValue().unit;			
-				
+				endpointTypeName = endpointType
 			} 			
 		}
 		
