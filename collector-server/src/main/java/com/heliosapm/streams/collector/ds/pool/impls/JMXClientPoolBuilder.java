@@ -133,12 +133,11 @@ public class JMXClientPoolBuilder implements PooledObjectFactoryBuilder<MBeanSer
 	/**
 	 * {@inheritDoc}
 	 * @see com.heliosapm.streams.collector.ds.pool.PooledObjectFactoryBuilder#create()
-	 */
-	@SuppressWarnings("resource")
+	 */	
 	@Override
 	public MBeanServerConnection create() {
 		try {
-			return new WrappedJMXClient(url.toString(), 10, credentials).server();
+			return new WrappedJMXClient(url.toString(), 10, credentials);
 //			final JMXConnector connector = JMXConnectorFactory.connect(url, env);
 //			return new WrappedMBeanServerConnection(connector);
 		} catch (Exception ex) {

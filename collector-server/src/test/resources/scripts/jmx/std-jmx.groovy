@@ -14,12 +14,13 @@ public boolean initCheck() {
     boolean pass = false;
     try {
         jmxConn = jmxPool.borrowObject();
-        def domainNames = jmxConn.getDomainNames();
-        pass (domainNames!=null && domainNames.length > 0);
+        def domainNames = jmxConn.getDomains();
+        pass = (domainNames!=null && domainNames.length > 0);
     } catch (x) {
+    	//log.error("InitCheck Failure", x);
         pass = false;       
     } finally {
-        if(jmxConn!=null) try { jmxConn.close(); } catch (e) {}
+        if(jmxConn!=null) try { jmxPool.returnObject(jmxConn); } catch (e) {}
     }
     log.info("\n\t ################### InitCheck for [${getClass().getName()}]: $pass");
     return pass;
@@ -33,7 +34,7 @@ public boolean preExecCheck() {
     } catch (x) {
         return false;       
     } finally {
-    	if(jmxConn!=null) try { jmxConn.close(); } catch (e) {}	
+    	if(jmxConn!=null) try { jmxPool.returnObject(jmxConn); } catch (e) {}	
     }       
 }
 
@@ -201,7 +202,7 @@ try {
 				"SystemLoadAverage" : "systemLoadAvg"
 			];
 			attrs = jmxHelper.getAttributes(jmxHelper.MXBEAN_OS_ON, jmxClient, osnames.keySet());
-			log.info("OS ATTRS: {}", attrs);
+			//log.info("OS ATTRS: {}", attrs);
 			ts = System.currentTimeMillis();
 			osnames.each() {k,v -> 
 				if(attrs.containsKey(k)) {
@@ -211,7 +212,7 @@ try {
 			}
 			tracer.pushSeg("usedswapspace").trace(totalSwapSpaceSize - attrs.get('FreeSwapSpaceSize'), ts).popSeg();
 			tracer.pushSeg("pctusedswapspace").trace((totalSwapSpaceSize - attrs.get('FreeSwapSpaceSize'))/totalSwapSpaceSize*100, ts).popSeg();
-			log.info("MAX FD: [{}], OPEN FD: [{}]", maxFileDescriptors, attrs.get('OpenFileDescriptorCount'));
+			//log.info("MAX FD: [{}], OPEN FD: [{}]", maxFileDescriptors, attrs.get('OpenFileDescriptorCount'));
 			tracer.pushSeg("pctusedfiledescs").trace((maxFileDescriptors - attrs.get('OpenFileDescriptorCount'))/maxFileDescriptors*100, ts).popSeg();
 			tracer.pushSeg("usedPhysicalMem").trace((totalPhysicalMemory - attrs.get('FreePhysicalMemorySize')), ts).popSeg();
 			tracer.pushSeg("pctusedPhysicalMem").trace((totalPhysicalMemory - attrs.get('FreePhysicalMemorySize'))/totalPhysicalMemory*100, ts).popSeg();
@@ -358,7 +359,9 @@ try {
 
 	try { log.info("Total Remoting Time: ${jmxClient.getJMXRemotingTime()} ms."); } catch (x) {}
 } finally {
-	if(jmxClient!=null) try { jmxClient.close(); } catch (e) {}	
+	if(jmxClient!=null) try { jmxClient.close(); /*jmxPool.returnObject(jmxClient);*/ log.info("*** Returned JMXConn: (${jmxPool.getNumActive()}) ***"); } catch (e) {
+		log.error("Failed to close", e);
+	}	
 }
 
 

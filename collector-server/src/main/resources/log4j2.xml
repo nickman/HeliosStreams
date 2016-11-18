@@ -6,14 +6,14 @@
         <PatternLayout>
             <pattern>
                 [%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{1} - %msg%n
-            </pattern>>
+            </pattern>
         </PatternLayout>
     </Console>
     <Console name="ERR-Appender" target="SYSTEM_ERR">
         <PatternLayout>
             <pattern>
                 [%-5level] %d{yyyy-MM-dd HH:mm:ss.SSS} [%t] %c{4} - %msg%n
-            </pattern>>
+            </pattern>
         </PatternLayout>
     </Console>
     

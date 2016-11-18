@@ -100,6 +100,24 @@ public enum ScriptState {
 		return this;
 	}
 	
+	/**
+	 * Indicates if a script state transition should issue a notification event.
+	 * This is mostly to supress notifications for transitions between {@link #SCHEDULED} and {@link #EXECUTING} states. 
+	 * @param from The from script state
+	 * @param to  The to script state
+	 * @return true if a script state transition should issue a notification event, false otherwise.
+	 */
+	public static boolean shouldNotify(final ScriptState from, final ScriptState to) {
+		if(from==null) throw new IllegalArgumentException("The passed from ScriptState was null");
+		if(to==null) throw new IllegalArgumentException("The passed to ScriptState was null");
+		if(from==SCHEDULED) {
+			if(to==EXECUTING) return false;
+		} else if(from==EXECUTING) {
+			if(to==SCHEDULED) return false;
+		}
+		return true;
+	}
+	
 	public boolean canTransitionTo(final ScriptState state) {
 		return transitionTo.get(this).contains(state);
 	}

@@ -23,6 +23,7 @@ import java.io.IOException;
 import java.util.Date;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import javax.management.ObjectName;
 
@@ -283,4 +284,18 @@ public interface ManagedScriptMBean { //extends NamedBean {
 	 * @return the number of times that init-check has returned false
 	 */
 	public long getInitCheckFails();
+	
+	/**
+	 * Returns the number of consecutive times that pre-exec check has returned false or thrown an exception.
+	 * Resets to zero once the pre-exec check succeeds.
+	 * @return the number of consecutive times that pre-exec-check has returned false or thrown an exception.
+	 */
+	public long getPreExecCheckFails();
+	
+	/**
+	 * Returns the name of the currently collecting thread or null if no collection is currently active
+	 * @return the name of the currently collecting thread 
+	 */
+	public String getCollectingThread();
+	
 }

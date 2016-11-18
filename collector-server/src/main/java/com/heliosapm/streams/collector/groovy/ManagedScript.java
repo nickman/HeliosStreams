@@ -143,6 +143,10 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	/** The number of traces issued in the last execution */
 	protected final AtomicLong lastTraceCount = new AtomicLong(0L);
 	
+	/** The currently executing collection thread */
+	protected final AtomicReference<Thread> collectingThread = new AtomicReference<Thread>(null); 
+	
+	
 
 	/** The number of metrics flushed in the last execution */
 	protected final AtomicLong lastFlushCount = new AtomicLong(0L);
@@ -229,7 +233,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	protected int deploymentId = 0;
 	
 	
-	/** Regex pattern to determine if a schedule directive is build into the source file name */
+	/** Regex pattern to determine if a schedule directive is built into the source file name */
 	public static final Pattern PERIOD_PATTERN = Pattern.compile(".*\\-(\\d++[s|m|h|d]){1}\\.groovy$", Pattern.CASE_INSENSITIVE);
 	/** The pattern identifying a property value that should be resolved post-compilation */
 	public static final Pattern POST_COMPILE = Pattern.compile("\\$post\\{(.*?)\\}$");
@@ -454,7 +458,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 		return new Runnable(){
 			public void run() {
 				boolean initCheck = false;
-				try { initCheck = initCheck(); } catch (Exception ex) { initCheck = false; }
+				collectingThread.set(Thread.currentThread());
+				try { initCheck = initCheck(); } catch (Exception ex) { initCheck = false; } finally { collectingThread.set(null); }
 				if(initCheck) {
 					initCheckFails.set(0L);
 					if(!pendingDependencies.isEmpty()) {
@@ -486,11 +491,8 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 * then this will not happen and the script goes passive.
 	 */
 	protected void onInitCheckIncomplete() {
-		SharedScheduler.getInstance().schedule(new Runnable(){
-			public void run() {
-				scheduledReInitCheck();
-			}
-		}, scheduledPeriod, scheduledPeriodUnit);
+		SharedScheduler.getInstance().schedule(scheduledReInitCheck(), scheduledPeriod, scheduledPeriodUnit);
+		log.warn("Init Check Failed. Re-Scheduled init check [{}/{}]", scheduledPeriod, scheduledPeriodUnit);
 	}
 	
 	/**
@@ -519,8 +521,10 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			final ScriptState current = state.get();
 			if(current.canTransitionTo(stateToSet)) {
 				if(state.compareAndSet(current, stateToSet)) {
-					final AttributeChangeNotification acn = new AttributeChangeNotification(objectName, notifSerial.incrementAndGet(), System.currentTimeMillis(), "State change to: [" + stateToSet + "] from [" + current + "]", "State", String.class.getName(), current.name(), stateToSet.name());
-					broadcaster.sendNotification(acn);					
+					if(ScriptState.shouldNotify(current, stateToSet)) {
+						final AttributeChangeNotification acn = new AttributeChangeNotification(objectName, notifSerial.incrementAndGet(), System.currentTimeMillis(), "State change to: [" + stateToSet + "] from [" + current + "]", "State", String.class.getName(), current.name(), stateToSet.name());
+						broadcaster.sendNotification(acn);											
+					}
 					return true;
 				}
 			} else {
@@ -632,15 +636,22 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 			}
 			boolean execute = false;
 			try { 
+				collectingThread.set(Thread.currentThread());
 				execute = preExecCheck();
-				preExecCheckFails.set(0L);
+				if(!execute) setState(ScriptState.DISCONNECT);
 			} catch (Exception ex) {
+				setState(ScriptState.ERRORS);
 				execute = false;
-			}
+			} finally {
+				collectingThread.set(null);
+			}			
 			if(!execute) {
-				preExecCheckFails.incrementAndGet();
+				preExecCheckFails.incrementAndGet();				
+				scheduleNextCollection();
 				return null;
 			}
+			setState(ScriptState.SCHEDULED, ScriptState.DISCONNECT);
+			preExecCheckFails.set(0L);
 			if(!setState(ScriptState.EXECUTING, ScriptState.SCHEDULED)) {
 				if(state.get()!=ScriptState.SCHEDULED) {
 					log.info("Script version [{}] is [{}] not SCHEDULED. Stopping schedule.", deploymentId, state.get());
@@ -693,18 +704,25 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 				}
 			} finally {
 				if(setState(ScriptState.SCHEDULED, ScriptState.EXECUTING)) {
-					if(pendingDependencies.isEmpty()) {
-						canReschedule.set(true);
-						updateProps();  // FIXME: too heavyweight
-						scheduleHandle = SharedScheduler.getInstance().schedule(ManagedScript.this, scheduledPeriod, scheduledPeriodUnit);					
-					} else {
-						log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
-					}
+					scheduleNextCollection();
 				} else {
 					log.debug("State not EXECUTING on return from execution");
 				}
 			}
 			return null;
+		}
+		
+		/**
+		 * Schedules the next collection
+		 */
+		protected void scheduleNextCollection() {
+			if(pendingDependencies.isEmpty()) {
+				canReschedule.set(true);
+				updateProps();  // FIXME: too heavyweight
+				scheduleHandle = SharedScheduler.getInstance().schedule(ManagedScript.this, scheduledPeriod, scheduledPeriodUnit);					
+			} else {
+				log.warn("Script scheduling waiting on dependencies {}", pendingDependencies);
+			}			
 		}
 		
 		/**
@@ -730,7 +748,12 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 //				if(hystrixEnabled.get()) {
 //					runInCircuitBreaker();
 //				} else {
-					run();
+					try {
+						collectingThread.set(Thread.currentThread());
+						run();
+					} finally {
+						collectingThread.set(null);
+					}
 //				}
 				final long elapsed = System.currentTimeMillis() - start;
 				return elapsed;
@@ -1723,6 +1746,7 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 * Resets to zero once the init-check succeeds.
 	 * @return the number of times that init-check has returned false
 	 */
+	@Override
 	public long getInitCheckFails() {
 		return initCheckFails.get();
 	}
@@ -1732,8 +1756,20 @@ public abstract class ManagedScript extends Script implements NotificationEmitte
 	 * Resets to zero once the pre-exec check succeeds.
 	 * @return the number of times that pre-exec-check has returned false or thrown an exception.
 	 */
+	@Override
 	public long getPreExecCheckFails() {
 		return preExecCheckFails.get();
 	}
+	
+	/**
+	 * {@inheritDoc}
+	 * @see com.heliosapm.streams.collector.groovy.ManagedScriptMBean#getCollectingThread()
+	 */
+	@Override
+	public String getCollectingThread() {
+		final Thread t = collectingThread.get();
+		return t==null ? null : t.getName() + "[" + t.getId() + "]";
+	}
+	
 	
 }

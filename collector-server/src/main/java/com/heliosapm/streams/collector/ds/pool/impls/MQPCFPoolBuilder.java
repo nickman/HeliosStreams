@@ -157,8 +157,7 @@ public class MQPCFPoolBuilder implements PooledObjectFactoryBuilder<Object> {
 	public boolean validateObject(PooledObject<Object> p) {
 		String qManagerName = null;
 		try {
-			qManagerName = (String)PCF_VALIDATE.invokeExact(p.getObject());
-			log("QManager: [" + qManagerName + "]");
+			qManagerName = (String)PCF_VALIDATE.invokeExact(p.getObject());			
 			return (qManagerName!=null && !qManagerName.isEmpty());
 		} catch (Throwable e) {
 			e.printStackTrace(System.err);

@@ -29,9 +29,12 @@ import java.util.function.BiFunction;
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.PooledObjectFactory;
+import org.apache.commons.pool2.SwallowedExceptionListener;
 import org.apache.commons.pool2.impl.AbandonedConfig;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import com.heliosapm.streams.collector.cache.GlobalCacheService;
 import com.heliosapm.utils.lang.StringHelper;
@@ -159,6 +162,19 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 		
 	}
 	
+	/** Static class logger */
+	public static final Logger LOG = LogManager.getLogger(PoolConfig.class);
+	
+	private static final SwallowedExceptionListener EX_LISTENER = new SwallowedExceptionListener() {
+
+		@Override
+		public void onSwallowException(final Exception e) {
+			e.printStackTrace(System.err);
+			LOG.error("Swallowed Exception", e);
+			
+		}
+		
+	};
 	
 	/** The default pooled object factory implementation package */
 	public static final String DEFAULT_FACTORY_PACKAGE = "com.heliosapm.streams.collector.ds.pool.impls.";
@@ -188,7 +204,7 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 		DEFAULT_CONFIG.setJmxNameBase("com.heliosapm.streams.collector.ds.pool:service=ObjectPool");
 		//DEFAULT_CONFIG.setJmxNamePrefix("");
 		
-		DEFAULT_CONFIG.setLifo(false);
+		DEFAULT_CONFIG.setLifo(true);
 		DEFAULT_CONFIG.setTestOnBorrow(true);
 		DEFAULT_CONFIG.setTestOnCreate(true);
 		DEFAULT_CONFIG.setTestOnReturn(false);
@@ -247,14 +263,6 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 		}
 	}
 	
-	
-
-	XXXXXXXXX
-	XXXXXXXX
-	NEED TO LOG DEPLOY ERRORS !!
-	XXXXXXXX
-	CXC
-	
 	/**
 	 * Creates and deploys an ObjectPool based on the passed config props
 	 * @param configProps The configuration properties file
@@ -269,9 +277,15 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 			if(!p.containsKey("name")) {
 				p.setProperty("name", StringHelper.splitString(configProps.getName(), '.', true)[0]);
 			}
-			pool = deployPool(p);
-			pools.replace(configProps, pool);
-			return pool;
+			try {
+				pool = deployPool(p);
+				pools.replace(configProps, pool);
+				return pool;
+			} catch (Exception ex) {
+				final String msg = "Failed to deploy object pool from file [" + configProps + "]";
+				LOG.error(msg, ex);
+				throw new RuntimeException(msg, ex);
+			}
 		} else {
 			throw new RuntimeException("The pool defined in the file [" + configProps + "] has already been deployed");
 		}
@@ -300,9 +314,10 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 				}
 			}
 			final PooledObjectFactory<?> pooledObjectFactory = factory.factory();
-			GenericObjectPool<?> pool = new GenericObjectPool(factory.factory(), cfg);
-			if(pooledObjectFactory instanceof PoolAwareFactory) {
-				((PoolAwareFactory)pooledObjectFactory).setPool(pool);
+			GenericObjectPool<?> pool = new GenericObjectPool(pooledObjectFactory, cfg);
+			pool.setSwallowedExceptionListener(EX_LISTENER);
+			if(factory instanceof PoolAwareFactory) {
+				((PoolAwareFactory)factory).setPool(pool);
 			}
 			GlobalCacheService.getInstance().put("pool/" + poolName, pool);
 			pool.setAbandonedConfig(Abandoned.create(p));

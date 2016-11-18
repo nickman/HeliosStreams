@@ -254,4 +254,22 @@ public interface ManagedScriptFactoryMBean {
 	 */
 	public void resumeAll();
 	
+	/**
+	 * Returns the dynamic discovery script directory
+	 * @return the dynamic discovery script directory
+	 */
+	public File getDynamicDirectory();
+	
+	/**
+	 * Returns the template directory
+	 * @return the template directory
+	 */
+	public File getTemplateDirectory();
+	
+	/**
+	 * Returns the data source directory
+	 * @return the data source directory
+	 */
+	public File getDataSourceDirectory();
+	
 }

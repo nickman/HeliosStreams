@@ -27,7 +27,9 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.logging.log4j.LogManager;
@@ -84,12 +86,32 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 	/** A counter of failed deployments */
 	protected final LongAdder failedDeploys = new LongAdder();
 	
+	
+	/** Placeholder countdown latch */
+	private static final CountDownLatch PLACEHOLDER = new CountDownLatch(1);
+	
+	static {
+		PLACEHOLDER.countDown();
+	}
+	
 	/** The recognized data source and object pool configuration file extensions */
 	public static final Set<String> POOL_EXT = Collections.unmodifiableSet(new HashSet<String>(Arrays.asList("ds", "pool")));
+	
+	/** Deployment completion latches by ds file, removed when deployment completes (successfully or not) */
+	private final NonBlockingHashMap<File, CountDownLatch> deploymentLatches = new NonBlockingHashMap<File, CountDownLatch>(); 
 	
 	
 //	/** The spring app context */
 //	protected ApplicationContext appCtx = null;
+	
+	private CountDownLatch placeLatch(final File dsFile) {
+		CountDownLatch latch = deploymentLatches.putIfAbsent(dsFile, PLACEHOLDER);
+		if(latch==null || latch==PLACEHOLDER) {
+			latch = new CountDownLatch(1);
+			deploymentLatches.replace(dsFile, latch);
+		}
+		return latch;
+	}
 
 
 	/**
@@ -100,9 +122,10 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 	public JDBCDataSourceManager(final File dsDirectory, final CollectorExecutionService collectorExecutionService) {
 		log.info(">>>>> Starting JDBCDataSourceManager...");
 		this.dsDirectory = dsDirectory;
+		// TODO: delete all in dynamic
 		this.collectorExecutionService = collectorExecutionService;
 		finder = FileFinder.newFileFinder(dsDirectory.getAbsolutePath())
-		.maxDepth(5)
+		.maxDepth(10)
 		.maxFiles(Integer.MAX_VALUE)
 		.maxDepth(Integer.MAX_VALUE)
 		
@@ -145,6 +168,35 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 		log.info("<<<<< JDBCDataSourceManager started.");
 	}
 	
+	/**
+	 * Awaits deployment of the datasource defined by the passed file
+	 * @param dsDef The datasource (or objectpool) definition file
+	 * @param timeout The await timeout
+	 * @param unit The await timeout unit
+	 * @return true if datasource was deployed, false otherwise
+	 */
+	public boolean awaitDeployment(final File dsDef, final long timeout, final TimeUnit unit) {
+		if(dsDef==null) throw new IllegalArgumentException("The passed file was null");
+		final CountDownLatch latch = placeLatch(dsDef);
+		try {
+			final boolean complete = latch.await(timeout, unit);
+			if(complete) {
+				deploymentLatches.remove(dsDef, latch);
+			}
+			return complete;
+		} catch (InterruptedException iex) {
+			throw new RuntimeException("Thread interrupted while waiting for deployment of [" + dsDef + "]", iex);
+		}
+	}
+	
+	/**
+	 * Awaits deployment of the datasource defined by the passed file using the default timeout of 10s.
+	 * @param dsDef The datasource (or objectpool) definition file
+	 * @return true if datasource was deployed, false otherwise
+	 */
+	public boolean awaitDeployment(final File dsDef) {
+		return awaitDeployment(dsDef, 10, TimeUnit.SECONDS);
+	}
 	
 	/**
 	 * Deploys the passed data source definition file
@@ -152,15 +204,22 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 	 */
 	protected void deploy(final File dsDef) {
 		if(dsDef==null) throw new IllegalArgumentException("The passed file was null");
-		final String ext = URLHelper.getFileExtension(dsDef);
-		if(ext==null || ext.trim().isEmpty() || !POOL_EXT.contains(ext.toLowerCase())) {
-			throw new IllegalArgumentException("The passed file [" + dsDef + "] does not have a recognized extension [" + ext + "]. Recognized extensions are: " + POOL_EXT);
-		}
-		if(!dsDef.canRead()) throw new IllegalArgumentException("The passed file [" + dsDef + "] cannot be read");
-		if(dsDef.getName().toLowerCase().endsWith(".ds")) {
-			deployJDBCDataSource(dsDef);
-		} else {
-			deployObjectPool(dsDef);
+		final CountDownLatch latch = placeLatch(dsDef);
+		try {
+			final String ext = URLHelper.getFileExtension(dsDef);
+			if(ext==null || ext.trim().isEmpty() || !POOL_EXT.contains(ext.toLowerCase())) {
+				throw new IllegalArgumentException("The passed file [" + dsDef + "] does not have a recognized extension [" + ext + "]. Recognized extensions are: " + POOL_EXT);
+			}
+			if(!dsDef.canRead()) throw new IllegalArgumentException("The passed file [" + dsDef + "] cannot be read");
+			final String name = dsDef.getName().toLowerCase(); 
+			if(name.endsWith(".ds")) {
+				deployJDBCDataSource(dsDef);
+			} else if(name.endsWith(".pool")) {
+				deployObjectPool(dsDef);
+			}
+		} finally {
+			latch.countDown();
+			deploymentLatches.remove(dsDef, latch);
 		}
 	}
 	

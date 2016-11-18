@@ -95,7 +95,6 @@ import com.heliosapm.utils.file.FileFilterBuilder;
 import com.heliosapm.utils.file.FileFinder;
 import com.heliosapm.utils.file.FileHelper;
 import com.heliosapm.utils.file.Filters.FileMod;
-import com.heliosapm.utils.io.StdInCommandHandler;
 import com.heliosapm.utils.jmx.JMXHelper;
 import com.heliosapm.utils.jmx.SharedNotificationExecutor;
 import com.heliosapm.utils.jmx.SharedScheduler;
@@ -193,6 +192,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	protected final File sshDirectory;
 	/** The collector service datasource definition directory */
 	protected final File dataSourceDirectory;
+
 	/** Indicates if we're in spring mode */
 	protected final boolean springMode;
 //	/** The spring app context if we're running in spring boot */
@@ -259,6 +259,8 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 		.build();
 	protected final Instrumentation instrumentation = LocalAgentInstaller.getInstrumentation();
 	
+	
+
 	private static final MBeanNotificationInfo[] NOTIF_INFO = new MBeanNotificationInfo[]{
 		new MBeanNotificationInfo(new String[]{NOTIF_TYPE_REPLACEMENT_FAILED}, Notification.class.getName(), "Notification emitted when a script was re-compiled but failed compilation"),
 		new MBeanNotificationInfo(new String[]{NOTIF_TYPE_REPLACEMENT_COMPLETE}, Notification.class.getName(), "Notification emitted when script was re-compiled successfully and replaced an existing one"),
@@ -1390,6 +1392,7 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 * Returns the dynamic discovery script directory
 	 * @return the dynamic discovery script directory
 	 */
+	@Override
 	public File getDynamicDirectory() {
 		return dynamicDirectory;
 	}
@@ -1398,8 +1401,27 @@ public class ManagedScriptFactory extends NotificationBroadcasterSupport impleme
 	 * Returns the template directory
 	 * @return the template directory
 	 */
+	@Override
 	public File getTemplateDirectory() {
 		return templateDirectory;
 	}
+	
+	/**
+	 * Returns the data source directory
+	 * @return the data source directory
+	 */
+	@Override
+	public File getDataSourceDirectory() {
+		return dataSourceDirectory;
+	}
+
+	/**
+	 * Returns the data source manager
+	 * @return the data source manager
+	 */
+	public JDBCDataSourceManager getDataSourceManager() {
+		return jdbcDataSourceManager;
+	}
+	
 
 }
