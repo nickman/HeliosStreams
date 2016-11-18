@@ -28,7 +28,13 @@
            </Logger>
            <Logger name="javax.management.mbeanserver" level="trace" additivity="false">
                <AppenderRef ref="ERR-Appender" level="trace"/>
-           </Logger>           
+           </Logger>    
+           <Logger name="org.apache.zookeeper.ClientCnxn" level="error" additivity="false">
+               <AppenderRef ref="ERR-Appender" level="error"/>
+           </Logger>    
+           
+           
+                  
         <Root level="info">
             <AppenderRef ref="Console-Appender" />
         </Root>

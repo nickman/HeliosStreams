@@ -103,6 +103,9 @@ public class JDBCDataSourceManager implements FileChangeEventListener { //, Appl
 		this.collectorExecutionService = collectorExecutionService;
 		finder = FileFinder.newFileFinder(dsDirectory.getAbsolutePath())
 		.maxDepth(5)
+		.maxFiles(Integer.MAX_VALUE)
+		.maxDepth(Integer.MAX_VALUE)
+		
 		.filterBuilder()
 		.caseInsensitive(false)
 		.patternMatch(".*\\.ds$|.*\\.pool$")

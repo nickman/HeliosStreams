@@ -19,7 +19,9 @@ under the License.
 package com.heliosapm.streams.collector.ds.pool;
 
 import java.io.File;
+import java.io.PrintWriter;
 import java.lang.reflect.Constructor;
+import java.util.EnumSet;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiFunction;
@@ -27,6 +29,7 @@ import java.util.function.BiFunction;
 import org.apache.commons.pool2.BasePooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.PooledObjectFactory;
+import org.apache.commons.pool2.impl.AbandonedConfig;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
@@ -39,6 +42,20 @@ import com.heliosapm.utils.url.URLHelper;
  * <p>Description: A functional enumeration of the configuration items for a generic pool configuration</p> 
  * @author Whitehead (nwhitehead AT heliosdev DOT org)
  * <p><code>com.heliosapm.streams.collector.ds.pool.PoolConfig</code></p>
+ * <p><pre>
+ * maxidle=
+ * maxtotal=
+ * minidle=
+ * blockonex=
+ * maxwait=
+ * testonget=
+ * testoncreate=
+ * name=
+ * logabandon=true
+ * remaoveabandon=true
+ * timeoutabandon=60
+ * trackabandon=false 
+ * </pre></p>
  */
 
 public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Void> {
@@ -60,18 +77,103 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 	NAME{public Void apply(final GenericObjectPoolConfig p, final Object o) {p.setJmxNamePrefix(",name=" + o.toString().trim()); return null;}};
 	
 	
+	/**
+	 * <p>Title: Abandoned</p>
+	 * <p>Description: Functional enum to configure the pool's abandoned object policy</p> 
+	 * @author Whitehead (nwhitehead AT heliosdev DOT org)
+	 * <p><code>com.heliosapm.streams.collector.ds.pool.PoolConfig.Abandoned</code></p>
+	 */
+	public static enum Abandoned implements BiFunction<AbandonedConfig, Object, Void> {
+		/** Indicates if abandoned objects should be logged */
+		LOGABANDON("true"){public Void apply(final AbandonedConfig p, final Object o) {p.setLogAbandoned(o==null ? true : Boolean.parseBoolean(o.toString().trim())); return null;}},
+		/** Flag to remove abandoned objects if they exceed the removeAbandonedTimeout when borrowObject is invoked. */
+		REMAOVEABANDON("true"){public Void apply(final AbandonedConfig p, final Object o) {p.setRemoveAbandonedOnBorrow(o==null ? true : Boolean.parseBoolean(o.toString().trim())); return null;}},
+		/** The timeout in seconds before an abandoned object can be removed */
+		TIMEOUTABANDON("60"){public Void apply(final AbandonedConfig p, final Object o) {p.setRemoveAbandonedTimeout(Integer.parseInt(o.toString().trim())); return null;}},
+		/** Enables debug tracking of all borrowed objects */
+		TRACKABANDON("false"){public Void apply(final AbandonedConfig p, final Object o) {p.setUseUsageTracking(o==null ? true : Boolean.parseBoolean(o.toString().trim())); return null;}};
+		
+		private Abandoned(final String defaultValue) {
+			this.defaultValue = defaultValue;
+		}
+		
+		/** The default value */
+		public final String defaultValue;
+		
+		/**
+		 * Decodes the passed name to a Abandoned
+		 * @param name the name to decode
+		 * @return the decoded Abandoned
+		 */
+		public static Abandoned decode(final String name) {
+			if(name==null || name.trim().isEmpty()) throw new IllegalArgumentException("The passed name was null or empty");
+			try {
+				return valueOf(name.trim().toUpperCase());
+			} catch (Exception ex) {
+				throw new IllegalArgumentException("The passed name [" + name + "] is not a valid Abandoned");
+			}
+		}
+		
+		/**
+		 * Determines if the passed name is a valid Abandoned
+		 * @param name The name to test
+		 * @return true if valid, false otherwise
+		 */
+		public static boolean isAbandoned(final String name) {
+			try {
+				decode(name);
+				return true;
+			} catch (Exception ex) {
+				return false;
+			}
+		}
+		
+		/**
+		 * Creates a new AbandonedConfig from the passed properties
+		 * @param p The config properties for the pool
+		 * @return the AbandonedConfig
+		 */
+		public static AbandonedConfig create(final Properties p) {
+			final AbandonedConfig ac = new AbandonedConfig();
+			final EnumSet<Abandoned> unapplied = EnumSet.allOf(Abandoned.class);
+			for(final String key: p.stringPropertyNames()) {
+				if(isAbandoned(key)) {
+					final Abandoned a = decode(key);
+					final String cfg = p.getProperty(key, "").trim();
+					try {
+						a.apply(ac, cfg);
+					} catch (Exception ex) {
+						a.apply(ac, a.defaultValue);
+					}
+					unapplied.remove(a);
+				}
+			}
+			for(Abandoned a: unapplied) {
+				a.apply(ac, a.defaultValue);
+			}
+			if(ac.getLogAbandoned()) {
+				ac.setLogWriter(new PrintWriter(System.err));
+			}
+			return ac;
+		}
+		
+	}
+	
+	
 	/** The default pooled object factory implementation package */
 	public static final String DEFAULT_FACTORY_PACKAGE = "com.heliosapm.streams.collector.ds.pool.impls.";
 
 	
+	/** The default pool configuration */
 	private static final GenericObjectPoolConfig DEFAULT_CONFIG;
+	/** Placeholder pool */
 	private static final GenericObjectPool<?> PLACEHOLDER;
 	
 	/** The configuration key for the pooled object factory */
 	public static final String POOLED_OBJECT_FACTORY_KEY = "factory"; 
 	
 	/** All active pools keyed by name */
-	private static final ConcurrentHashMap<String, GenericObjectPool<?>> pools = new ConcurrentHashMap<String, GenericObjectPool<?>>(512, 0.75f, Runtime.getRuntime().availableProcessors()); 
+	private static final ConcurrentHashMap<File, GenericObjectPool<?>> pools = new ConcurrentHashMap<File, GenericObjectPool<?>>(512, 0.75f, Runtime.getRuntime().availableProcessors()); 
 	
 	
 	static {
@@ -89,7 +191,8 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 		DEFAULT_CONFIG.setLifo(false);
 		DEFAULT_CONFIG.setTestOnBorrow(true);
 		DEFAULT_CONFIG.setTestOnCreate(true);
-		DEFAULT_CONFIG.setTestOnReturn(false);	
+		DEFAULT_CONFIG.setTestOnReturn(false);
+		
 		
 		PLACEHOLDER = new GenericObjectPool<Object>(new BasePooledObjectFactory<Object>() {
 			@Override
@@ -110,6 +213,10 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 		for(PoolConfig p: values()) {
 			System.out.println(p.name().toLowerCase() + "=");
 		}
+		for(Abandoned p: Abandoned.values()) {
+			System.out.println(p.name().toLowerCase() + "=" + p.defaultValue);
+		}
+		
 	}
 	
 	/**
@@ -141,6 +248,12 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 	}
 	
 	
+
+	XXXXXXXXX
+	XXXXXXXX
+	NEED TO LOG DEPLOY ERRORS !!
+	XXXXXXXX
+	CXC
 	
 	/**
 	 * Creates and deploys an ObjectPool based on the passed config props
@@ -148,52 +261,56 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 	 * @return the created GenericObjectPool
 	 */
 	public static GenericObjectPool<?> deployPool(final File configProps) {
-		final Properties p = URLHelper.readProperties(URLHelper.toURL(configProps));
-		if(!p.containsKey("name")) {
-			p.setProperty("name", StringHelper.splitString(configProps.getName(), '.', true)[0]);
+		if(configProps==null) throw new IllegalArgumentException("The passed file was null");
+		if(!configProps.canRead()) throw new IllegalArgumentException("The passed file [" + configProps + "] cannot be read");
+		GenericObjectPool<?> pool = pools.putIfAbsent(configProps, PLACEHOLDER);
+		if(pool==null || pool==PLACEHOLDER) {
+			final Properties p = URLHelper.readProperties(URLHelper.toURL(configProps));
+			if(!p.containsKey("name")) {
+				p.setProperty("name", StringHelper.splitString(configProps.getName(), '.', true)[0]);
+			}
+			pool = deployPool(p);
+			pools.replace(configProps, pool);
+			return pool;
+		} else {
+			throw new RuntimeException("The pool defined in the file [" + configProps + "] has already been deployed");
 		}
-		return deployPool(p);
 	}
 
 	/**
 	 * Creates and deploys an ObjectPool based on the passed config props
-	 * @param configProps The configuration properties
+	 * @param p The configuration properties
 	 * @return the created GenericObjectPool
 	 */
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	public static GenericObjectPool<?> deployPool(final Properties p) {
+	private static GenericObjectPool<?> deployPool(final Properties p) {
 		final String factoryName = (String)p.remove(POOLED_OBJECT_FACTORY_KEY);
 		final String poolName = p.getProperty(NAME.name().toLowerCase());
 		if(poolName==null || poolName.trim().isEmpty()) throw new RuntimeException("Pool was not assigned a name");
 		if(factoryName==null || factoryName.trim().isEmpty()) throw new RuntimeException("No pooled object factory defined");
 		final GenericObjectPoolConfig cfg = DEFAULT_CONFIG.clone();
-		GenericObjectPool<?> pool = pools.putIfAbsent(poolName, PLACEHOLDER);
-		if(pool==null || pool==PLACEHOLDER) {
-			try {			
-				final Class<PooledObjectFactoryBuilder<?>> clazz = loadFactoryClass(factoryName);
-				final Constructor<PooledObjectFactoryBuilder<?>> ctor = clazz.getDeclaredConstructor(Properties.class);
-				final PooledObjectFactoryBuilder<?> factory = ctor.newInstance(p);
-				for(final String key: p.stringPropertyNames()) {
-					if(isPoolConfig(key)) {
-						final PoolConfig pc = decode(key);
-						pc.apply(cfg, p.get(key));
-					}
+		try {			
+			final Class<PooledObjectFactoryBuilder<?>> clazz = loadFactoryClass(factoryName);
+			final Constructor<PooledObjectFactoryBuilder<?>> ctor = clazz.getDeclaredConstructor(Properties.class);
+			final PooledObjectFactoryBuilder<?> factory = ctor.newInstance(p);
+			for(final String key: p.stringPropertyNames()) {
+				if(isPoolConfig(key)) {
+					final PoolConfig pc = decode(key);
+					pc.apply(cfg, p.get(key));
 				}
-				final PooledObjectFactory<?> pooledObjectFactory = factory.factory();
-				pool = new GenericObjectPool(factory.factory(), cfg);
-				if(pooledObjectFactory instanceof PoolAwareFactory) {
-					((PoolAwareFactory)pooledObjectFactory).setPool(pool);
-				}
-				pools.replace(poolName, pool);
-				GlobalCacheService.getInstance().put("pool/" + poolName, pool);
-				pool.preparePool();
-				return pool;
-			} catch (Exception ex) {
-				throw new RuntimeException("Failed to create GenericObjectPool from properties [" + p + "]", ex);
-			}			
-		} else {
-			throw new RuntimeException("Duplicate GenericObjectPool name [" + poolName + "]");
-		}
+			}
+			final PooledObjectFactory<?> pooledObjectFactory = factory.factory();
+			GenericObjectPool<?> pool = new GenericObjectPool(factory.factory(), cfg);
+			if(pooledObjectFactory instanceof PoolAwareFactory) {
+				((PoolAwareFactory)pooledObjectFactory).setPool(pool);
+			}
+			GlobalCacheService.getInstance().put("pool/" + poolName, pool);
+			pool.setAbandonedConfig(Abandoned.create(p));
+			pool.preparePool();
+			return pool;
+		} catch (Exception ex) {
+			throw new RuntimeException("Failed to create GenericObjectPool from properties [" + p + "]", ex);
+		}			
 	}
 	
 	
@@ -210,7 +327,7 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 	 * Undeploys the named pool
 	 * @param name The name of the pool
 	 */
-	public static void undeployPool(final String name) {
+	private static void undeployPool(final String name) {
 		if(name==null || name.trim().isEmpty()) throw new IllegalArgumentException("The passed pool name was null or empty");
 		final String key = "pool/" + name;
 		final GenericObjectPool<?> pool = GlobalCacheService.getInstance().remove(key);
@@ -225,7 +342,7 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 	 * Undeploys the pool defined in the passed properties
 	 * @param config The pool configuration properties
 	 */
-	public static void undeployPool(final Properties config) {
+	private static void undeployPool(final Properties config) {
 		final String poolName = config.getProperty(NAME.name().toLowerCase());
 		if(poolName==null || poolName.trim().isEmpty()) throw new RuntimeException("The passed properties do not have a pool name");
 		undeployPool(poolName);
@@ -240,8 +357,14 @@ public enum PoolConfig implements BiFunction<GenericObjectPoolConfig, Object, Vo
 	public static void undeployPool(final File file) {
 		if(file==null) throw new IllegalArgumentException("The passed file was null");
 		if(!file.canRead()) throw new IllegalArgumentException("Cannot read file [" + file + "]");
-		undeployPool(URLHelper.readProperties(URLHelper.toURL(file)));
-		
+		if(pools.remove(file)!=null) {
+			final Properties p = URLHelper.readProperties(URLHelper.toURL(file));
+			final String poolName = p.getProperty(NAME.name().toLowerCase());
+			if(poolName==null) {
+				p.setProperty("name", StringHelper.splitString(file.getName(), '.', true)[0]);
+			}
+			undeployPool(p);
+		}		
 	}
 	
 

@@ -69,7 +69,7 @@ public class TestMQPool {
 			JMXHelper.fireUpJMXMPServer(1077);
 			final Properties p = Props.strToProps(TEST_PROPS);
 			log("Props:" + p);
-			final GenericObjectPool<Object> pool = (GenericObjectPool<Object>)PoolConfig.deployPool(p);
+			final GenericObjectPool<Object> pool = null;//(GenericObjectPool<Object>)PoolConfig.deployPool(p);
 			pool.preparePool();
 			log("Pool Deployed:" + pool.getNumIdle());
 			final List<Object> objects = new ArrayList<Object>();
