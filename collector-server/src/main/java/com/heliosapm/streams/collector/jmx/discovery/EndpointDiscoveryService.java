@@ -19,15 +19,13 @@ under the License.
 package com.heliosapm.streams.collector.jmx.discovery;
 
 import java.io.File;
-import java.io.IOException;
-import java.util.Arrays;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import javax.management.remote.JMXServiceURL;
 
@@ -44,9 +42,7 @@ import org.cliffc.high_scale_lib.NonBlockingHashSet;
 //import org.springframework.context.event.ContextStoppedEvent;
 //import org.springframework.stereotype.Component;
 
-import com.google.common.io.Files;
 import com.heliosapm.streams.collector.groovy.ManagedScriptFactory;
-import com.heliosapm.streams.collector.jmx.JMXClient;
 import com.heliosapm.streams.discovery.AdvertisedEndpoint;
 import com.heliosapm.streams.discovery.AdvertisedEndpointListener;
 import com.heliosapm.streams.discovery.EndpointListener;
@@ -185,9 +181,8 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener { //
 	private static final NVP<Long, TimeUnitSymbol> DEFAULT_SCHEDULE = new NVP<Long, TimeUnitSymbol>(15L, TimeUnitSymbol.SECONDS); 
 	
 	/**
-	 * @param endpoint
-	 * TODO: add execution schedule configuration options
-	 * TODO: add jmxconnection timeout
+	 * Deploys a JMXClient object pool and dynamic scripts for each available endpoint in the passed AdvertisedEndpoint.
+	 * @param endpoint An AdvertisedEndpoint just published to the zoo
 	 */
 	protected void deployEndpointMonitors(final AdvertisedEndpoint endpoint) {
 		final File appDirectory = createEndpointMonitorDirectory(endpoint);
@@ -196,28 +191,30 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener { //
 		for(final String endpointType: endpoint.getEndPoints()) {
 			final NVP<Long, TimeUnitSymbol> schedule;
 			final String endpointTypeName;
-			final Matcher m = PERIOD_PATTERN.matcher(endpointType);
+			final Matcher m = PERIOD_PATTERN.matcher(endpointType);   // ".*\\-(\\d++[s|m|h|d]){1}$"
 			if(m.matches()) {
 				final String sch = m.group(1);
 				schedule = TimeUnitSymbol.period(sch);
-				endpointTypeName = endpointType
-			} 			
+				endpointTypeName = endpointType.replace("-" + sch, "");
+			} else {
+				schedule = DEFAULT_SCHEDULE;
+				endpointTypeName = endpointType;
+			}
+			boolean deployable = true;
+			File templateScript = new File(endpointTemplateDirectory, endpointType + ".groovy");
+			if(!templateScript.canRead() || templateScript.length() == 0) {
+				log.warn("No endpoint script found for endpoint type [{}]",  endpointType);
+				deployable = false;
+			}
+			if(deployable && ManagedScriptFactory.isDisabled(templateScript)) {
+				log.warn("Endpoint script type [{}] is disabled",  endpointType);
+				deployable = false;
+			}
+			if(deployable) {
+				deployableEndpointTypes.put(endpointTypeName, schedule);
+			}
+			
 		}
-		
-		final Set<String> deployableEndpointTypes = Arrays.stream(endpoint.getEndPoints())
-			.parallel()
-			.filter(endpointType -> {
-				File templateScript = new File(endpointTemplateDirectory, endpointType + ".groovy");
-				if(!templateScript.canRead() || templateScript.length() == 0) {
-					log.warn("No endpoint script found for endpoint type [{}]",  endpointType);
-					return false;
-				}
-				if(ManagedScriptFactory.isDisabled(templateScript)) {
-					log.warn("Endpoint script type [{}] is disabled",  endpointType);
-					return false;
-				}
-				return true;
-			}).collect(Collectors.toSet());
 		
 		final int poolSize;
 		if(deployableEndpointTypes.isEmpty()) {
@@ -229,9 +226,14 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener { //
 		
 		final String poolName = deployJMXConnectionPool(endpoint, poolSize);
 		
-		for(String endpointType: deployableEndpointTypes) {			
-			File templateScript = new File(endpointTemplateDirectory, endpointType + ".groovy");
-
+		for(Map.Entry<String, NVP<Long, TimeUnitSymbol>> entry: deployableEndpointTypes.entrySet()) {
+			final NVP<Long, TimeUnitSymbol> schedule = entry.getValue();
+			final String endpointTypeName = entry.getKey();
+			final String epFile = endpointTypeName + "-" + schedule.getKey() + schedule.getValue().shortName + ".groovy";
+			
+			File templateScript = new File(endpointTemplateDirectory, epFile);
+			File deployedScript = new File(appDirectory, epFile);
+			
 			final Map<String, Object> bindings = new HashMap<String, Object>();
 			bindings.put("pool", "pool/" + poolName);
 			bindings.put("endpoint", endpoint);
@@ -240,21 +242,37 @@ public class EndpointDiscoveryService implements AdvertisedEndpointListener { //
 			bindings.put("jmxurl", endpoint.getJmxUrl());
 			bindings.put("jmxHelper", JMXHelper.class);
 			
-			File deployedScript = new File(appDirectory, endpointType + "-15s.groovy");
+			
 			if(deployedScript.exists()) deployedScript.delete();
-			try {
-				Files.copy(templateScript, deployedScript);
-			} catch (IOException iex) {
-				log.error("Failed to copy template [{}} to deployment [{}]", templateScript, deployedScript, iex);
-				continue;
-			}
+			linkOrCopy(templateScript, deployedScript);
 			log.info("Activating [{}].....", deployedScript);
 			scriptFactory.compileScript(deployedScript, bindings);
 			deployedFiles.add(deployedScript);
-			this.deployedFiles.put(endpoint.getId() + endpointType, deployedScript);
+			this.deployedFiles.put(endpoint.getId() + endpointTypeName, deployedScript);
 		}
 		final NVP<AdvertisedEndpoint, Set<File>> deploys = new NVP<AdvertisedEndpoint, Set<File>>(endpoint, deployedFiles);
 		this.deployments.put(endpoint.getId(), deploys);
+	}
+	
+	/**
+	 * Attempts to create a link from {@code deployedScript} to {@code templateScript}.
+	 * If this fails for any reason, will attempt to copy {@code templateScript} to {@code deployedScript} 
+	 * @param templateScript The source script
+	 * @param deployedScript The target script
+	 */
+	protected void linkOrCopy(final File templateScript, final File deployedScript) {
+		try {
+			Files.createLink(deployedScript.toPath(), templateScript.toPath());
+		} catch (Exception ex) {
+			log.warn("Link Failure. Downgrading to copy.\n\tFrom:[{}]\n\tTo:[{}]\n\t:Cause: {}", templateScript.getAbsoluteFile(), deployedScript.getAbsoluteFile(), ex);
+			try {
+				Files.copy(templateScript.toPath(), deployedScript.toPath());
+			} catch (Exception ex2) {
+				final String msg = "Copy Failure.\n\tFrom:[" + templateScript.getAbsolutePath() + "]\n\tTo:[" + deployedScript.getAbsolutePath() + "]";
+				log.error(msg, ex2);
+				throw new RuntimeException(msg, ex2);
+			}
+		}
 	}
 	
 	/**
