@@ -33,7 +33,7 @@ import com.heliosapm.utils.lang.StringHelper;
  */
 public class JMXMPSpec {
 	/** The specs delimeter */
-	public static final char MULTI_DELIM = ';';	
+	public static final char MULTI_DELIM = ',';	
 	/** The spec delimeter */
 	public static final char DELIM = ':';
 	/** The default bind interface */
@@ -42,8 +42,6 @@ public class JMXMPSpec {
 	public static final String DEFAULT_DOMAIN = "DefaultDomain";
 	/** The default JMXMP listening port */
 	public static final int DEFAULT_PORT = 1818;
-	/** The default advertised endpoints */
-	public static final Endpoint[] DEFAULT_ENDPOINTS = {};
 	
 	/** The configured bind interface */
 	protected String bindInterface = DEFAULT_BIND;
@@ -51,8 +49,6 @@ public class JMXMPSpec {
 	protected String jmxDomain = DEFAULT_DOMAIN;
 	/** The configured JMXMP listening port */
 	protected int port = DEFAULT_PORT;
-	/** The configured endpoints */
-	protected Endpoint[] endpoints = DEFAULT_ENDPOINTS;
 	
 	/**
 	 * Creates a new JMXMPSpec
@@ -75,26 +71,21 @@ public class JMXMPSpec {
 		for(final String s: frags) {
 			final String[] specFrags = StringHelper.splitString(s, DELIM, true);
 			final JMXMPSpec jspec = new JMXMPSpec();
-			if(specFrags.length > 0) {
+			if(specFrags.length > 1) {
 				if(specFrags[0]!=null && !specFrags[0].trim().isEmpty()) {
-					jspec.setEndpoints(StringHelper.splitString(specFrags[0], ',', true));
+					jspec.setPort(Integer.parseInt(specFrags[0].trim()));
 				}
-				if(specFrags.length > 1) {
-					if(specFrags[1]!=null && !specFrags[1].trim().isEmpty()) {
-						jspec.setPort(Integer.parseInt(specFrags[1].trim()));
-					}
-				}
-				if(specFrags.length > 2) {
-					if(specFrags[2]!=null && !specFrags[2].trim().isEmpty()) {
-						jspec.setBindInterface(specFrags[2].trim());
-					}
-				}
-				if(specFrags.length > 3) {
-					if(specFrags[3]!=null && !specFrags[3].trim().isEmpty()) {
-						jspec.setJmxDomain(specFrags[3].trim());
-					}					
-				}				
 			}
+			if(specFrags.length > 1) {
+				if(specFrags[1]!=null && !specFrags[1].trim().isEmpty()) {
+					jspec.setBindInterface(specFrags[1].trim());
+				}
+			}
+			if(specFrags.length > 2) {
+				if(specFrags[2]!=null && !specFrags[2].trim().isEmpty()) {
+					jspec.setJmxDomain(specFrags[2].trim());
+				}					
+			}				
 			if(!specs.add(jspec)) {
 				System.err.println("[JMXMPSpec] WARNING: Duplicate JMXMP Spec: [" + jspec + "]");
 			}
@@ -153,23 +144,7 @@ public class JMXMPSpec {
 		this.port = port;
 	}
 	
-	/**
-	 * Returns the advertised endpoints
-	 * @return the advertised endpoints
-	 */
-	public Endpoint[] getEndpoints() {
-		return endpoints.clone();
-	}
 	
-	/**
-	 * Sets the endpoints
-	 * @param endpoints the endpoints to set
-	 */
-	protected void setEndpoints(final String...endpoints) {
-		
-		this.endpoints = Endpoint.fromStrings(endpoints);
-		if(this.endpoints.length==0) System.err.println("[JMXMPSpec] WARNING: No endpoints defined");
-	}
 
 	/**
 	 * {@inheritDoc}
@@ -177,7 +152,7 @@ public class JMXMPSpec {
 	 */
 	@Override
 	public String toString() {
-		return String.format("%s:%s:%s:%s", Arrays.toString(endpoints), port, bindInterface, jmxDomain);
+		return String.format("%s:%s:%s", port, bindInterface, jmxDomain);
 	}
 
 	/**

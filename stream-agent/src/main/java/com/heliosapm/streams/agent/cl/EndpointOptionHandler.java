@@ -18,10 +18,6 @@ under the License.
  */
 package com.heliosapm.streams.agent.cl;
 
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
-
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.OptionDef;
@@ -29,46 +25,39 @@ import org.kohsuke.args4j.spi.OptionHandler;
 import org.kohsuke.args4j.spi.Parameters;
 import org.kohsuke.args4j.spi.Setter;
 
-/**
- * <p>Title: JMXMPSpecOptionHandler</p>
- * <p>Description: An args4j option handler for JMXMP installation specifications</p> 
- * @author Whitehead (nwhitehead AT heliosdev DOT org)
- * <p><code>com.heliosapm.streams.agent.cl.JMXMPSpecOptionHandler</code></p>
- */
-public class JMXMPSpecOptionHandler extends OptionHandler<JMXMPSpec[]> {
+import com.heliosapm.streams.agent.endpoint.Endpoint;
 
+/**
+ * <p>Title: EndpointOptionHandler</p>
+ * <p>Description: Parsing support for command specified endpoints</p> 
+ * @author Whitehead (nwhitehead AT heliosdev DOT org)
+ * <p><code>com.heliosapm.streams.agent.cl.EndpointOptionHandler</code></p>
+ */
+
+public class EndpointOptionHandler  extends OptionHandler<Endpoint>  {
+
+
+	
 	/**
-	 * Creates a new JMXMPSpecOptionHandler
+	 * Creates a new EndpointOptionHandler
 	 * @param parser The cmd line parser
 	 * @param option The option definition
 	 * @param setter The setter
 	 */
-	public JMXMPSpecOptionHandler(final CmdLineParser parser, final OptionDef option, final Setter<? super JMXMPSpec[]> setter) {
+	public EndpointOptionHandler(final CmdLineParser parser, final OptionDef option, final Setter<? super Endpoint> setter) {
 		super(parser, option, setter);
 	}
+	
 
-	/**
-	 * {@inheritDoc}
-	 * @see org.kohsuke.args4j.spi.OptionHandler#getDefaultMetaVariable()
-	 */
 	@Override
-	public String getDefaultMetaVariable() {
-		return "JMXMPSPECS";
+	public int parseArguments(final Parameters params) throws CmdLineException {		
+		setter.addValue(Endpoint.fromString(params.getParameter(0)));
+		return 1;
 	}
 
-	/**
-	 * {@inheritDoc}
-	 * @see org.kohsuke.args4j.spi.OptionHandler#parseArguments(org.kohsuke.args4j.spi.Parameters)
-	 */
 	@Override
-	public int parseArguments(final Parameters parameters) throws CmdLineException {
-		final Set<JMXMPSpec> specs = new LinkedHashSet<JMXMPSpec>();
-		final JMXMPSpec[] jspec = JMXMPSpec.parse(parameters.getParameter(0));
-		Collections.addAll(specs, jspec);		
-		if(specs.isEmpty()) specs.add(new JMXMPSpec());
-		final JMXMPSpec[] jspecs = specs.toArray(new JMXMPSpec[specs.size()]);
-		setter.addValue(jspecs);
-		return 1;
+	public String getDefaultMetaVariable() {
+		return "ENDPOINTS";
 	}
 
 }
