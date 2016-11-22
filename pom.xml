@@ -25,6 +25,7 @@
 		<module>tsdb-query</module>
 		<module>sql-compiler</module>
 		<module>metric-hub</module>
+		<module>stream-agent</module>
 		<module>web-rpc</module>
 	</modules>
 	
@@ -40,6 +41,7 @@
  		<heliosutils.version>1.0-SNAPSHOT</heliosutils.version> 		
  		<trove.version>3.0.2</trove.version>
  		<kafka.version>0.10.0.1</kafka.version>
+ 		<args4j.version>2.0.29</args4j.version>
  		<embedded-kafka.version>0.7.0</embedded-kafka.version>
 		<netty.version>4.1.6.Final</netty.version>
 		<jzlib.version>1.1.3</jzlib.version>
@@ -121,6 +123,14 @@
 		  <scope>test</scope>
 		</dependency>
 -->
+
+
+			<dependency>
+				<groupId>args4j</groupId>
+				<artifactId>args4j</artifactId>
+				<version>${args4j.version}</version>
+			</dependency>
+
 
 
 		<dependency>
