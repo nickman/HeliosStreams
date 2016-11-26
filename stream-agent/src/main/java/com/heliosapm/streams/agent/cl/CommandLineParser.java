@@ -43,7 +43,7 @@ public class CommandLineParser extends AgentCommandParser {
 	/** The agent command to execute */
 	protected AgentCommand command = null;
 	/** The PID of the JVM process to install into */
-	protected long pid = -1;
+	protected Long pid = null;
 	/** The overridden host name that should be published for the target JVM */
 	protected String host = null;
 	/** The overridden app name that should be published for the target JVM */
@@ -59,12 +59,15 @@ public class CommandLineParser extends AgentCommandParser {
 	protected boolean showAgentName = false;
 	
 
+	
 	/**
 	 * Creates a new CommandLine
+	 * @param args The command line arguments
 	 */
-	public CommandLineParser(final String arg) {		
-		super(arg);
+	public CommandLineParser(final String... args) {		
+		super(args);
 	}
+	
 	
 	/**
 	 * {@inheritDoc}
@@ -146,7 +149,7 @@ public class CommandLineParser extends AgentCommandParser {
 	 * Sets the pid of the JVM process to install into
 	 * @param pid the pid to set
 	 */
-	@Option(name="--pid", usage="The PID of the target JVM process")
+	@Option(name="--pid", usage="The PID of the target JVM process", metaVar="JVM PID")
 	protected void setPid(long pid) {
 		this.pid = pid;
 	}
@@ -163,7 +166,7 @@ public class CommandLineParser extends AgentCommandParser {
 	 * Returns the pid of the JVM process to install into
 	 * @return the pid of the JVM process to install into
 	 */
-	public long getPid() {
+	public Long getPid() {
 		return pid;
 	}
 

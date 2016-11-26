@@ -46,7 +46,7 @@ public enum AgentCommand implements AgentCommandProcessor {
 
 	/**
 	 * {@inheritDoc}
-	 * @see com.heliosapm.endpoint.publisher.agent.AgentCommandProcessor#processCommand(com.heliosapm.CommandLineParser.publisher.cl.CommandLine)
+	 * @see com.heliosapm.streams.agent.publisher.AgentCommandProcessor#processCommand(com.heliosapm.streams.agent.cl.CommandLineParser)
 	 */
 	@Override
 	public String processCommand(final CommandLineParser cmdLine) {
