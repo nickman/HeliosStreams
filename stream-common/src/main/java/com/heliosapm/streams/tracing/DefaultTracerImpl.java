@@ -16,6 +16,7 @@
 package com.heliosapm.streams.tracing;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
@@ -27,7 +28,9 @@ import java.util.TreeMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
 import javax.management.ObjectName;
@@ -37,11 +40,12 @@ import org.apache.logging.log4j.Logger;
 
 import com.codahale.metrics.Meter;
 import com.google.common.base.Predicate;
-import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.streams.common.metrics.SharedMetricsRegistry;
 import com.heliosapm.streams.common.naming.AgentName;
+import com.heliosapm.streams.metrics.StreamedMetric;
 import com.heliosapm.streams.metrics.StreamedMetricValue;
 import com.heliosapm.streams.tracing.deltas.DeltaManager;
+import com.heliosapm.utils.buffer.BufferManager;
 import com.heliosapm.utils.config.ConfigurationHelper;
 import com.heliosapm.utils.lang.StringHelper;
 import com.heliosapm.utils.time.SystemClock;
@@ -757,6 +761,116 @@ public class DefaultTracerImpl implements ITracer {
 		}
 	}
 	
+	public PMetric permaMetric(final String metricName, final Map<String, String> tags) {
+		return new PMetric(metricName, tags);
+	}
+	
+	public PMetric permaMetric(final String metricName, final String... tags) {
+		return new PMetric(metricName, tags);
+	}
+	
+	
+	public static final int PMETRIC_TS_OFFSET = 2;
+	public static final long JVM_START_TIME = ManagementFactory.getRuntimeMXBean().getStartTime();
+	
+	public class PMetric {
+		/** The measurement start time */
+		final AtomicLong startTime = new AtomicLong(0L);
+		/** The metric buffer */
+		final ByteBuf buff;
+		/** The offset for the metric value */
+		final int voffset;
+		
+		PMetric(final String metricName, final String... tags) {
+			this(metricName, StreamedMetric.tagsFromArray(tags));
+		}
+		
+		PMetric(final String metricName, final Map<String, String> tags) {
+			buff = BufferManager.getInstance().getUnPooledAllocator().directBuffer(128);
+			buff.writeByte(StreamedMetricValue.TYPE_CODE);
+			buff.writeByte(0);
+			buff.writeLong(0L);
+			BufferManager.writeUTF(metricName, buff);	
+			final Map<String, String> sortedTags = new TreeMap<String, String>(TagKeySorter.INSTANCE);
+			addAppHostTags(sortedTags);
+			buff.writeByte(sortedTags.size());
+			for(Map.Entry<String, String> entry: sortedTags.entrySet()) {
+				BufferManager.writeUTF(entry.getKey(), buff);
+				BufferManager.writeUTF(entry.getValue(), buff);
+			}
+			voffset = buff.writerIndex();
+			buff.writeByte(0);
+			buff.writeLong(0L);
+			buff.resetReaderIndex();
+						
+		}
+		
+		public PMetric start() {
+			startTime.set(System.nanoTime());
+			return this;
+		}
+		
+		public PMetric stop() {
+			final long nowNanos = System.nanoTime();
+			final long value = nowNanos - startTime.getAndSet(0L);
+			//update(JVM_START_TIME + TimeUnit.NANOSECONDS.toMillis(nowNanos), value);
+			update(System.currentTimeMillis(), value);
+			return this;
+		}
+		
+		private PMetric update(final long timestamp, final long value) {
+			buff.setLong(PMETRIC_TS_OFFSET, timestamp);
+			buff.setByte(voffset, 1);
+			buff.setLong(voffset+1, value);	
+			outBuffer.writeBytes(buff.asReadOnly());
+			traceOutEvents.increment();
+			incr();
+			return this;
+		}
+		
+		private PMetric update(final long timestamp, final double value) {
+			buff.setLong(PMETRIC_TS_OFFSET, timestamp);
+			buff.setByte(voffset, 1);
+			buff.setDouble(voffset+1, value);		
+			outBuffer.writeBytes(buff.asReadOnly());
+			traceOutEvents.increment();
+			incr();
+			return this;
+		}
+		
+		public PMetric flush() {
+			DefaultTracerImpl.this.flush();
+			return this;
+		}
+		
+		public ByteBuf readMetric() {
+			return buff.asReadOnly();
+		}
+		
+		public PMetric trace(final long timestamp, final long value) {
+			update(timestamp, value);
+			return this;
+		}
+		
+		public PMetric trace(final long value) {
+			return trace(System.currentTimeMillis(), value);			
+		}
+		
+		
+		public PMetric trace(final long timestamp, final double value) {
+			update(timestamp, value);
+			return this;
+		}
+		
+		public PMetric trace(final double value) {
+			return trace(System.currentTimeMillis(), value);			
+		}
+		
+
+		
+		
+	}
+	
 	/**
 	 * Adds the app and host tags if not already present
 	 * @param map The map to add to
@@ -1040,7 +1154,7 @@ public class DefaultTracerImpl implements ITracer {
 				public void run() {
 					writer.onMetrics(bufferCopy);
 					flushOutEvents.add(finalCount);
-					log.info(et.printAvg("Metrics flushed", finalCount));
+//					log.info(et.printAvg("Metrics flushed", finalCount));
 				}
 			});
 			bufferedEvents = 0;
