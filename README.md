@@ -1,6 +1,8 @@
 # HeliosStreams
 Streaming performance data all the way home.
 
+![HeliosStreams Architecture][1]
+
 ## Data Types
 
 ## Data Format Specifications
@@ -36,7 +38,7 @@ The plain text stream is typically used when extracting data from application lo
 - **app** : The name of the application the metric originated from
 - **tags** : Key value pairs that qualify the instance of the **metric-name**.
 
-
+[1]: https://cloud.githubusercontent.com/assets/597608/22244861/32a45b8a-e1fb-11e6-9198-ca1b4ff9029b.png
 
 
 
