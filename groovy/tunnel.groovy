@@ -143,9 +143,6 @@ try {
 
 
 // try {
-//     tunnel = new SSHTunnel("ord-pr-ceas-a01", [
-//         1430 : "ord-pr-cebmq-vip.intcx.net",
-//         1421 : "ord-pr-cebmq-vip.intcx.net"
 //     ]);
 //     println "Opening Tunnel.....";
 //     tunnel.open();
