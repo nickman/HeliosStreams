@@ -31,6 +31,7 @@ import java.io.Serializable;
 import java.lang.ref.WeakReference;
 import java.net.URL;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 import java.util.zip.GZIPOutputStream;
@@ -90,6 +91,13 @@ public class JSONOps {
 	private static final ReferenceService refService = ReferenceService.getInstance();
 	/** ByteBuf allocator */
 	private static final ByteBufAllocator byteBufAllocator = BufferManager.getInstance();
+	
+	/** Type reference for common string/object maps */
+	public static final TypeReference<HashMap<String, Object>> TR_STR_OBJ_HASH_MAP = 
+	    new TypeReference<HashMap<String, Object>>() {};
+	/** Type reference for common string/string maps */
+	public static final TypeReference<HashMap<String, String>> TR_STR_STR_HASH_MAP = 
+	    new TypeReference<HashMap<String, String>>() {};
 	
 
 	private static final ObjectMapper jsonMapper = new ObjectMapper();
