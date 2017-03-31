@@ -21,6 +21,7 @@ import java.util.Map;
 import javax.management.ObjectName;
 
 import com.google.common.base.Predicate;
+import com.heliosapm.streams.tracing.DefaultTracerImpl.PMetric;
 import com.heliosapm.streams.tracing.DefaultTracerImpl.PredicateTrace;
 import com.heliosapm.utils.config.ConfigurationHelper;
 
@@ -519,6 +520,11 @@ public interface ITracer extends Closeable {
 	 * @return the number of traced metrics 
 	 */
 	public long getTracedCount();
+	
+	public PMetric permaMetric(final String metricName, final Map<String, String> tags);
+	
+	public PMetric permaMetric(final String metricName, final String... tags);
+	
 	
 
 }
